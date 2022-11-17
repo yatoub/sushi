@@ -1,3 +1,4 @@
+- { name: server with nothing }
 - { name: dev server with proxy and keypath as anchor, user: &user appuser, host: &proxy 192.168.1.2, port: 22, keypath: &key /path/to/id_rsa }
 - { name: dev server with passphrase key, user: appuser, host: 192.168.8.35, port: 22, keypath: /root/.ssh/id_rsa, passphrase: abcdefghijklmn}
 - { name: dev server without port, user: appuser, host: 192.168.8.35 }

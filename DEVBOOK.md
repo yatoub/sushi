@@ -14,11 +14,11 @@ Ce projet suit une approche TDD (Test Driven Development). Pour chaque fonctionn
 
 ## Étapes de Développement
 
-### 1. Configuration de Base [ ]
-- [ ] Mise en place de la structure du projet Go
-- [ ] Configuration de l'environnement de test
-- [ ] Création du fichier go.mod
-- [ ] Configuration des linters et outils de qualité de code
+### 1. Configuration de Base [✓]
+- [x] Mise en place de la structure du projet Go
+- [x] Configuration de l'environnement de test
+- [x] Création du fichier go.mod
+- [x] Configuration des linters et outils de qualité de code
 
 ### 2. Gestion de la Configuration YAML [ ]
 - [ ] Tests de parsing du fichier YAML
@@ -102,4 +102,4 @@ groups:
 ## État d'Avancement
 🟢 Terminé | 🟡 En cours | 🔴 Non commencé
 
-État actuel : 🔴 Projet non commencé
+État actuel : � Étape 1 terminée, passage à l'étape 2

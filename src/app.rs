@@ -189,3 +189,121 @@ impl App {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{Group, Server, Environment, ConfigEntry};
+
+    fn create_test_config() -> Config {
+        Config {
+            defaults: None,
+            groups: vec![
+                ConfigEntry::Group(Group {
+                    name: "G1".to_string(),
+                    user: None, ssh_key: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None,
+                    environments: Some(vec![
+                        Environment {
+                            name: "E1".to_string(),
+                            user: None, ssh_key: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None,
+                            servers: vec![
+                                Server {
+                                    name: "S1".to_string(),
+                                    host: "10.0.0.1".to_string(),
+                                    user: None, ssh_key: None, ssh_port: None, ssh_options: None, mode: None, bastion: None, rebond: None
+                                }
+                            ]
+                        }
+                    ]),
+                    servers: Some(vec![
+                        Server {
+                            name: "S2".to_string(),
+                            host: "10.0.0.2".to_string(),
+                            user: None, ssh_key: None, ssh_port: None, ssh_options: None, mode: None, bastion: None, rebond: None
+                        }
+                    ]),
+                })
+            ]
+        }
+    }
+
+    #[test]
+    fn test_initial_visibility() {
+        let config = create_test_config();
+        let app = App::new(config);
+        let items = app.get_visible_items();
+        
+        // Initially only the group header is visible (collapsed state)
+        assert_eq!(items.len(), 1);
+        match &items[0] {
+            ConfigItem::Group(name) => assert_eq!(name, "G1"),
+            _ => panic!("Expected Group G1"),
+        }
+    }
+
+    #[test]
+    fn test_expansion() {
+        let config = create_test_config();
+        let mut app = App::new(config);
+        
+        // Expand Expand group G1
+        app.toggle_expansion(); 
+        // Note: selected_index is 0, pointing to G1.
+        
+        let items = app.get_visible_items();
+        
+        // Should verify items: G1, E1, S2 (Environment header + direct server)
+        // E1 is collapsed by default.
+        
+        // Order inside Group iteration:
+        // 1. Environments (E1)
+        // 2. Servers (S2)
+        
+        // So: G1, E1, S2
+        assert_eq!(items.len(), 3);
+        
+        match &items[1] {
+            ConfigItem::Environment(g, e) => {
+                assert_eq!(g, "G1");
+                assert_eq!(e, "E1");
+            },
+            _ => panic!("Expected Environment E1"),
+        }
+        
+        match &items[2] {
+            ConfigItem::Server(s) => assert_eq!(s.name, "S2"),
+            _ => panic!("Expected Server S2"),
+        }
+    }
+
+    #[test]
+    fn test_search_filtering() {
+        let config = create_test_config();
+        let mut app = App::new(config);
+        
+        app.search_query = "S1".to_string();
+        let items = app.get_visible_items();
+        
+        // With search "S1":
+        // G1 (header always shown)
+        // E1 (header always shown inside expanded group)
+        // S1 (matches "S1")
+        // S2 (filtered out)
+        
+        assert!(items.len() >= 3);
+        
+        // Verify S1 is present
+        let has_s1 = items.iter().any(|i| match i {
+            ConfigItem::Server(s) => s.name == "S1",
+            _ => false,
+        });
+        assert!(has_s1, "Should contain S1");
+        
+        // Verify S2 is filtered out
+        let has_s2 = items.iter().any(|i| match i {
+             ConfigItem::Server(s) => s.name == "S2",
+             _ => false,
+        });
+        assert!(!has_s2, "Should NOT contain S2");
+    }
+}

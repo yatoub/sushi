@@ -305,3 +305,122 @@ fn resolve_server(
         bastion_template,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_merge_bastion() {
+        let parent = Some(BastionConfig {
+            host: Some("parent_host".to_string()),
+            user: Some("parent_user".to_string()),
+            template: Some("parent_tmpl".to_string()),
+        });
+        let child = BastionConfig {
+            host: None,
+            user: Some("child_user".to_string()),
+            template: None,
+        };
+
+        let merged = merge_bastion(&parent, &Some(child)).unwrap();
+        // Child user overrides parent
+        assert_eq!(merged.user, Some("child_user".to_string()));
+        // Parent host is inherited
+        assert_eq!(merged.host, Some("parent_host".to_string()));
+        // Parent template is inherited
+        assert_eq!(merged.template, Some("parent_tmpl".to_string()));
+    }
+
+    #[test]
+    fn test_sorting_mixed() {
+        let mut config = Config {
+            defaults: None,
+            groups: vec![
+                ConfigEntry::Group(Group {
+                    name: "Zeus".to_string(),
+                    user: None, ssh_key: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None, environments: None, servers: None
+                }),
+                ConfigEntry::Server(Server {
+                    name: "Alpha".to_string(),
+                    host: "10.0.0.1".to_string(),
+                    user: None, ssh_key: None, ssh_port: None, ssh_options: None, mode: None, bastion: None, rebond: None
+                }),
+                ConfigEntry::Group(Group {
+                    name: "Beta".to_string(),
+                    user: None, ssh_key: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None, environments: None, servers: None
+                }),
+            ],
+        };
+
+        config.sort();
+
+        // Check order: Alpha, Beta, Zeus
+        match &config.groups[0] {
+            ConfigEntry::Server(s) => assert_eq!(s.name, "Alpha"),
+            _ => panic!("Expected Alpha first"),
+        }
+        match &config.groups[1] {
+            ConfigEntry::Group(g) => assert_eq!(g.name, "Beta"),
+            _ => panic!("Expected Beta second"),
+        }
+        match &config.groups[2] {
+            ConfigEntry::Group(g) => assert_eq!(g.name, "Zeus"),
+            _ => panic!("Expected Zeus third"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_inheritance_chain() {
+        let config = Config {
+            defaults: Some(Defaults {
+                user: Some("default_user".to_string()),
+                ssh_port: Some(2222),
+                ..Default::default()
+            }),
+            groups: vec![
+                ConfigEntry::Group(Group {
+                    name: "G1".to_string(),
+                    user: Some("group_user".to_string()), // Override default
+                    ssh_key: None,
+                    ssh_port: None, // Inherits 2222
+                    ssh_options: None,
+                    bastion: None,
+                    rebond: None,
+                    environments: Some(vec![
+                        Environment {
+                            name: "Env1".to_string(),
+                            user: None, // Inherits "group_user"
+                            ssh_key: None,
+                            ssh_port: None, // Inherits 2222
+                            ssh_options: None,
+                            bastion: None,
+                            rebond: None,
+                            servers: vec![
+                                Server {
+                                    name: "S1".to_string(),
+                                    host: "1.1.1.1".to_string(),
+                                    user: None, // Inherits "group_user"
+                                    ssh_key: None,
+                                    ssh_port: Some(8080), // Override 2222
+                                    ssh_options: None,
+                                    mode: None,
+                                    bastion: None,
+                                    rebond: None,
+                                }
+                            ]
+                        }
+                    ]),
+                    servers: None,
+                })
+            ]
+        };
+
+        let resolved = config.resolve().unwrap();
+        let s1 = &resolved[0];
+
+        assert_eq!(s1.name, "S1");
+        assert_eq!(s1.user, "group_user"); 
+        assert_eq!(s1.port, 8080);
+    }
+}

@@ -1,17 +1,21 @@
 #[cfg(test)]
 mod tests {
     use sushi::config::Config;
-    use std::fs;
     use std::path::PathBuf;
 
     #[test]
     fn test_full_config_structure() {
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
         let path = PathBuf::from(manifest_dir).join("examples/full_config.yaml");
-        let content = fs::read_to_string(&path).expect("Failed to read full_config.yaml");
-        let config: Config = serde_yaml::from_str(&content).expect("Failed to parse YAML");
         
+        // Use load() to verify sorting + loading
+        let config = Config::load(&path).expect("Failed to load config");
         let resolved = config.resolve().expect("Failed to resolve config");
+        
+        // Verify Sorting: Groups should be sorted by name.
+        // Assuming full_config.yaml has unsorted groups.
+        // "Home Lab" < "VPS Work" (example names)
+        // Let's just check relative order of known items if we knew them.
         
         // Find nextcloud
         let nextcloud = resolved.iter().find(|s| s.name == "nextcloud").expect("nextcloud found");

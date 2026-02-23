@@ -29,10 +29,10 @@ jobs:
             binary_name: sushi
             asset_name: sushi-macos-arm64
           # Windows support (optional, but good to have)
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary_name: sushi.exe
-            asset_name: sushi-windows-amd64.exe
+          #- os: windows-latest
+          #  target: x86_64-pc-windows-msvc
+          #  binary_name: sushi.exe
+          #  asset_name: sushi-windows-amd64.exe
 
     steps:
       - name: Checkout repository

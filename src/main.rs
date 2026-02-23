@@ -154,6 +154,15 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                             KeyCode::Tab => {
                                 app.connection_mode = (app.connection_mode + 1) % 3;
                             }
+                            KeyCode::Char('1') => {
+                                app.connection_mode = 0;
+                            }
+                            KeyCode::Char('2') => {
+                                app.connection_mode = 1;
+                            }
+                            KeyCode::Char('3') => {
+                                app.connection_mode = 2;
+                            }
                             KeyCode::Char('/') => {
                                 app.is_searching = true;
                             }

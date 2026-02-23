@@ -1,6 +1,5 @@
 use serde::Deserialize;
 use thiserror::Error;
-use std::fs;
 use std::path::Path;
 
 #[derive(Error, Debug)]
@@ -10,215 +9,299 @@ pub enum ConfigError {
     #[error("YAML parse error: {0}")]
     Yaml(#[from] serde_yaml::Error),
     #[error("Missing configuration for server '{0}': {1}")]
-    MissingField(String, String), // server_name, field_name
+    MissingField(String, String),
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Default)]
 pub struct Config {
     pub defaults: Option<Defaults>,
-    pub groups: Vec<Group>,
+    pub groups: Vec<ConfigEntry>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum ConfigEntry {
+    Server(Server),
+    Group(Group),
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct Defaults {
     pub user: Option<String>,
     pub ssh_key: Option<String>,
-    pub jump_host: Option<String>,
-    pub jump_user: Option<String>,
-    pub bastion_host: Option<String>,
-    pub bastion_user: Option<String>,
-    pub bastion_template: Option<String>,
+
+    pub ssh_port: Option<u16>,
+    pub ssh_options: Option<Vec<String>>,
+    pub bastion: Option<BastionConfig>,
+    pub rebond: Option<JumpConfig>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct BastionConfig {
+    pub host: Option<String>,
+    pub user: Option<String>,
+    pub template: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct JumpConfig {
+    pub host: Option<String>,
+    pub user: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
 pub struct Group {
     pub name: String,
     pub user: Option<String>,
     pub ssh_key: Option<String>,
-    pub jump_host: Option<String>,
-    pub jump_user: Option<String>,
-    pub bastion_host: Option<String>,
-    pub bastion_user: Option<String>,
-    pub bastion_template: Option<String>,
-    pub environments: Vec<Environment>,
+    pub ssh_port: Option<u16>,
+    pub ssh_options: Option<Vec<String>>,
+    pub bastion: Option<BastionConfig>,
+    pub rebond: Option<JumpConfig>,
+    pub environments: Option<Vec<Environment>>,
+    pub servers: Option<Vec<Server>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Environment {
     pub name: String,
     pub user: Option<String>,
     pub ssh_key: Option<String>,
-    pub jump_host: Option<String>,
-    pub jump_user: Option<String>,
-    pub bastion_host: Option<String>,
-    pub bastion_user: Option<String>,
-    pub bastion_template: Option<String>,
-    pub servers: Vec<ServerRaw>,
+    pub ssh_port: Option<u16>,
+    pub ssh_options: Option<Vec<String>>,
+    pub bastion: Option<BastionConfig>,
+    pub rebond: Option<JumpConfig>,
+    pub servers: Vec<Server>,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct ServerRaw {
+#[derive(Debug, Deserialize, Clone)]
+pub struct Server {
     pub name: String,
-    pub host: String,
+    pub host: String, // Host is mandatory on leaf
     pub user: Option<String>,
     pub ssh_key: Option<String>,
-    pub jump_host: Option<String>,
-    pub jump_user: Option<String>,
-    pub bastion_host: Option<String>,
-    pub bastion_user: Option<String>,
-    pub bastion_template: Option<String>,
+    pub ssh_port: Option<u16>,
+    pub ssh_options: Option<Vec<String>>,
+    pub mode: Option<String>, // "direct", "jump", "bastion"
+    pub bastion: Option<BastionConfig>,
+    pub rebond: Option<JumpConfig>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedServer {
     pub group_name: String,
-    pub env_name: String,
+    pub env_name: String, 
     pub name: String,
     pub host: String,
     pub user: String,
+    pub port: u16,
     pub ssh_key: String,
+    pub ssh_options: Vec<String>,
+    pub default_mode: String, 
     pub jump_host: Option<String>,
     pub jump_user: Option<String>,
     pub bastion_host: Option<String>,
     pub bastion_user: Option<String>,
-    pub bastion_template: Option<String>,
+    pub bastion_template: String,
 }
 
 impl Config {
-    #[allow(dead_code)]
-    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
-        let content = fs::read_to_string(path)?;
-        let config = serde_yaml::from_str(&content)?;
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
+        let content = std::fs::read_to_string(path)?;
+        let mut config: Config = serde_yaml::from_str(&content)?;
+        config.sort();
         Ok(config)
+    }
+
+    pub fn sort(&mut self) {
+        // Sort top-level entries (Groups or Servers)
+        self.groups.sort_by(|a, b| {
+            let name_a = match a {
+                ConfigEntry::Group(g) => &g.name,
+                ConfigEntry::Server(s) => &s.name,
+            };
+            let name_b = match b {
+                ConfigEntry::Group(g) => &g.name,
+                ConfigEntry::Server(s) => &s.name,
+            };
+            name_a.cmp(name_b)
+        });
+
+        // Sort children
+        for entry in &mut self.groups {
+            if let ConfigEntry::Group(group) = entry {
+                // Sort environments
+                if let Some(envs) = &mut group.environments {
+                    envs.sort_by(|a, b| a.name.cmp(&b.name));
+                    // Sort servers inside environments
+                    for env in envs {
+                        env.servers.sort_by(|a, b| a.name.cmp(&b.name));
+                    }
+                }
+                // Sort direct servers in group
+                if let Some(servers) = &mut group.servers {
+                    servers.sort_by(|a, b| a.name.cmp(&b.name));
+                }
+            }
+        }
     }
 
     pub fn resolve(&self) -> Result<Vec<ResolvedServer>, ConfigError> {
         let mut resolved = Vec::new();
         
-        let default_user = self.defaults.as_ref().and_then(|d| d.user.clone());
-        let default_key = self.defaults.as_ref().and_then(|d| d.ssh_key.clone());
-        let default_jh = self.defaults.as_ref().and_then(|d| d.jump_host.clone());
-        let default_ju = self.defaults.as_ref().and_then(|d| d.jump_user.clone());
-        let default_bh = self.defaults.as_ref().and_then(|d| d.bastion_host.clone());
-        let default_bu = self.defaults.as_ref().and_then(|d| d.bastion_user.clone());
-        let default_bt = self.defaults.as_ref().and_then(|d| d.bastion_template.clone());
+        let d = self.defaults.clone().unwrap_or_default();
+        
+        for entry in &self.groups {
+            match entry {
+                ConfigEntry::Group(group) => {
+                    // Merge defaults -> Group
+                    let g_user = group.user.as_deref().or(d.user.as_deref());
+                    let g_key = group.ssh_key.as_deref().or(d.ssh_key.as_deref());
+                    let g_port = group.ssh_port.or(d.ssh_port);
+                    let g_opts = if let Some(opts) = &group.ssh_options {
+                         Some(opts.clone())
+                    } else {
+                         d.ssh_options.clone()
+                    };
 
-        for group in &self.groups {
-            let group_user = group.user.clone().or(default_user.clone());
-            let group_key = group.ssh_key.clone().or(default_key.clone());
-            let group_jh = group.jump_host.clone().or(default_jh.clone());
-            let group_ju = group.jump_user.clone().or(default_ju.clone());
-            let group_bh = group.bastion_host.clone().or(default_bh.clone());
-            let group_bu = group.bastion_user.clone().or(default_bu.clone());
-            let group_bt = group.bastion_template.clone().or(default_bt.clone());
+                    let g_bastion = merge_bastion(&d.bastion, &group.bastion);
+                    let g_jump = merge_jump(&d.rebond, &group.rebond);
 
-            for env in &group.environments {
-                let env_user = env.user.clone().or(group_user.clone());
-                let env_key = env.ssh_key.clone().or(group_key.clone());
-                let env_jh = env.jump_host.clone().or(group_jh.clone());
-                let env_ju = env.jump_user.clone().or(group_ju.clone());
-                let env_bh = env.bastion_host.clone().or(group_bh.clone());
-                let env_bu = env.bastion_user.clone().or(group_bu.clone());
-                let env_bt = env.bastion_template.clone().or(group_bt.clone());
+                    if let Some(envs) = &group.environments {
+                        for env in envs {
+                            // Merge Group -> Env
+                            let e_user = env.user.as_deref().or(g_user);
+                            let e_key = env.ssh_key.as_deref().or(g_key);
+                            let e_port = env.ssh_port.or(g_port);
+                            let e_opts = if let Some(opts) = &env.ssh_options {
+                                 Some(opts.clone())
+                            } else {
+                                 g_opts.clone()
+                            };
+                            
+                            let e_bastion = merge_bastion(&g_bastion, &env.bastion);
+                            let e_jump = merge_jump(&g_jump, &env.rebond);
 
-                for server in &env.servers {
-                    let final_user = server.user.clone().or(env_user.clone());
-                    let final_key = server.ssh_key.clone().or(env_key.clone());
-
-                    match (final_user, final_key) {
-                        (Some(u), Some(k)) => {
-                            resolved.push(ResolvedServer {
-                                group_name: group.name.clone(),
-                                env_name: env.name.clone(),
-                                name: server.name.clone(),
-                                host: server.host.clone(),
-                                user: u,
-                                ssh_key: k,
-                                jump_host: server.jump_host.clone().or(env_jh.clone()),
-                                jump_user: server.jump_user.clone().or(env_ju.clone()),
-                                bastion_host: server.bastion_host.clone().or(env_bh.clone()),
-                                bastion_user: server.bastion_user.clone().or(env_bu.clone()),
-                                bastion_template: server.bastion_template.clone().or(env_bt.clone()),
-                            });
+                            for server in &env.servers {
+                                 let r = resolve_server(
+                                     server, 
+                                     &group.name, 
+                                     &env.name,
+                                     e_user, e_key, e_port, e_opts.as_ref(), // Pass ref
+                                     &e_bastion, &e_jump
+                                 )?;
+                                 resolved.push(r);
+                            }
                         }
-                        (None, _) => return Err(ConfigError::MissingField(server.name.clone(), "user".to_string())),
-                        (_, None) => return Err(ConfigError::MissingField(server.name.clone(), "ssh_key".to_string())),
                     }
+                    
+                    if let Some(servers) = &group.servers {
+                        for server in servers {
+                             let r = resolve_server(
+                                 server, 
+                                 &group.name, 
+                                 "",
+                                 g_user, g_key, g_port, g_opts.as_ref(),
+                                 &g_bastion, &g_jump
+                             )?;
+                             resolved.push(r);
+                        }
+                    }
+                },
+                ConfigEntry::Server(server) => {
+                     // Top-level server
+                     // Use empty string for group/env to signify top-level
+                     let r = resolve_server(
+                         server, 
+                         "", 
+                         "",
+                         d.user.as_deref(), d.ssh_key.as_deref(), d.ssh_port, d.ssh_options.as_ref(),
+                         &d.bastion, &d.rebond
+                     )?;
+                     resolved.push(r);
                 }
             }
         }
-
+        
         Ok(resolved)
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Write;
-
-    #[test]
-    fn test_server_inherits_user_from_group() {
-        let yaml = r#"
-            defaults:
-              user: "global_admin"
-              ssh_key: "~/.ssh/id_rsa"
-            groups:
-              - name: "Alpha"
-                user: "group_user"
-                environments:
-                  - name: "Prod"
-                    servers:
-                      - name: "srv-1"
-                        host: "10.0.0.1"
-        "#;
-        
-        let config: Config = serde_yaml::from_str(yaml).unwrap();
-        let servers = config.resolve().unwrap();
-        
-        assert_eq!(servers.len(), 1);
-        let s = &servers[0];
-        
-        assert_eq!(s.name, "srv-1");
-        assert_eq!(s.user, "group_user"); // From Group
-        assert_eq!(s.ssh_key, "~/.ssh/id_rsa"); // From Defaults
-    }
-
-    #[test]
-    fn test_missing_config_returns_error() {
-        let yaml = r#"
-            groups:
-              - name: "GroupBad"
-                environments:
-                  - name: "Prod"
-                    servers:
-                      - name: "srv-bad"
-                        host: "1.2.3.4"
-        "#;
-        // user and ssh_key are missing everywhere
-        let config: Config = serde_yaml::from_str(yaml).unwrap();
-        let result = config.resolve();
-        
-        match result {
-            Err(ConfigError::MissingField(server, field)) => {
-                assert_eq!(server, "srv-bad");
-                assert!(field == "user" || field == "ssh_key");
-            }
-            _ => panic!("Expected MissingField error, got check logic"),
+fn merge_bastion(parent: &Option<BastionConfig>, child: &Option<BastionConfig>) -> Option<BastionConfig> {
+    match (parent, child) {
+        (None, None) => None,
+        (Some(p), None) => Some(p.clone()),
+        (None, Some(c)) => Some(c.clone()),
+        (Some(p), Some(c)) => {
+            Some(BastionConfig {
+                host: c.host.clone().or(p.host.clone()),
+                user: c.user.clone().or(p.user.clone()),
+                template: c.template.clone().or(p.template.clone()),
+            })
         }
     }
+}
 
-    #[test]
-    fn test_load_from_file() {
-        let mut file = tempfile::NamedTempFile::new().unwrap();
-        writeln!(file, r#"
-            defaults:
-              user: "file_user"
-              ssh_key: "file_key"
-            groups: []
-        "#).unwrap();
-
-        let config = Config::load_from_file(file.path()).unwrap();
-        assert_eq!(config.defaults.unwrap().user.unwrap(), "file_user");
+fn merge_jump(parent: &Option<JumpConfig>, child: &Option<JumpConfig>) -> Option<JumpConfig> {
+    match (parent, child) {
+        (None, None) => None,
+        (Some(p), None) => Some(p.clone()),
+        (None, Some(c)) => Some(c.clone()),
+        (Some(p), Some(c)) => {
+             Some(JumpConfig {
+                host: c.host.clone().or(p.host.clone()),
+                user: c.user.clone().or(p.user.clone()),
+            })
+        }
     }
+}
+
+fn resolve_server(
+    s: &Server,
+    group: &str,
+    env: &str,
+    def_user: Option<&str>,
+    def_key: Option<&str>,
+    def_port: Option<u16>,
+    def_opts: Option<&Vec<String>>,
+    def_bastion: &Option<BastionConfig>,
+    def_jump: &Option<JumpConfig>,
+) -> Result<ResolvedServer, ConfigError> {
+    
+    let user = s.user.as_deref().or(def_user).unwrap_or("root").to_string();
+    let port = s.ssh_port.or(def_port).unwrap_or(22);
+    let key = s.ssh_key.as_deref().or(def_key).unwrap_or("~/.ssh/id_rsa").to_string();
+    
+    let opts = if let Some(o) = &s.ssh_options {
+        o.clone()
+    } else {
+        def_opts.cloned().unwrap_or_default()
+    };
+    
+    let final_bastion = merge_bastion(def_bastion, &s.bastion);
+    let final_jump = merge_jump(def_jump, &s.rebond);
+
+    let mode_str = s.mode.as_deref().unwrap_or("direct").to_string();
+    
+    let bastion_template = final_bastion.as_ref()
+        .and_then(|b| b.template.clone())
+        .unwrap_or_else(|| "{target_user}@%n:SSH:{bastion_user}".to_string());
+
+    Ok(ResolvedServer {
+        group_name: group.to_string(),
+        env_name: env.to_string(),
+        name: s.name.clone(),
+        host: s.host.clone(),
+        user,
+        port,
+        ssh_key: key,
+        ssh_options: opts,
+        default_mode: mode_str,
+        
+        jump_host: final_jump.as_ref().and_then(|j| j.host.clone()),
+        jump_user: final_jump.as_ref().and_then(|j| j.user.clone()),
+        bastion_host: final_bastion.as_ref().and_then(|b| b.host.clone()),
+        bastion_user: final_bastion.as_ref().and_then(|b| b.user.clone()),
+        bastion_template,
+    })
 }

@@ -1,0 +1,36 @@
+#[cfg(test)]
+mod tests {
+    use sushi::config::Config;
+    use std::fs;
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_full_config_structure() {
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+        let path = PathBuf::from(manifest_dir).join("examples/full_config.yaml");
+        let content = fs::read_to_string(&path).expect("Failed to read full_config.yaml");
+        let config: Config = serde_yaml::from_str(&content).expect("Failed to parse YAML");
+        
+        let resolved = config.resolve().expect("Failed to resolve config");
+        
+        // Find nextcloud
+        let nextcloud = resolved.iter().find(|s| s.name == "nextcloud").expect("nextcloud found");
+        assert_eq!(nextcloud.host, "192.168.1.13");
+        assert_eq!(nextcloud.user, "root"); // server override
+        assert_eq!(nextcloud.default_mode, "direct");
+        
+        // Find db-01
+        let db01 = resolved.iter().find(|s| s.name == "db-01").expect("db-01 found");
+        assert_eq!(db01.host, "192.168.1.11");
+        assert_eq!(db01.user, "dev"); // "Projet Alpha" defines user="dev", no override on Env or Server.
+        assert_eq!(db01.group_name, "Projet Alpha"); 
+        
+        // Find internal-nas
+        let nas = resolved.iter().find(|s| s.name == "internal-nas").expect("internal-nas found");
+        assert_eq!(nas.user, "root"); // server override
+        assert_eq!(nas.default_mode, "bastion");
+        // Bastion should be inherited from defaults
+        assert_eq!(nas.bastion_host.as_deref().unwrap(), "bastion.example.com");
+        assert_eq!(nas.bastion_user.as_deref().unwrap(), "bastion");
+    }
+}

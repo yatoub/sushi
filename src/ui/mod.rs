@@ -29,8 +29,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(30), // Tree view
-            Constraint::Percentage(70), // Details
+            Constraint::Percentage(67), // Tree view (2/3)
+            Constraint::Min(0),         // Details (1/3)
         ])
         .split(chunks[2]);
 
@@ -73,57 +73,47 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
     let visible_items = app.get_visible_items();
     let mut list_items = Vec::new();
 
-    for (i, item) in visible_items.iter().enumerate() {
-        let is_selected = i == app.selected_index;
-        
-        let (content, mut style) = match item {
-            ConfigItem::Group(name) => (
+    for item in visible_items.iter() {
+        let content = match item {
+            ConfigItem::Group(name) => {
+                let id = format!("Group:{}", name);
+                let icon = if app.expanded_items.contains(&id) || !app.search_query.is_empty() { "📂" } else { "📁" }; 
                 Line::from(vec![
-                    Span::styled(format!("📁 {}", name), Style::default().fg(CATPPUCCIN_MOCHA.group_header).add_modifier(Modifier::BOLD)),
-                ]),
-                Style::default()
-            ),
-            ConfigItem::Environment(_, name) => (
+                    Span::styled(format!("{} {}", icon, name), Style::default().fg(CATPPUCCIN_MOCHA.group_header).add_modifier(Modifier::BOLD)),
+                ])
+            },
+            ConfigItem::Environment(g, name) => {
+                let id = format!("Env:{}:{}", g, name);
+                let icon = if app.expanded_items.contains(&id) || !app.search_query.is_empty() { "🌩️" } else { "☁️" };
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(format!("☁️ {}", name), Style::default().fg(CATPPUCCIN_MOCHA.env_header)),
-                ]),
-                Style::default()
-            ),
-            ConfigItem::Server(server) => (
+                    Span::styled(format!("{} {}", icon, name), Style::default().fg(CATPPUCCIN_MOCHA.env_header)),
+                ])
+            },
+            ConfigItem::Server(server) => {
+                let indent = if server.group_name.is_empty() {
+                    "" // Root level
+                } else if server.env_name.is_empty() {
+                    "  " // Under group
+                } else {
+                    "    " // Under env
+                };
                 Line::from(vec![
-                    Span::raw("    "),
+                    Span::raw(indent),
                     Span::styled(format!("🖥️ {}", server.name), Style::default().fg(CATPPUCCIN_MOCHA.server_item)),
-                ]),
-                Style::default()
-            ),
+                ])
+            },
         };
 
-        if is_selected {
-            style = style.bg(CATPPUCCIN_MOCHA.selection_bg).fg(CATPPUCCIN_MOCHA.selection_fg).add_modifier(Modifier::BOLD);
-        }
-        
-        // Apply selection style to the content if it's a server, or just the whole line?
-        // Let's modify the line spans if selected? Or apply style to ListItem.
-        // ListItem style serves as base.
-        
-        // Hack: Rebuild line with selection style if needed for specific parts, or rely on ListItem style
-        // For simple highlighting, ListItem style is enough but might color unrelated padding.
-        
-        let mut styled_content = content;
-        if is_selected {
-            for span in &mut styled_content.spans {
-                 span.style = span.style.patch(style);
-            }
-        }
-
-        list_items.push(ListItem::new(styled_content).style(style));
+        list_items.push(ListItem::new(content));
     }
 
     let list = List::new(list_items)
-        .block(Block::default().borders(Borders::ALL).title(" Servers ").border_style(Style::default().fg(CATPPUCCIN_MOCHA.border)));
+        .block(Block::default().borders(Borders::ALL).title(" Servers ").border_style(Style::default().fg(CATPPUCCIN_MOCHA.border)))
+        .highlight_style(Style::default().bg(CATPPUCCIN_MOCHA.selection_bg).fg(CATPPUCCIN_MOCHA.selection_fg).add_modifier(Modifier::BOLD))
+        .highlight_symbol("> ");
     
-    f.render_widget(list, area);
+    f.render_stateful_widget(list, area, &mut app.list_state);
 }
 
 fn draw_details(f: &mut Frame, app: &App, area: Rect) {
@@ -151,6 +141,10 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
                 Line::from(vec![
                     Span::styled("SSH Path: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
                     Span::raw(&server.ssh_key),
+                ]),
+                Line::from(vec![
+                    Span::styled("SSH Options: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
+                    Span::raw(server.ssh_options.join(" ")),
                 ]),
              ],
              ConfigItem::Group(name) => vec![Line::from(format!("Group: {}", name))],

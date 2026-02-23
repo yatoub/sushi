@@ -1,0 +1,54 @@
+# ==========================================
+# sushi - Configuration d'exemple
+# ==========================================
+
+# 1. Paramètres par défaut (Niveau Global)
+# Ces valeurs sont utilisées si elles ne sont pas redéfinies plus bas.
+defaults:
+  user: "admin"
+  ssh_key: "~/.ssh/id_ed25519"
+  ssh_port: 22
+  ssh_options:
+    - "StrictHostKeyChecking=no"
+    - "UserKnownHostsFile=/dev/null"
+  bastion:
+    host: "bastion.example.com"
+    user: "bastion"
+  rebond:
+    host: "jump.example.com"
+    user: "jump"
+
+groups:
+  # --- EXEMPLE NIVEAU 3 : Projet -> Environnement -> Serveur ---
+  - name: "Projet Alpha"
+    user: "dev" # Surcharge le défaut pour tout le projet Alpha
+    environments:
+      - name: "Production"
+        servers:
+          - name: "nextcloud"
+            user: "root"
+            host: "192.168.1.13"
+            mode: "direct" # Connexion classique
+          - name: "db-01"
+            host: "192.168.1.11"
+      - name: "Staging"
+        servers:
+          - name: "web-stg"
+            host: "192.168.1.20"
+            mode: "jump" # Passe par un serveur de rebond
+  # --- EXEMPLE NIVEAU 2 : Groupe -> Serveur ---
+  - name: "Infrastructure"
+    servers:
+      - name: "proxmox-host"
+        host: "192.168.1.100"
+        mode: "direct"
+      - name: "internal-nas"
+        host: "192.168.1.200"
+        user: "root"
+        mode: "bastion" # Passe par un bastion dédié
+  # --- EXEMPLE NIVEAU 1 : Serveur Unique ---
+  - name: "Raspberry-Pi-Home"
+    host: "raspberrypi.local"
+    user: "pi"
+    mode: "direct"
+      

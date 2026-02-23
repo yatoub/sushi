@@ -40,10 +40,9 @@ pub fn connect(server: &ResolvedServer, mode: usize) -> Result<()> {
             }
 
             let bastion_user = server.bastion_user.as_deref().unwrap_or("root"); 
-            let template = server.bastion_template.as_deref().unwrap_or("{target_user}@{target_host}:SSH:{bastion_user}");
-            
+
             let (t_host, _t_port) = parse_host_port(&server.host);
-            let user_string = template
+            let user_string = server.bastion_template
                 .replace("{target_user}", &server.user)
                 .replace("{target_host}", t_host)
                 .replace("{bastion_user}", bastion_user)
@@ -64,6 +63,16 @@ pub fn connect(server: &ResolvedServer, mode: usize) -> Result<()> {
     if !server.ssh_key.is_empty() {
         let expanded = shellexpand::tilde(&server.ssh_key);
         command.arg("-i").arg(expanded.as_ref());
+    }
+    
+    // Add custom SSH options
+    for opt in &server.ssh_options {
+        // Simple heuristic: if it starts with hyphen, treat as flag, else option
+        if opt.starts_with('-') {
+            command.arg(opt);
+        } else {
+            command.arg("-o").arg(opt);
+        }
     }
 
     // Replace current process with SSH

@@ -1,4 +1,17 @@
 use serde::Deserialize;
+use thiserror::Error;
+use std::fs;
+use std::path::Path;
+
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("YAML parse error: {0}")]
+    Yaml(#[from] serde_yaml::Error),
+    #[error("Missing configuration for server '{0}': {1}")]
+    MissingField(String, String), // server_name, field_name
+}
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -33,7 +46,7 @@ pub struct ServerRaw {
     pub name: String,
     pub host: String,
     pub user: Option<String>,
-    pub ssh_key: Option<String>, // Renommé pour correspondre au snake_case et l'intention, bien que YAML soit souvent ssh_key
+    pub ssh_key: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -47,7 +60,13 @@ pub struct ResolvedServer {
 }
 
 impl Config {
-    pub fn resolve(&self) -> Result<Vec<ResolvedServer>, String> {
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
+        let content = fs::read_to_string(path)?;
+        let config = serde_yaml::from_str(&content)?;
+        Ok(config)
+    }
+
+    pub fn resolve(&self) -> Result<Vec<ResolvedServer>, ConfigError> {
         let mut resolved = Vec::new();
         
         let default_user = self.defaults.as_ref().and_then(|d| d.user.clone());
@@ -65,17 +84,19 @@ impl Config {
                     let final_user = server.user.clone().or(env_user.clone());
                     let final_key = server.ssh_key.clone().or(env_key.clone());
 
-                    if let (Some(u), Some(k)) = (final_user, final_key) {
-                        resolved.push(ResolvedServer {
-                            group_name: group.name.clone(),
-                            env_name: env.name.clone(),
-                            name: server.name.clone(),
-                            host: server.host.clone(),
-                            user: u,
-                            ssh_key: k,
-                        });
-                    } else {
-                        return Err(format!("Missing configuration for server: {}", server.name));
+                    match (final_user, final_key) {
+                        (Some(u), Some(k)) => {
+                            resolved.push(ResolvedServer {
+                                group_name: group.name.clone(),
+                                env_name: env.name.clone(),
+                                name: server.name.clone(),
+                                host: server.host.clone(),
+                                user: u,
+                                ssh_key: k,
+                            });
+                        }
+                        (None, _) => return Err(ConfigError::MissingField(server.name.clone(), "user".to_string())),
+                        (_, None) => return Err(ConfigError::MissingField(server.name.clone(), "ssh_key".to_string())),
                     }
                 }
             }
@@ -88,6 +109,7 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn test_server_inherits_user_from_group() {
@@ -114,5 +136,43 @@ mod tests {
         assert_eq!(s.name, "srv-1");
         assert_eq!(s.user, "group_user"); // From Group
         assert_eq!(s.ssh_key, "~/.ssh/id_rsa"); // From Defaults
+    }
+
+    #[test]
+    fn test_missing_config_returns_error() {
+        let yaml = r#"
+            groups:
+              - name: "GroupBad"
+                environments:
+                  - name: "Prod"
+                    servers:
+                      - name: "srv-bad"
+                        host: "1.2.3.4"
+        "#;
+        // user and ssh_key are missing everywhere
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        let result = config.resolve();
+        
+        match result {
+            Err(ConfigError::MissingField(server, field)) => {
+                assert_eq!(server, "srv-bad");
+                assert!(field == "user" || field == "ssh_key");
+            }
+            _ => panic!("Expected MissingField error, got check logic"),
+        }
+    }
+
+    #[test]
+    fn test_load_from_file() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        writeln!(file, r#"
+            defaults:
+              user: "file_user"
+              ssh_key: "file_key"
+            groups: []
+        "#).unwrap();
+
+        let config = Config::load_from_file(file.path()).unwrap();
+        assert_eq!(config.defaults.unwrap().user.unwrap(), "file_user");
     }
 }

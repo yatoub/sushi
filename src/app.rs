@@ -12,7 +12,6 @@ pub enum ConfigItem {
 pub struct App {
     pub config: Config,
     pub resolved_servers: Vec<ResolvedServer>,
-    pub should_quit: bool,
     
     // Navigation state
     pub selected_index: usize,
@@ -21,6 +20,9 @@ pub struct App {
     // Search
     pub search_query: String,
     pub is_searching: bool,
+    
+    // Connection Mode
+    pub connection_mode: usize, // 0: Direct, 1: Jump, 2: Bastion
 }
 
 impl App {
@@ -30,11 +32,11 @@ impl App {
         let mut app = Self {
             config,
             resolved_servers: resolved,
-            should_quit: false,
             selected_index: 0,
             expanded_items: HashSet::new(),
             search_query: String::new(),
             is_searching: false,
+            connection_mode: 0,
         };
         
         // Expand all by default for now
@@ -111,13 +113,5 @@ impl App {
                 self.selected_index = count - 1;
             }
         }
-    }
-
-    pub fn on_tick(&mut self) {
-        // Handle tick events if needed
-    }
-
-    pub fn quit(&mut self) {
-        self.should_quit = true;
     }
 }

@@ -1,6 +1,8 @@
+use std::sync::LazyLock;
 use ratatui::style::Color;
 
 pub struct Theme {
+    #[allow(dead_code)]
     pub bg: Color,
     pub fg: Color,
     pub selection_bg: Color,
@@ -9,19 +11,34 @@ pub struct Theme {
     pub group_header: Color,
     pub env_header: Color,
     pub server_item: Color,
+    #[allow(dead_code)]
     pub search_box: Color,
     pub search_text: Color,
+    #[allow(dead_code)]
+    pub yellow: Color,
+    pub subtext0: Color,
 }
 
-pub const CATPPUCCIN_MOCHA: Theme = Theme {
-    bg: Color::Rgb(30, 30, 46),          // Base
-    fg: Color::Rgb(205, 214, 244),       // Text
-    selection_bg: Color::Rgb(49, 50, 68), // Surface0
-    selection_fg: Color::Rgb(203, 166, 247), // Mauve
-    border: Color::Rgb(147, 153, 178),   // Overlay2
-    group_header: Color::Rgb(137, 180, 250), // Blue
-    env_header: Color::Rgb(166, 227, 161),   // Green
-    server_item: Color::Rgb(205, 214, 244),  // Text
-    search_box: Color::Rgb(69, 71, 90),  // Surface1
-    search_text: Color::Rgb(249, 226, 175), // Yellow
-};
+pub static CATPPUCCIN_MOCHA: LazyLock<Theme> = LazyLock::new(|| {
+    let mocha = catppuccin::PALETTE.mocha;
+    let colors = mocha.colors;
+    
+    Theme {
+        bg: to_ratatui(colors.base),
+        fg: to_ratatui(colors.text),
+        selection_bg: to_ratatui(colors.surface0),
+        selection_fg: to_ratatui(colors.mauve),
+        border: to_ratatui(colors.overlay2),
+        group_header: to_ratatui(colors.blue),
+        env_header: to_ratatui(colors.green),
+        server_item: to_ratatui(colors.text),
+        search_box: to_ratatui(colors.surface1),
+        search_text: to_ratatui(colors.yellow),
+        yellow: to_ratatui(colors.yellow),
+        subtext0: to_ratatui(colors.subtext0),
+    }
+});
+
+fn to_ratatui(c: catppuccin::Color) -> Color {
+    Color::Rgb(c.rgb.r, c.rgb.g, c.rgb.b)
+}

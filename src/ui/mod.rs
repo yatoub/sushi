@@ -5,7 +5,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap, Tabs},
     Frame,
 };
 
@@ -17,12 +17,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3), // Search bar
+            Constraint::Length(3), // Connection Type Tabs
             Constraint::Min(0),    // Main content
             Constraint::Length(1), // Status bar
         ])
         .split(f.area());
 
     draw_search_bar(f, app, chunks[0]);
+    draw_tabs(f, app, chunks[1]);
     
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -30,12 +32,23 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             Constraint::Percentage(30), // Tree view
             Constraint::Percentage(70), // Details
         ])
-        .split(chunks[1]);
+        .split(chunks[2]);
 
     draw_tree(f, app, main_chunks[0]);
     draw_details(f, app, main_chunks[1]);
     
-    draw_status_bar(f, app, chunks[2]);
+    // draw_status_bar(f, app, chunks[3]); -> Correct index
+    draw_status_bar(f, app, chunks[3]);
+}
+
+fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
+    let titles = vec!["Direct [1]", "Rebond [2]", "Bastion [3]"];
+    let tabs = Tabs::new(titles)
+        .block(Block::default().borders(Borders::ALL).title("Mode de Connexion (Tab to switch)"))
+        .select(app.connection_mode)
+        .style(Style::default().fg(CATPPUCCIN_MOCHA.subtext0)) // subtext0
+        .highlight_style(Style::default().fg(CATPPUCCIN_MOCHA.search_text).add_modifier(Modifier::BOLD)); // yellow
+    f.render_widget(tabs, area);
 }
 
 fn draw_search_bar(f: &mut Frame, app: &App, area: Rect) {

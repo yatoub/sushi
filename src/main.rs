@@ -1,7 +1,7 @@
-use std::{io, thread, time::Duration};
+use std::{io, time::Duration};
 
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -14,7 +14,8 @@ mod ssh;
 
 use app::{App, ConfigItem};
 use config::Config;
-use ssh::client::SshClient;
+// use ssh::client::SshClient; removed
+
 
 const DEFAULT_CONFIG: &str = r#"
 defaults:
@@ -83,7 +84,7 @@ fn main() -> io::Result<()> {
 
     let res = run_app(&mut terminal, &mut app);
 
-    // Restore terminal
+    // Restore terminal before doing anything else (especially for SSH handover)
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -92,14 +93,34 @@ fn main() -> io::Result<()> {
     )?;
     terminal.show_cursor()?;
 
-    if let Err(err) = res {
-        println!("{err:?}");
+    match res {
+        Ok(AppResult::Exit) => {
+            // Normal exit
+        },
+        Ok(AppResult::Connect(server, mode)) => {
+            // Handover to SSH
+            // Since we restored the terminal, we can now exec the ssh command
+            if let Err(e) = crate::ssh::client::connect(&server, mode) {
+                 eprintln!("SSH Connection Error: {}", e);
+                 // In case exec fails, we print error. 
+                 // If exec succeeds, we never reach here.
+            }
+        },
+        Err(err) => {
+            eprintln!("Application Error: {:?}", err);
+        }
     }
 
     Ok(())
 }
 
-fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<()> {
+// Enum for App Result to separate UI logic from business logic (connection)
+pub enum AppResult {
+    Exit,
+    Connect(crate::config::ResolvedServer, usize), // Server, Connection Mode
+}
+
+fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<AppResult> {
     loop {
         terminal.draw(|f| ui::draw(f, app))?;
 
@@ -123,7 +144,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                 } else {
                     match key.code {
                         KeyCode::Char('q') => {
-                            return Ok(());
+                            return Ok(AppResult::Exit);
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
                             app.next();
@@ -131,39 +152,16 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                         KeyCode::Up | KeyCode::Char('k') => {
                             app.previous();
                         }
+                        KeyCode::Tab => {
+                            app.connection_mode = (app.connection_mode + 1) % 3;
+                        }
                         KeyCode::Char('/') => {
                             app.is_searching = true;
                         }
                         KeyCode::Enter => {
                             let items = app.get_visible_items();
                             if let Some(ConfigItem::Server(server)) = items.get(app.selected_index) {
-                                // Connect!
-                                
-                                // Suspend TUI
-                                disable_raw_mode()?;
-                                execute!(
-                                    terminal.backend_mut(),
-                                    LeaveAlternateScreen,
-                                    DisableMouseCapture
-                                )?;
-                                terminal.show_cursor()?;
-
-                                let client = SshClient::new(server.clone());
-                                if let Err(e) = client.connect() {
-                                    eprintln!("SSH Error: {}", e);
-                                    // Give user time to read error
-                                    thread::sleep(Duration::from_secs(3));
-                                }
-
-                                // Restore TUI
-                                enable_raw_mode()?;
-                                execute!(
-                                    terminal.backend_mut(),
-                                    EnterAlternateScreen,
-                                    EnableMouseCapture
-                                )?;
-                                terminal.hide_cursor()?;
-                                terminal.clear()?;
+                                return Ok(AppResult::Connect(server.clone(), app.connection_mode));
                             }
                         }
                         _ => {}

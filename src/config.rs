@@ -23,6 +23,11 @@ pub struct Config {
 pub struct Defaults {
     pub user: Option<String>,
     pub ssh_key: Option<String>,
+    pub jump_host: Option<String>,
+    pub jump_user: Option<String>,
+    pub bastion_host: Option<String>,
+    pub bastion_user: Option<String>,
+    pub bastion_template: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +35,11 @@ pub struct Group {
     pub name: String,
     pub user: Option<String>,
     pub ssh_key: Option<String>,
+    pub jump_host: Option<String>,
+    pub jump_user: Option<String>,
+    pub bastion_host: Option<String>,
+    pub bastion_user: Option<String>,
+    pub bastion_template: Option<String>,
     pub environments: Vec<Environment>,
 }
 
@@ -38,6 +48,11 @@ pub struct Environment {
     pub name: String,
     pub user: Option<String>,
     pub ssh_key: Option<String>,
+    pub jump_host: Option<String>,
+    pub jump_user: Option<String>,
+    pub bastion_host: Option<String>,
+    pub bastion_user: Option<String>,
+    pub bastion_template: Option<String>,
     pub servers: Vec<ServerRaw>,
 }
 
@@ -47,6 +62,11 @@ pub struct ServerRaw {
     pub host: String,
     pub user: Option<String>,
     pub ssh_key: Option<String>,
+    pub jump_host: Option<String>,
+    pub jump_user: Option<String>,
+    pub bastion_host: Option<String>,
+    pub bastion_user: Option<String>,
+    pub bastion_template: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,9 +77,15 @@ pub struct ResolvedServer {
     pub host: String,
     pub user: String,
     pub ssh_key: String,
+    pub jump_host: Option<String>,
+    pub jump_user: Option<String>,
+    pub bastion_host: Option<String>,
+    pub bastion_user: Option<String>,
+    pub bastion_template: Option<String>,
 }
 
 impl Config {
+    #[allow(dead_code)]
     pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
         let content = fs::read_to_string(path)?;
         let config = serde_yaml::from_str(&content)?;
@@ -71,14 +97,29 @@ impl Config {
         
         let default_user = self.defaults.as_ref().and_then(|d| d.user.clone());
         let default_key = self.defaults.as_ref().and_then(|d| d.ssh_key.clone());
+        let default_jh = self.defaults.as_ref().and_then(|d| d.jump_host.clone());
+        let default_ju = self.defaults.as_ref().and_then(|d| d.jump_user.clone());
+        let default_bh = self.defaults.as_ref().and_then(|d| d.bastion_host.clone());
+        let default_bu = self.defaults.as_ref().and_then(|d| d.bastion_user.clone());
+        let default_bt = self.defaults.as_ref().and_then(|d| d.bastion_template.clone());
 
         for group in &self.groups {
             let group_user = group.user.clone().or(default_user.clone());
             let group_key = group.ssh_key.clone().or(default_key.clone());
+            let group_jh = group.jump_host.clone().or(default_jh.clone());
+            let group_ju = group.jump_user.clone().or(default_ju.clone());
+            let group_bh = group.bastion_host.clone().or(default_bh.clone());
+            let group_bu = group.bastion_user.clone().or(default_bu.clone());
+            let group_bt = group.bastion_template.clone().or(default_bt.clone());
 
             for env in &group.environments {
                 let env_user = env.user.clone().or(group_user.clone());
                 let env_key = env.ssh_key.clone().or(group_key.clone());
+                let env_jh = env.jump_host.clone().or(group_jh.clone());
+                let env_ju = env.jump_user.clone().or(group_ju.clone());
+                let env_bh = env.bastion_host.clone().or(group_bh.clone());
+                let env_bu = env.bastion_user.clone().or(group_bu.clone());
+                let env_bt = env.bastion_template.clone().or(group_bt.clone());
 
                 for server in &env.servers {
                     let final_user = server.user.clone().or(env_user.clone());
@@ -93,6 +134,11 @@ impl Config {
                                 host: server.host.clone(),
                                 user: u,
                                 ssh_key: k,
+                                jump_host: server.jump_host.clone().or(env_jh.clone()),
+                                jump_user: server.jump_user.clone().or(env_ju.clone()),
+                                bastion_host: server.bastion_host.clone().or(env_bh.clone()),
+                                bastion_user: server.bastion_user.clone().or(env_bu.clone()),
+                                bastion_template: server.bastion_template.clone().or(env_bt.clone()),
                             });
                         }
                         (None, _) => return Err(ConfigError::MissingField(server.name.clone(), "user".to_string())),

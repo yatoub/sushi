@@ -5,7 +5,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap, Tabs},
+    widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap, Tabs},
     Frame,
 };
 
@@ -44,10 +44,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
     let titles = vec!["Direct [1]", "Rebond [2]", "Bastion [3]"];
     let tabs = Tabs::new(titles)
-        .block(Block::default().borders(Borders::ALL).title("Mode de Connexion (Tab to switch)"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .title(" Mode de Connexion (Tab to switch) ")
+                .border_style(Style::default().fg(CATPPUCCIN_MOCHA.border))
+        )
         .select(app.connection_mode)
-        .style(Style::default().fg(CATPPUCCIN_MOCHA.subtext0)) // subtext0
-        .highlight_style(Style::default().fg(CATPPUCCIN_MOCHA.search_text).add_modifier(Modifier::BOLD)); // yellow
+        .style(Style::default().fg(CATPPUCCIN_MOCHA.subtext0))
+        .highlight_style(Style::default().fg(CATPPUCCIN_MOCHA.yellow).add_modifier(Modifier::BOLD));
     f.render_widget(tabs, area);
 }
 
@@ -63,6 +69,7 @@ fn draw_search_bar(f: &mut Frame, app: &App, area: Rect) {
         .block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(CATPPUCCIN_MOCHA.border))
                 .title(" Search ")
         );
@@ -109,9 +116,15 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     let list = List::new(list_items)
-        .block(Block::default().borders(Borders::ALL).title(" Servers ").border_style(Style::default().fg(CATPPUCCIN_MOCHA.border)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .title(" Servers ")
+                .border_style(Style::default().fg(CATPPUCCIN_MOCHA.border))
+        )
         .highlight_style(Style::default().bg(CATPPUCCIN_MOCHA.selection_bg).fg(CATPPUCCIN_MOCHA.selection_fg).add_modifier(Modifier::BOLD))
-        .highlight_symbol("> ");
+        .highlight_symbol("▎ ");
     
     f.render_stateful_widget(list, area, &mut app.list_state);
 }
@@ -119,6 +132,7 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
 fn draw_details(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .title(" Details ")
         .border_style(Style::default().fg(CATPPUCCIN_MOCHA.border));
 

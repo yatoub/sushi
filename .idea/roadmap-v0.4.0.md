@@ -11,7 +11,7 @@ Liste des améliorations à implémenter une par une.
   - Remplacer `connection_mode: usize` (valeurs magiques 0/1/2) par un enum `ConnectionMode { Direct, Jump, Bastion }`.
   - Élimine les risques de valeur hors-borne et rend le `match` exhaustif.
 
-- [ ] **2. `mode: Option<String>` → enum serde dans la config**
+- [x] **2. `mode: Option<String>` → enum serde dans la config**
   - Fichier : `src/config.rs`
   - Créer `enum ConnectionModeCfg { Direct, Jump, Bastion }` avec `#[serde(rename_all = "lowercase")]`.
   - Une faute de frappe dans le YAML sera rejetée à la désérialisation au lieu de tomber silencieusement en mode `"direct"`.

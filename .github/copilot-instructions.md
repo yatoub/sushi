@@ -72,7 +72,9 @@ Référence complète : [`examples/full_config.yaml`](../examples/full_config.ya
 defaults → groupe → environnement → serveur
 ```
 Chaque niveau surcharge : `user`, `port`, `ssh_key`, `ssh_options`,
-`default_mode`, `jump_host`, `jump_user`, `bastion_host`, `bastion_user`, `bastion_template`.
+`default_mode`, `jump_host` (chaîne pré-formatée `user@host:port,…`), `bastion_host`, `bastion_user`, `bastion_template`.
+
+`rebond` est désormais une **liste** de `JumpConfig` (`Option<Vec<JumpConfig>>`). Le niveau enfant remplace entièrement le niveau parent. `resolve_server` construit la chaîne `-J` complète.
 
 ### `use_system_ssh_config` (dans `defaults`)
 - `false` (défaut) : passe `-F /dev/null` à SSH → ignore `~/.ssh/config`.
@@ -109,7 +111,7 @@ Le processus sushi est **remplacé** par ssh — il n'y a pas de retour au menu 
 | Mode | Commande générée |
 |------|-----------------|
 | **Direct** | `ssh [-F /dev/null] [-v] [-p PORT] [-i KEY] [-o OPT] user@host` |
-| **Jump** | `ssh [-F /dev/null] [-v] -J jump_user@jump_host [-i KEY] user@host` |
+| **Jump** | `ssh [-F /dev/null] [-v] -J user1@jump1,user2@jump2 [-i KEY] user@host` |
 | **Bastion** | `ssh [-F /dev/null] [-v] -l "<bastion_template>" [-p PORT] bastion_host` |
 
 Le template bastion supporte : `{target_user}`, `{target_host}`, `{bastion_user}`, `%n`.

@@ -125,8 +125,17 @@ fn build_adhoc_server(
         .unwrap_or_else(|| "~/.ssh/id_rsa".to_string());
     let ssh_options = d.ssh_options.clone().unwrap_or_default();
 
-    let jump_host = d.rebond.as_ref().and_then(|j| j.host.clone());
-    let jump_user = d.rebond.as_ref().and_then(|j| j.user.clone());
+    let jump_host = d.rebond.as_ref().map(|jumps| {
+        jumps
+            .iter()
+            .map(|j| {
+                let h = j.host.as_deref().unwrap_or("");
+                let u = j.user.as_deref().unwrap_or(&user);
+                format!("{u}@{h}")
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    });
     let bastion_host = d.bastion.as_ref().and_then(|b| b.host.clone());
     let bastion_user = d.bastion.as_ref().and_then(|b| b.user.clone());
     let bastion_template = d
@@ -146,7 +155,6 @@ fn build_adhoc_server(
         ssh_options,
         default_mode: mode,
         jump_host,
-        jump_user,
         bastion_host,
         bastion_user,
         bastion_template,

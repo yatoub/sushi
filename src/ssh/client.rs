@@ -26,14 +26,12 @@ pub fn build_ssh_args(
             collect_target_args(&mut args, &server.user, &server.host);
         }
         ConnectionMode::Jump => {
-            let jump_host_str = server.jump_host.as_deref().unwrap_or("");
-            if jump_host_str.is_empty() {
+            let jump_str = server.jump_host.as_deref().unwrap_or("");
+            if jump_str.is_empty() {
                 return Err(anyhow::anyhow!("Jump host not configured for this server"));
             }
-            let jump_user = server.jump_user.as_deref().unwrap_or(&server.user);
-            let jump_arg = format_host_arg(jump_user, jump_host_str);
             args.push("-J".into());
-            args.push(jump_arg);
+            args.push(jump_str.to_string());
             collect_target_args(&mut args, &server.user, &server.host);
         }
         ConnectionMode::Bastion => {
@@ -100,15 +98,6 @@ fn collect_target_args(args: &mut Vec<String>, user: &str, host_str: &str) {
     args.push(format!("{}@{}", user, host));
 }
 
-fn format_host_arg(user: &str, host_str: &str) -> String {
-    let (host, port) = parse_host_port(host_str);
-    if let Some(p) = port {
-        format!("{}@{}:{}", user, host, p)
-    } else {
-        format!("{}@{}", user, host)
-    }
-}
-
 fn parse_host_port(s: &str) -> (&str, Option<&str>) {
     if let Some((host, port)) = s.split_once(':') {
         (host, Some(port))
@@ -136,7 +125,6 @@ mod tests {
             ssh_options: vec![],
             default_mode: ConnectionMode::Direct,
             jump_host: None,
-            jump_user: None,
             bastion_host: None,
             bastion_user: None,
             bastion_template: "{target_user}@%n:SSH:{bastion_user}".into(),
@@ -207,8 +195,8 @@ mod tests {
     #[test]
     fn jump_basic() {
         let mut s = base_server();
-        s.jump_host = Some("jump.example.com".into());
-        s.jump_user = Some("juser".into());
+        // jump_host contient déjà "user@host" (pré-formaté par resolve_server)
+        s.jump_host = Some("juser@jump.example.com".into());
         let args = build_ssh_args(&s, ConnectionMode::Jump, false).unwrap();
         let j_pos = args.iter().position(|a| a == "-J").expect("-J present");
         assert_eq!(args[j_pos + 1], "juser@jump.example.com");
@@ -218,8 +206,7 @@ mod tests {
     #[test]
     fn jump_with_port() {
         let mut s = base_server();
-        s.jump_host = Some("jump.example.com:2222".into());
-        s.jump_user = Some("juser".into());
+        s.jump_host = Some("juser@jump.example.com:2222".into());
         let args = build_ssh_args(&s, ConnectionMode::Jump, false).unwrap();
         let j_pos = args.iter().position(|a| a == "-J").expect("-J present");
         assert_eq!(args[j_pos + 1], "juser@jump.example.com:2222");
@@ -227,13 +214,26 @@ mod tests {
 
     #[test]
     fn jump_fallback_user() {
-        // jump_user absent → server user is used
+        // jump_user absent → l'utilisateur du serveur est déjà intégré au moment de la résolution
         let mut s = base_server();
-        s.jump_host = Some("jump.example.com".into());
-        s.jump_user = None;
+        s.jump_host = Some("admin@jump.example.com".into()); // user=admin = server.user
         let args = build_ssh_args(&s, ConnectionMode::Jump, false).unwrap();
         let j_pos = args.iter().position(|a| a == "-J").expect("-J present");
         assert_eq!(args[j_pos + 1], "admin@jump.example.com");
+    }
+
+    #[test]
+    fn jump_multi_hop() {
+        // Chaîne de deux sauts pré-formatée par resolve_server
+        let mut s = base_server();
+        s.jump_host = Some("juser@jump1.example.com,juser@jump2.example.com".into());
+        let args = build_ssh_args(&s, ConnectionMode::Jump, false).unwrap();
+        let j_pos = args.iter().position(|a| a == "-J").expect("-J present");
+        assert_eq!(
+            args[j_pos + 1],
+            "juser@jump1.example.com,juser@jump2.example.com"
+        );
+        assert!(args.contains(&"admin@10.0.0.1".to_string()));
     }
 
     #[test]

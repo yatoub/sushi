@@ -90,7 +90,7 @@ pub struct Defaults {
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
-    pub rebond: Option<JumpConfig>,
+    pub rebond: Option<Vec<JumpConfig>>,
     /// Si `true`, ne passe pas `-F /dev/null` afin de respecter `~/.ssh/config`.
     /// Défaut : `false` (comportement historique).
     pub use_system_ssh_config: Option<bool>,
@@ -121,7 +121,7 @@ pub struct Group {
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
-    pub rebond: Option<JumpConfig>,
+    pub rebond: Option<Vec<JumpConfig>>,
     pub environments: Option<Vec<Environment>>,
     pub servers: Option<Vec<Server>>,
 }
@@ -135,7 +135,7 @@ pub struct Environment {
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
-    pub rebond: Option<JumpConfig>,
+    pub rebond: Option<Vec<JumpConfig>>,
     pub servers: Vec<Server>,
 }
 
@@ -149,7 +149,7 @@ pub struct Server {
     pub ssh_options: Option<Vec<String>>,
     pub mode: Option<ConnectionMode>,
     pub bastion: Option<BastionConfig>,
-    pub rebond: Option<JumpConfig>,
+    pub rebond: Option<Vec<JumpConfig>>,
 }
 
 #[derive(Debug, Clone)]
@@ -163,8 +163,8 @@ pub struct ResolvedServer {
     pub ssh_key: String,
     pub ssh_options: Vec<String>,
     pub default_mode: ConnectionMode,
+    /// Chaîne prête à passer à `-J` : `"user1@host1:port,user2@host2"` pour un ou plusieurs sauts.
     pub jump_host: Option<String>,
-    pub jump_user: Option<String>,
     pub bastion_host: Option<String>,
     pub bastion_user: Option<String>,
     pub bastion_template: String,
@@ -331,16 +331,13 @@ fn merge_bastion(
     }
 }
 
-fn merge_jump(parent: &Option<JumpConfig>, child: &Option<JumpConfig>) -> Option<JumpConfig> {
-    match (parent, child) {
-        (None, None) => None,
-        (Some(p), None) => Some(p.clone()),
-        (None, Some(c)) => Some(c.clone()),
-        (Some(p), Some(c)) => Some(JumpConfig {
-            host: c.host.clone().or(p.host.clone()),
-            user: c.user.clone().or(p.user.clone()),
-        }),
-    }
+/// Le niveau enfant remplace entièrement le niveau parent (pas de fusion champ par champ),
+/// ce qui permet de définir une chaîne de sauts complète à chaque niveau.
+fn merge_jump(
+    parent: &Option<Vec<JumpConfig>>,
+    child: &Option<Vec<JumpConfig>>,
+) -> Option<Vec<JumpConfig>> {
+    child.clone().or_else(|| parent.clone())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -354,7 +351,7 @@ fn resolve_server(
     def_port: Option<u16>,
     def_opts: Option<&Vec<String>>,
     def_bastion: &Option<BastionConfig>,
-    def_jump: &Option<JumpConfig>,
+    def_jump: &Option<Vec<JumpConfig>>,
     use_system_ssh_config: bool,
 ) -> Result<ResolvedServer, ConfigError> {
     let user = s.user.as_deref().or(def_user).unwrap_or("root").to_string();
@@ -382,6 +379,18 @@ fn resolve_server(
         .and_then(|b| b.template.clone())
         .unwrap_or_else(|| "{target_user}@%n:SSH:{bastion_user}".to_string());
 
+    let jump_host = final_jump.as_ref().map(|jumps| {
+        jumps
+            .iter()
+            .map(|j| {
+                let h = j.host.as_deref().unwrap_or("");
+                let u = j.user.as_deref().unwrap_or(&user);
+                format!("{u}@{h}")
+            })
+            .collect::<Vec<_>>()
+            .join(",")
+    });
+
     Ok(ResolvedServer {
         group_name: group.to_string(),
         env_name: env.to_string(),
@@ -392,8 +401,7 @@ fn resolve_server(
         ssh_key: key,
         ssh_options: opts,
         default_mode: mode,
-        jump_host: final_jump.as_ref().and_then(|j| j.host.clone()),
-        jump_user: final_jump.as_ref().and_then(|j| j.user.clone()),
+        jump_host,
         bastion_host: final_bastion.as_ref().and_then(|b| b.host.clone()),
         bastion_user: final_bastion.as_ref().and_then(|b| b.user.clone()),
         bastion_template,

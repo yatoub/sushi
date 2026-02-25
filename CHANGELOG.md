@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Changed
+- **Multi-jump SSH**: `rebond` in YAML is now a **list** of `JumpConfig` entries (`- host: … / user: …`), enabling SSH proxy-jump chains (`-J user1@h1,user2@h2`). Single-hop configs require wrapping the existing map in a list. The resolved `-J` string is pre-built at config resolution time and stored in `ResolvedServer.jump_host`; `jump_user` field removed.
+
+---
+
 ## [0.4.1] — 2026-02-25
 
 ### Fixed

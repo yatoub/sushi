@@ -404,12 +404,8 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]),
                 ];
 
-                // Jump host (mode Rebond)
+                // Jump host(s) (mode Rebond) — "user@host:port" ou "u1@h1,u2@h2"
                 if let Some(jump) = &server.jump_host {
-                    let jump_display = match &server.jump_user {
-                        Some(u) => format!("{}@{}", u, jump),
-                        None => jump.clone(),
-                    };
                     lines.push(Line::from(vec![
                         Span::styled(
                             "Jump:   ",
@@ -417,7 +413,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
                         ),
-                        Span::styled(jump_display, Style::default().fg(app.theme.sky)),
+                        Span::styled(jump.clone(), Style::default().fg(app.theme.sky)),
                     ]));
                 }
 

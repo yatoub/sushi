@@ -68,8 +68,14 @@ defaults:
   # Set to true to honour ~/.ssh/config (ControlMaster, aliases, etc.)
   use_system_ssh_config: false
   rebond:
-    host: "jump.example.com"
-    user: "jump"
+    - host: "jump.example.com"
+      user: "jump"
+  # Multi-hop example:
+  # rebond:
+  #   - host: "jump1.example.com"
+  #     user: "jump"
+  #   - host: "jump2.example.com"
+  #     user: "jump"
   bastion:
     host: "bastion.example.com"
     user: "bastion"

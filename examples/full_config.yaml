@@ -17,9 +17,16 @@ defaults:
   bastion:
     host: "bastion.example.com"
     user: "bastion"
+  # Rebond simple (un saut)
   rebond:
-    host: "jump.example.com"
-    user: "jump"
+    - host: "jump.example.com"
+      user: "jump"
+  # Rebond multi-sauts (deux sauts successifs) :
+  # rebond:
+  #   - host: "jump1.example.com"
+  #     user: "jump"
+  #   - host: "jump2.example.com"
+  #     user: "jump"
 
 groups:
   # --- EXEMPLE NIVEAU 3 : Projet -> Environnement -> Serveur ---

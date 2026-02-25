@@ -49,7 +49,7 @@ Liste des améliorations à implémenter une par une.
   - Fichier : `src/main.rs`
   - En mode recherche, capturer `KeyCode::Char('u')` + `KeyModifiers::CONTROL` pour effacer `search_query` en entier.
 
-- [ ] **9. Copier la commande SSH dans le presse-papiers**
+- [x] **9. Copier la commande SSH dans le presse-papiers**
   - Fichiers : `src/main.rs`, `src/ssh/client.rs`
   - Raccourci `y` sur un serveur sélectionné.
   - Extraire la construction de la commande SSH en une fonction `build_command()` (sans `exec`), puis écrire dans le presse-papiers (crate `arboard` ou appel `xclip`/`pbcopy`).

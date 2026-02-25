@@ -81,6 +81,9 @@ pub struct Defaults {
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
     pub rebond: Option<JumpConfig>,
+    /// Si `true`, ne passe pas `-F /dev/null` afin de respecter `~/.ssh/config`.
+    /// Défaut : `false` (comportement historique).
+    pub use_system_ssh_config: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -152,6 +155,8 @@ pub struct ResolvedServer {
     pub bastion_host: Option<String>,
     pub bastion_user: Option<String>,
     pub bastion_template: String,
+    /// Respecte `~/.ssh/config` si `true` (ne passe pas `-F /dev/null`).
+    pub use_system_ssh_config: bool,
 }
 
 impl Config {
@@ -199,6 +204,7 @@ impl Config {
         let mut resolved = Vec::new();
         
         let d = self.defaults.clone().unwrap_or_default();
+        let use_sys_cfg = d.use_system_ssh_config.unwrap_or(false);
         
         for entry in &self.groups {
             match entry {
@@ -238,8 +244,8 @@ impl Config {
                                      server, 
                                      &group.name, 
                                      &env.name,
-                                     e_user, e_key, e_mode, e_port, e_opts.as_ref(), // Pass ref
-                                     &e_bastion, &e_jump
+                                     e_user, e_key, e_mode, e_port, e_opts.as_ref(),
+                                     &e_bastion, &e_jump, use_sys_cfg
                                  )?;
                                  resolved.push(r);
                             }
@@ -253,7 +259,7 @@ impl Config {
                                  &group.name, 
                                  "",
                                  g_user, g_key, g_mode, g_port, g_opts.as_ref(),
-                                 &g_bastion, &g_jump
+                                 &g_bastion, &g_jump, use_sys_cfg
                              )?;
                              resolved.push(r);
                         }
@@ -267,7 +273,7 @@ impl Config {
                          "", 
                          "",
                          d.user.as_deref(), d.ssh_key.as_deref(), d.mode, d.ssh_port, d.ssh_options.as_ref(),
-                         &d.bastion, &d.rebond
+                         &d.bastion, &d.rebond, use_sys_cfg
                      )?;
                      resolved.push(r);
                 }
@@ -318,6 +324,7 @@ fn resolve_server(
     def_opts: Option<&Vec<String>>,
     def_bastion: &Option<BastionConfig>,
     def_jump: &Option<JumpConfig>,
+    use_system_ssh_config: bool,
 ) -> Result<ResolvedServer, ConfigError> {
     
     let user = s.user.as_deref().or(def_user).unwrap_or("root").to_string();
@@ -349,12 +356,12 @@ fn resolve_server(
         ssh_key: key,
         ssh_options: opts,
         default_mode: mode,
-        
         jump_host: final_jump.as_ref().and_then(|j| j.host.clone()),
         jump_user: final_jump.as_ref().and_then(|j| j.user.clone()),
         bastion_host: final_bastion.as_ref().and_then(|b| b.host.clone()),
         bastion_user: final_bastion.as_ref().and_then(|b| b.user.clone()),
         bastion_template,
+        use_system_ssh_config,
     })
 }
 

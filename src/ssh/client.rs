@@ -6,9 +6,11 @@ use anyhow::{Result};
 pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> Result<()> {
     
     let mut command = Command::new("ssh");
-    
-    // Explicitly ignore user config as requested
-    command.arg("-F").arg("/dev/null");
+
+    // Ignore ~/.ssh/config unless the user explicitly opts in via `use_system_ssh_config: true`.
+    if !server.use_system_ssh_config {
+        command.arg("-F").arg("/dev/null");
+    }
     
     // Add verbose flag if enabled
     if verbose {

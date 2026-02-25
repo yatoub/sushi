@@ -1,6 +1,8 @@
 use std::sync::LazyLock;
 use ratatui::style::Color;
 
+use crate::config::ThemeVariant;
+
 pub struct Theme {
     #[allow(dead_code)]
     pub bg: Color,
@@ -23,10 +25,12 @@ pub struct Theme {
     pub subtext0: Color,
 }
 
-pub static CATPPUCCIN_MOCHA: LazyLock<Theme> = LazyLock::new(|| {
-    let mocha = catppuccin::PALETTE.mocha;
-    let colors = mocha.colors;
-    
+fn to_ratatui(c: catppuccin::Color) -> Color {
+    Color::Rgb(c.rgb.r, c.rgb.g, c.rgb.b)
+}
+
+fn make_theme(flavor: catppuccin::Flavor) -> Theme {
+    let colors = flavor.colors;
     Theme {
         bg: to_ratatui(colors.base),
         fg: to_ratatui(colors.text),
@@ -45,8 +49,26 @@ pub static CATPPUCCIN_MOCHA: LazyLock<Theme> = LazyLock::new(|| {
         sapphire: to_ratatui(colors.sapphire),
         subtext0: to_ratatui(colors.subtext0),
     }
-});
+}
 
-fn to_ratatui(c: catppuccin::Color) -> Color {
-    Color::Rgb(c.rgb.r, c.rgb.g, c.rgb.b)
+pub static CATPPUCCIN_LATTE: LazyLock<Theme> =
+    LazyLock::new(|| make_theme(catppuccin::PALETTE.latte));
+
+pub static CATPPUCCIN_FRAPPE: LazyLock<Theme> =
+    LazyLock::new(|| make_theme(catppuccin::PALETTE.frappe));
+
+pub static CATPPUCCIN_MACCHIATO: LazyLock<Theme> =
+    LazyLock::new(|| make_theme(catppuccin::PALETTE.macchiato));
+
+pub static CATPPUCCIN_MOCHA: LazyLock<Theme> =
+    LazyLock::new(|| make_theme(catppuccin::PALETTE.mocha));
+
+/// Retourne le thème statique correspondant à la variante choisie.
+pub fn get_theme(variant: ThemeVariant) -> &'static Theme {
+    match variant {
+        ThemeVariant::Latte => &*CATPPUCCIN_LATTE,
+        ThemeVariant::Frappe => &*CATPPUCCIN_FRAPPE,
+        ThemeVariant::Macchiato => &*CATPPUCCIN_MACCHIATO,
+        ThemeVariant::Mocha => &*CATPPUCCIN_MOCHA,
+    }
 }

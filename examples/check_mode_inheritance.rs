@@ -1,4 +1,4 @@
-use sushi::config::Config;
+use sushi::config::{Config, ConnectionMode};
 
 fn main() {
     let config_path = std::env::var("HOME").unwrap() + "/.sushi.yml";
@@ -26,15 +26,14 @@ fn main() {
                     println!("\n📊 Sample servers and their modes:");
                     for server in servers.iter().take(20) {
                         let mode = &server.default_mode;
-                        match mode.as_str() {
-                            "direct" => direct_count += 1,
-                            "jump" => jump_count += 1,
-                            "bastion" => bastion_count += 1,
-                            _ => {}
+                        match mode {
+                            ConnectionMode::Direct => direct_count += 1,
+                            ConnectionMode::Jump => jump_count += 1,
+                            ConnectionMode::Bastion => bastion_count += 1,
                         }
                         
                         println!("  - [{:8}] {}/{}/{}", 
-                            mode, 
+                            mode,
                             server.group_name, 
                             server.env_name, 
                             server.name
@@ -43,11 +42,10 @@ fn main() {
                     
                     // Count all modes
                     for server in servers.iter().skip(20) {
-                        match server.default_mode.as_str() {
-                            "direct" => direct_count += 1,
-                            "jump" => jump_count += 1,
-                            "bastion" => bastion_count += 1,
-                            _ => {}
+                        match server.default_mode {
+                            ConnectionMode::Direct => direct_count += 1,
+                            ConnectionMode::Jump => jump_count += 1,
+                            ConnectionMode::Bastion => bastion_count += 1,
                         }
                     }
                     

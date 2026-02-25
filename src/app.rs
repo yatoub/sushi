@@ -1,6 +1,18 @@
 use std::collections::HashSet;
+use std::time::Instant;
 use ratatui::widgets::ListState;
-use crate::config::{Config, ResolvedServer, ConfigEntry};
+use crate::config::{Config, ConfigError, ResolvedServer, ConfigEntry, ConnectionMode, ThemeVariant};
+use crate::state;
+use crate::ui::theme::{Theme, get_theme};
+
+/// Mode courant de l'application.
+#[derive(Debug, Default, PartialEq)]
+pub enum AppMode {
+    #[default]
+    Normal,
+    /// Affiche un panneau d'erreur bloquant jusqu'à la confirmation.
+    Error(String),
+}
 
 #[derive(Debug, Clone)]
 pub enum ConfigItem {
@@ -20,13 +32,33 @@ pub struct App {
     pub search_query: String,
     pub is_searching: bool,
     
-    pub connection_mode: usize,
+    pub connection_mode: ConnectionMode,
     pub verbose_mode: bool,
+
+    /// Mode courant (Normal ou Error).
+    pub app_mode: AppMode,
+
+    /// Thème Catppuccin actif (résolu à l'initialisation depuis la config).
+    pub theme: &'static Theme,
+
+    /// Message temporaire affiché dans la barre de statut (texte, timestamp)
+    pub status_message: Option<(String, Instant)>,
+
+    /// Cache de la liste visible — recalculé seulement quand `items_dirty` est vrai.
+    cached_items: Vec<ConfigItem>,
+    items_dirty: bool,
 }
 
 impl App {
-    pub fn new(config: Config) -> Self {
-        let resolved = config.resolve().unwrap_or_default(); 
+    pub fn new(config: Config) -> Result<Self, ConfigError> {
+        let resolved = config.resolve()?;
+
+        // Résout le thème avant de déplacer config dans le struct
+        let theme_variant = config
+            .defaults
+            .as_ref()
+            .and_then(|d| d.theme)
+            .unwrap_or(ThemeVariant::Mocha);
         
         let mut app = Self {
             config,
@@ -36,17 +68,52 @@ impl App {
             expanded_items: HashSet::new(),
             search_query: String::new(),
             is_searching: false,
-            connection_mode: 0,
+            connection_mode: ConnectionMode::Direct,
             verbose_mode: false,
+            app_mode: AppMode::Normal,
+            theme: get_theme(theme_variant),
+            status_message: None,
+            cached_items: Vec::new(),
+            items_dirty: true,
         };
         
         app.list_state.select(Some(0));
 
-        // Start collapsed by default
-        app.expanded_items.clear();
-        
+        // Restaure l'état d'expansion persistant
+        let saved = state::load_state();
+        app.expanded_items = saved.expanded_items;
+        app.items_dirty = true;
+
         app.update_mode_from_selection();
-        app
+        Ok(app)
+    }
+
+    /// Retourne l'état persistable de l'application (pour la sauvegarde).
+    pub fn to_app_state(&self) -> crate::state::AppState {
+        crate::state::AppState {
+            expanded_items: self.expanded_items.clone(),
+        }
+    }
+
+    /// Affiche un message temporaire dans la barre de statut.
+    pub fn set_status_message(&mut self, msg: impl Into<String>) {
+        self.status_message = Some((msg.into(), Instant::now()));
+    }
+
+    /// Passe en mode erreur avec le message donné.
+    pub fn set_error(&mut self, msg: impl Into<String>) {
+        self.app_mode = AppMode::Error(msg.into());
+    }
+
+    /// Revient au mode normal (ferme le panneau d'erreur).
+    pub fn clear_error(&mut self) {
+        self.app_mode = AppMode::Normal;
+    }
+
+    /// Invalide le cache de la liste visible (à appeler après toute modification
+    /// de `search_query`, `expanded_items` ou `resolved_servers`).
+    pub fn invalidate_cache(&mut self) {
+        self.items_dirty = true;
     }
 
     pub fn toggle_expansion(&mut self) {
@@ -72,9 +139,18 @@ impl App {
                 _ => {}
             }
         }
+        self.items_dirty = true; // l'état d'expansion a changé
     }
 
-    pub fn get_visible_items(&self) -> Vec<ConfigItem> {
+    pub fn get_visible_items(&mut self) -> Vec<ConfigItem> {
+        if self.items_dirty {
+            self.cached_items = self.build_visible_items();
+            self.items_dirty = false;
+        }
+        self.cached_items.clone()
+    }
+
+    fn build_visible_items(&self) -> Vec<ConfigItem> {
         let mut items = Vec::new();
         
         for entry in &self.config.groups {
@@ -187,11 +263,7 @@ impl App {
         let items = self.get_visible_items();
         if let Some(item) = items.get(self.selected_index) {
             if let ConfigItem::Server(server) = item {
-                match server.default_mode.as_str() {
-                    "jump" => self.connection_mode = 1,
-                    "bastion" => self.connection_mode = 2,
-                    _ => self.connection_mode = 0, // "direct" or default
-                }
+                self.connection_mode = server.default_mode;
             }
         }
     }
@@ -237,7 +309,7 @@ mod tests {
     #[test]
     fn test_initial_visibility() {
         let config = create_test_config();
-        let app = App::new(config);
+        let mut app = App::new(config).unwrap();
         let items = app.get_visible_items();
         
         // Initially only the group header is visible (collapsed state)
@@ -251,7 +323,7 @@ mod tests {
     #[test]
     fn test_expansion() {
         let config = create_test_config();
-        let mut app = App::new(config);
+        let mut app = App::new(config).unwrap();
         
         // Expand Expand group G1
         app.toggle_expansion(); 
@@ -286,9 +358,10 @@ mod tests {
     #[test]
     fn test_search_filtering() {
         let config = create_test_config();
-        let mut app = App::new(config);
+        let mut app = App::new(config).unwrap();
         
         app.search_query = "S1".to_string();
+        app.invalidate_cache();
         let items = app.get_visible_items();
         
         // With search "S1":

@@ -1,6 +1,53 @@
 use serde::Deserialize;
 use thiserror::Error;
 use std::path::Path;
+use std::fmt;
+
+/// Mode de connexion SSH. Remplace les chaînes magiques "direct"/"jump"/"bastion".
+/// Copy car l'enum ne contient aucune donnée — pas besoin de clone explicite.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ConnectionMode {
+    #[default]
+    Direct,
+    Jump,
+    Bastion,
+}
+
+impl fmt::Display for ConnectionMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConnectionMode::Direct => write!(f, "direct"),
+            ConnectionMode::Jump => write!(f, "jump"),
+            ConnectionMode::Bastion => write!(f, "bastion"),
+        }
+    }
+}
+
+impl ConnectionMode {
+    /// Indice tab (Direct=0, Jump=1, Bastion=2) — utilisé par l'UI Tabs::select().
+    pub fn index(self) -> usize {
+        match self {
+            ConnectionMode::Direct => 0,
+            ConnectionMode::Jump => 1,
+            ConnectionMode::Bastion => 2,
+        }
+    }
+
+    /// Construit depuis un indice tab. Retourne Direct pour tout indice inconnu.
+    pub fn from_index(i: usize) -> Self {
+        match i {
+            1 => ConnectionMode::Jump,
+            2 => ConnectionMode::Bastion,
+            _ => ConnectionMode::Direct,
+        }
+    }
+
+    /// Passe au mode suivant en boucle (Direct → Jump → Bastion → Direct).
+    pub fn next(self) -> Self {
+        Self::from_index((self.index() + 1) % 3)
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -25,15 +72,31 @@ pub enum ConfigEntry {
     Group(Group),
 }
 
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeVariant {
+    Latte,
+    Frappe,
+    Macchiato,
+    #[default]
+    Mocha,
+}
+
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct Defaults {
     pub user: Option<String>,
     pub ssh_key: Option<String>,
-    pub mode: Option<String>,
+    pub mode: Option<ConnectionMode>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
     pub rebond: Option<JumpConfig>,
+    /// Si `true`, ne passe pas `-F /dev/null` afin de respecter `~/.ssh/config`.
+    /// Défaut : `false` (comportement historique).
+    pub use_system_ssh_config: Option<bool>,
+    /// Variante Catppuccin à utiliser pour le thème TUI.
+    /// Valeurs : `latte`, `frappe`, `macchiato`, `mocha` (défaut).
+    pub theme: Option<ThemeVariant>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -54,7 +117,7 @@ pub struct Group {
     pub name: String,
     pub user: Option<String>,
     pub ssh_key: Option<String>,
-    pub mode: Option<String>,
+    pub mode: Option<ConnectionMode>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
@@ -68,7 +131,7 @@ pub struct Environment {
     pub name: String,
     pub user: Option<String>,
     pub ssh_key: Option<String>,
-    pub mode: Option<String>,
+    pub mode: Option<ConnectionMode>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
@@ -84,7 +147,7 @@ pub struct Server {
     pub ssh_key: Option<String>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
-    pub mode: Option<String>, // "direct", "jump", "bastion"
+    pub mode: Option<ConnectionMode>,
     pub bastion: Option<BastionConfig>,
     pub rebond: Option<JumpConfig>,
 }
@@ -99,12 +162,14 @@ pub struct ResolvedServer {
     pub port: u16,
     pub ssh_key: String,
     pub ssh_options: Vec<String>,
-    pub default_mode: String, 
+    pub default_mode: ConnectionMode,
     pub jump_host: Option<String>,
     pub jump_user: Option<String>,
     pub bastion_host: Option<String>,
     pub bastion_user: Option<String>,
     pub bastion_template: String,
+    /// Respecte `~/.ssh/config` si `true` (ne passe pas `-F /dev/null`).
+    pub use_system_ssh_config: bool,
 }
 
 impl Config {
@@ -152,6 +217,7 @@ impl Config {
         let mut resolved = Vec::new();
         
         let d = self.defaults.clone().unwrap_or_default();
+        let use_sys_cfg = d.use_system_ssh_config.unwrap_or(false);
         
         for entry in &self.groups {
             match entry {
@@ -159,7 +225,7 @@ impl Config {
                     // Merge defaults -> Group
                     let g_user = group.user.as_deref().or(d.user.as_deref());
                     let g_key = group.ssh_key.as_deref().or(d.ssh_key.as_deref());
-                    let g_mode = group.mode.as_deref().or(d.mode.as_deref());
+                    let g_mode = group.mode.or(d.mode);
                     let g_port = group.ssh_port.or(d.ssh_port);
                     let g_opts = if let Some(opts) = &group.ssh_options {
                          Some(opts.clone())
@@ -175,7 +241,7 @@ impl Config {
                             // Merge Group -> Env
                             let e_user = env.user.as_deref().or(g_user);
                             let e_key = env.ssh_key.as_deref().or(g_key);
-                            let e_mode = env.mode.as_deref().or(g_mode);
+                            let e_mode = env.mode.or(g_mode);
                             let e_port = env.ssh_port.or(g_port);
                             let e_opts = if let Some(opts) = &env.ssh_options {
                                  Some(opts.clone())
@@ -191,8 +257,8 @@ impl Config {
                                      server, 
                                      &group.name, 
                                      &env.name,
-                                     e_user, e_key, e_mode, e_port, e_opts.as_ref(), // Pass ref
-                                     &e_bastion, &e_jump
+                                     e_user, e_key, e_mode, e_port, e_opts.as_ref(),
+                                     &e_bastion, &e_jump, use_sys_cfg
                                  )?;
                                  resolved.push(r);
                             }
@@ -206,7 +272,7 @@ impl Config {
                                  &group.name, 
                                  "",
                                  g_user, g_key, g_mode, g_port, g_opts.as_ref(),
-                                 &g_bastion, &g_jump
+                                 &g_bastion, &g_jump, use_sys_cfg
                              )?;
                              resolved.push(r);
                         }
@@ -219,8 +285,8 @@ impl Config {
                          server, 
                          "", 
                          "",
-                         d.user.as_deref(), d.ssh_key.as_deref(), d.mode.as_deref(), d.ssh_port, d.ssh_options.as_ref(),
-                         &d.bastion, &d.rebond
+                         d.user.as_deref(), d.ssh_key.as_deref(), d.mode, d.ssh_port, d.ssh_options.as_ref(),
+                         &d.bastion, &d.rebond, use_sys_cfg
                      )?;
                      resolved.push(r);
                 }
@@ -266,11 +332,12 @@ fn resolve_server(
     env: &str,
     def_user: Option<&str>,
     def_key: Option<&str>,
-    def_mode: Option<&str>,
+    def_mode: Option<ConnectionMode>,
     def_port: Option<u16>,
     def_opts: Option<&Vec<String>>,
     def_bastion: &Option<BastionConfig>,
     def_jump: &Option<JumpConfig>,
+    use_system_ssh_config: bool,
 ) -> Result<ResolvedServer, ConfigError> {
     
     let user = s.user.as_deref().or(def_user).unwrap_or("root").to_string();
@@ -286,7 +353,7 @@ fn resolve_server(
     let final_bastion = merge_bastion(def_bastion, &s.bastion);
     let final_jump = merge_jump(def_jump, &s.rebond);
 
-    let mode_str = s.mode.as_deref().or(def_mode).unwrap_or("direct").to_string();
+    let mode = s.mode.or(def_mode).unwrap_or(ConnectionMode::Direct);
     
     let bastion_template = final_bastion.as_ref()
         .and_then(|b| b.template.clone())
@@ -301,13 +368,13 @@ fn resolve_server(
         port,
         ssh_key: key,
         ssh_options: opts,
-        default_mode: mode_str,
-        
+        default_mode: mode,
         jump_host: final_jump.as_ref().and_then(|j| j.host.clone()),
         jump_user: final_jump.as_ref().and_then(|j| j.user.clone()),
         bastion_host: final_bastion.as_ref().and_then(|b| b.host.clone()),
         bastion_user: final_bastion.as_ref().and_then(|b| b.user.clone()),
         bastion_template,
+        use_system_ssh_config,
     })
 }
 

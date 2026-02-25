@@ -1,9 +1,6 @@
 # 🍣 Sushi
 
-**Sushi** is a modern, terminal-based SSH connection manager written in Rust. It helps you organize your servers into groups and environments, handle complex connection scenarios (jumphosts, bastions), and connect quickly with a beautiful TUI.
-
-![Sushi TUI](https://raw.githubusercontent.com/catppuccin/catppuccin/main/assets/palette/mocha.png) 
-*(Note: Uses Catppuccin Mocha theme)*
+**Sushi** is a modern, terminal-based SSH connection manager written in Rust. It helps you organize your servers into groups and environments, handle complex connection scenarios (jumphosts, bastions), and connect quickly with a beautiful TUI with Catppuccin theme.
 
 ## ✨ Features
 
@@ -28,9 +25,12 @@
   - **Smart Expansion**: Auto-expands groups when searching.
 - **Interactive TUI**:
   - **Mouse Support**: Click to select, double-click to connect.
-  - **Beautiful UI**: Styled with the Catppuccin Mocha palette.
-  - **Verbose Mode**: Toggle SSH verbose output (`-v`) with a single keypress.
-  - **Detailed View**: SSH options displayed as a clean, readable list.
+  - **Configurable Theme**: Choose from four Catppuccin flavors — `latte`, `frappe`, `macchiato`, or `mocha` (default) via `defaults.theme` in your config.
+  - **Verbose Mode**: Toggle SSH verbose output with `v`.
+  - **Rich Detail Pane**: Shows port (highlighted when non-standard), connection mode, jump host, and bastion host.
+  - **Clipboard**: Copy the SSH command for any server with `y` (requires a running clipboard manager on Linux).
+- **State Persistence**: Expanded groups are saved to `~/.sushi_state.json` and restored on next launch.
+- **In-TUI Error Screen**: Connection errors are displayed as an overlay instead of crashing — press `Enter`/`Esc`/`q` to dismiss.
 - **Smart Sorting**: Automatically sorts groups and servers alphabetically.
 
 ## 🚀 Installation
@@ -61,6 +61,7 @@ defaults:
   user: "admin"
   ssh_key: "~/.ssh/id_ed25519"
   ssh_port: 22
+  theme: mocha  # latte | frappe | macchiato | mocha (default)
   ssh_options:
     - "StrictHostKeyChecking=no"
     - "UserKnownHostsFile=/dev/null"
@@ -115,6 +116,7 @@ groups:
 
 - **`defaults`**: Global settings applied to all servers unless overridden.
   - `mode`: Default connection mode (`direct`, `jump`, or `bastion`).
+  - `theme`: UI color theme — `latte`, `frappe`, `macchiato`, or `mocha` (default).
   - `rebond`: Jump host configuration (required when using `jump` mode).
   - `bastion`: Bastion configuration (required when using `bastion` mode).
   - `use_system_ssh_config`: Set to `true` to honour `~/.ssh/config` instead of passing `-F /dev/null`. Defaults to `false`.
@@ -141,7 +143,9 @@ groups:
 | `1` | Select **Direct** mode |
 | `2` | Select **Rebond** mode |
 | `3` | Select **Bastion** mode |
-| `Esc` | Cancel/clear search |
+| `Ctrl+U` | Clear search query (while in search mode) |
+| `y` | Copy SSH command to clipboard |
+| `Esc` | Cancel search / dismiss error overlay |
 
 ### Mouse Support
 
@@ -175,15 +179,21 @@ sushi --help
 
 ## 🎨 Theme & UI
 
-Sushi uses the **Catppuccin Mocha** color palette for a soothing and high-contrast look.
+Sushi uses the [Catppuccin](https://github.com/catppuccin/catppuccin) palette. Choose a flavor in your config:
 
-### Color Scheme
+```yaml
+defaults:
+  theme: mocha   # latte | frappe | macchiato | mocha (default)
+```
+
+### Color Scheme (Mocha)
 
 - **Blue**: Default borders
 - **Sapphire**: Active search border
 - **Green**: Successful search results, verbose mode active, environment headers
-- **Red**: No search results
-- **Sky**: Active connection mode tab
+- **Red**: No search results, error overlay border
+- **Sky**: Active connection mode tab, jump / bastion host in detail pane
+- **Yellow**: Port number when different from 22
 - **Mauve**: Group headers
 - **Surface2**: Selection background
 
@@ -192,7 +202,8 @@ Sushi uses the **Catppuccin Mocha** color palette for a soothing and high-contra
 - **Search Bar**: Dynamic title showing result count ("🔍 45 / 387 servers")
 - **Connection Modes**: Tab interface with visual highlight
 - **Verbose Toggle**: Checkbox indicator (☐/☑) with color feedback
-- **Server Details**: Clean list view for SSH options
+- **Detail Pane**: Port, mode, identity file, jump/bastion host, SSH options
+- **Error Overlay**: Centered popup for connection errors — press `Enter` to dismiss
 
 ## 🤝 Contributing
 

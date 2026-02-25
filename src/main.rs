@@ -8,7 +8,7 @@ use crossterm::{
 };
 use ratatui::{backend::CrosstermBackend, Terminal, layout::Rect};
 
-use sushi::app::{App, ConfigItem};
+use sushi::app::{App, AppMode, ConfigItem};
 use sushi::config::{Config, ConnectionMode, ResolvedServer};
 use sushi::ssh::client::build_ssh_args;
 use sushi::state;
@@ -262,7 +262,13 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
         if event::poll(Duration::from_millis(250))? {
             match event::read()? {
                 Event::Key(key) => {
-                    if app.is_searching {
+                    if app.app_mode != AppMode::Normal {
+                        // En mode erreur : n'importe quelle touche ferme le panneau
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => app.clear_error(),
+                            _ => {}
+                        }
+                    } else if app.is_searching {
                         match key.code {
                             KeyCode::Enter | KeyCode::Esc => {
                                 app.is_searching = false;
@@ -335,16 +341,22 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 app.toggle_expansion();
                             }
                             KeyCode::Enter => {
-                                let items = app.get_visible_items();
-                                if let Some(item) = items.get(app.selected_index) {
-                                    match item {
-                                        ConfigItem::Server(server) => {
-                                            return Ok(AppResult::Connect(server.clone(), app.connection_mode, app.verbose_mode));
+                                let action = {
+                                    let items = app.get_visible_items();
+                                    match items.get(app.selected_index) {
+                                        Some(ConfigItem::Server(server)) => {
+                                            match build_ssh_args(server, app.connection_mode, app.verbose_mode) {
+                                                Ok(_) => Some(Ok(server.clone())),
+                                                Err(e) => Some(Err(format!("{e}"))),
+                                            }
                                         }
-                                        _ => {
-                                            app.toggle_expansion();
-                                        }
+                                        _ => None,
                                     }
+                                };
+                                match action {
+                                    Some(Ok(server)) => return Ok(AppResult::Connect(server, app.connection_mode, app.verbose_mode)),
+                                    Some(Err(msg)) => app.set_error(msg),
+                                    None => app.toggle_expansion(),
                                 }
                             }
                             _ => {}
@@ -360,9 +372,22 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                             if handled && now.duration_since(last_click_time) < Duration::from_millis(400) && last_click_pos == (mouse.column, mouse.row) {
                                 let layout = get_layout(size);
                                 if is_in_rect(mouse.column, mouse.row, layout.list_area) {
-                                    let items = app.get_visible_items();
-                                    if let Some(ConfigItem::Server(server)) = items.get(app.selected_index) {
-                                        return Ok(AppResult::Connect(server.clone(), app.connection_mode, app.verbose_mode));
+                                    let action = {
+                                        let items = app.get_visible_items();
+                                        match items.get(app.selected_index) {
+                                            Some(ConfigItem::Server(server)) => {
+                                                match build_ssh_args(server, app.connection_mode, app.verbose_mode) {
+                                                    Ok(_) => Some(Ok(server.clone())),
+                                                    Err(e) => Some(Err(format!("{e}"))),
+                                                }
+                                            }
+                                            _ => None,
+                                        }
+                                    };
+                                    match action {
+                                        Some(Ok(server)) => return Ok(AppResult::Connect(server, app.connection_mode, app.verbose_mode)),
+                                        Some(Err(msg)) => app.set_error(msg),
+                                        None => {}
                                     }
                                 }
                             }

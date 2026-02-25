@@ -5,11 +5,11 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap, Tabs},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap, Tabs},
     Frame,
 };
 
-use crate::app::{App, ConfigItem};
+use crate::app::{App, AppMode, ConfigItem};
 use crate::ui::theme::CATPPUCCIN_MOCHA;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
@@ -39,10 +39,66 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     
     // draw_status_bar(f, app, chunks[3]); -> Correct index
     draw_status_bar(f, app, chunks[3]);
+
+    // Overlay erreur — rendu en dernier pour être au-dessus de tout
+    if let AppMode::Error(msg) = &app.app_mode {
+        draw_error_overlay(f, msg.clone(), f.area());
+    }
 }
 
-fn draw_connection_mode_area(f: &mut Frame, app: &App, area: Rect) {
+/// Rectangle centré de taille fixe dans `area`.
+fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let y = area.y + area.height.saturating_sub(height) / 2;
+    Rect::new(x, y, width.min(area.width), height.min(area.height))
+}
+
+/// Panneau d'erreur centré, affiché par-dessus l'interface normale.
+fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect) {
+    // Calcule la hauteur selon le nombre de lignes du message
+    let lines: Vec<&str> = msg.lines().collect();
+    let inner_h = (lines.len() as u16).max(1);
+    // bordure (2) + titre (0 = inclus dans bordure) + contenu + hint (1) + marges (1)
+    let popup_h = inner_h + 5;
+    let popup_w = (msg.lines().map(|l| l.len()).max().unwrap_or(20) as u16 + 6).clamp(40, area.width.saturating_sub(4));
+
+    let popup_area = centered_rect(popup_w, popup_h, area);
+
+    // Efface la zone du popup
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .title(" ⚠  Erreur ")
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(CATPPUCCIN_MOCHA.red))
+        .style(Style::default().bg(CATPPUCCIN_MOCHA.bg));
+
+    let inner = block.inner(popup_area);
+    f.render_widget(block, popup_area);
+
+    // Splits inner: message + hint
     let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    let text: Vec<Line> = lines
+        .iter()
+        .map(|l| Line::from(Span::styled(*l, Style::default().fg(CATPPUCCIN_MOCHA.fg))))
+        .collect();
+    let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
+    f.render_widget(paragraph, chunks[0]);
+
+    let hint = Paragraph::new("Appuyez sur Entrée ou Esc pour fermer")
+        .style(Style::default().fg(CATPPUCCIN_MOCHA.subtext0));
+    f.render_widget(hint, chunks[1]);
+}
+
+fn draw_connection_mode_area(f: &mut Frame, app: &App, area: Rect) {    let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Percentage(70), // Tabs

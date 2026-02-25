@@ -4,6 +4,15 @@ use ratatui::widgets::ListState;
 use crate::config::{Config, ConfigError, ResolvedServer, ConfigEntry, ConnectionMode};
 use crate::state;
 
+/// Mode courant de l'application.
+#[derive(Debug, Default, PartialEq)]
+pub enum AppMode {
+    #[default]
+    Normal,
+    /// Affiche un panneau d'erreur bloquant jusqu'à la confirmation.
+    Error(String),
+}
+
 #[derive(Debug, Clone)]
 pub enum ConfigItem {
     Group(String), 
@@ -24,6 +33,9 @@ pub struct App {
     
     pub connection_mode: ConnectionMode,
     pub verbose_mode: bool,
+
+    /// Mode courant (Normal ou Error).
+    pub app_mode: AppMode,
 
     /// Message temporaire affiché dans la barre de statut (texte, timestamp)
     pub status_message: Option<(String, Instant)>,
@@ -47,6 +59,7 @@ impl App {
             is_searching: false,
             connection_mode: ConnectionMode::Direct,
             verbose_mode: false,
+            app_mode: AppMode::Normal,
             status_message: None,
             cached_items: Vec::new(),
             items_dirty: true,
@@ -73,6 +86,16 @@ impl App {
     /// Affiche un message temporaire dans la barre de statut.
     pub fn set_status_message(&mut self, msg: impl Into<String>) {
         self.status_message = Some((msg.into(), Instant::now()));
+    }
+
+    /// Passe en mode erreur avec le message donné.
+    pub fn set_error(&mut self, msg: impl Into<String>) {
+        self.app_mode = AppMode::Error(msg.into());
+    }
+
+    /// Revient au mode normal (ferme le panneau d'erreur).
+    pub fn clear_error(&mut self) {
+        self.app_mode = AppMode::Normal;
     }
 
     /// Invalide le cache de la liste visible (à appeler après toute modification

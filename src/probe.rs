@@ -129,7 +129,7 @@ pub fn probe(server: &ResolvedServer, mode: ConnectionMode) -> Result<ProbeResul
         .ok_or_else(|| anyhow::anyhow!("liste d'args SSH vide"))?;
 
     // Options probe insérées avant la destination
-    args.push("-T".into()); // pas de pseudo-tty
+    args.push("-n".into()); // stdin depuis /dev/null — commande non-interactive
     args.push("-o".into());
     args.push("ConnectTimeout=10".into());
     args.push("-o".into());

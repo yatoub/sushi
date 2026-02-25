@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 use std::time::Instant;
 use ratatui::widgets::ListState;
-use crate::config::{Config, ConfigError, ResolvedServer, ConfigEntry, ConnectionMode};
+use crate::config::{Config, ConfigError, ResolvedServer, ConfigEntry, ConnectionMode, ThemeVariant};
 use crate::state;
+use crate::ui::theme::{Theme, get_theme};
 
 /// Mode courant de l'application.
 #[derive(Debug, Default, PartialEq)]
@@ -37,6 +38,9 @@ pub struct App {
     /// Mode courant (Normal ou Error).
     pub app_mode: AppMode,
 
+    /// Thème Catppuccin actif (résolu à l'initialisation depuis la config).
+    pub theme: &'static Theme,
+
     /// Message temporaire affiché dans la barre de statut (texte, timestamp)
     pub status_message: Option<(String, Instant)>,
 
@@ -48,6 +52,13 @@ pub struct App {
 impl App {
     pub fn new(config: Config) -> Result<Self, ConfigError> {
         let resolved = config.resolve()?;
+
+        // Résout le thème avant de déplacer config dans le struct
+        let theme_variant = config
+            .defaults
+            .as_ref()
+            .and_then(|d| d.theme)
+            .unwrap_or(ThemeVariant::Mocha);
         
         let mut app = Self {
             config,
@@ -60,6 +71,7 @@ impl App {
             connection_mode: ConnectionMode::Direct,
             verbose_mode: false,
             app_mode: AppMode::Normal,
+            theme: get_theme(theme_variant),
             status_message: None,
             cached_items: Vec::new(),
             items_dirty: true,

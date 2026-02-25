@@ -72,6 +72,16 @@ pub enum ConfigEntry {
     Group(Group),
 }
 
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeVariant {
+    Latte,
+    Frappe,
+    Macchiato,
+    #[default]
+    Mocha,
+}
+
 #[derive(Debug, Deserialize, Clone, Default)]
 pub struct Defaults {
     pub user: Option<String>,
@@ -84,6 +94,9 @@ pub struct Defaults {
     /// Si `true`, ne passe pas `-F /dev/null` afin de respecter `~/.ssh/config`.
     /// Défaut : `false` (comportement historique).
     pub use_system_ssh_config: Option<bool>,
+    /// Variante Catppuccin à utiliser pour le thème TUI.
+    /// Valeurs : `latte`, `frappe`, `macchiato`, `mocha` (défaut).
+    pub theme: Option<ThemeVariant>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]

@@ -10,7 +10,7 @@ use ratatui::{
 };
 
 use crate::app::{App, AppMode, ConfigItem};
-use crate::ui::theme::CATPPUCCIN_MOCHA;
+use crate::ui::theme::Theme;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
@@ -42,7 +42,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // Overlay erreur — rendu en dernier pour être au-dessus de tout
     if let AppMode::Error(msg) = &app.app_mode {
-        draw_error_overlay(f, msg.clone(), f.area());
+        draw_error_overlay(f, msg.clone(), f.area(), app.theme);
     }
 }
 
@@ -54,7 +54,7 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
 }
 
 /// Panneau d'erreur centré, affiché par-dessus l'interface normale.
-fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect) {
+fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect, theme: &Theme) {
     // Calcule la hauteur selon le nombre de lignes du message
     let lines: Vec<&str> = msg.lines().collect();
     let inner_h = (lines.len() as u16).max(1);
@@ -71,8 +71,8 @@ fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect) {
         .title(" ⚠  Erreur ")
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(CATPPUCCIN_MOCHA.red))
-        .style(Style::default().bg(CATPPUCCIN_MOCHA.bg));
+        .border_style(Style::default().fg(theme.red))
+        .style(Style::default().bg(theme.bg));
 
     let inner = block.inner(popup_area);
     f.render_widget(block, popup_area);
@@ -88,13 +88,13 @@ fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect) {
 
     let text: Vec<Line> = lines
         .iter()
-        .map(|l| Line::from(Span::styled(*l, Style::default().fg(CATPPUCCIN_MOCHA.fg))))
+        .map(|l| Line::from(Span::styled(*l, Style::default().fg(theme.fg))))
         .collect();
     let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
     f.render_widget(paragraph, chunks[0]);
 
     let hint = Paragraph::new("Appuyez sur Entrée ou Esc pour fermer")
-        .style(Style::default().fg(CATPPUCCIN_MOCHA.subtext0));
+        .style(Style::default().fg(theme.subtext0));
     f.render_widget(hint, chunks[1]);
 }
 
@@ -118,11 +118,11 @@ fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .title(" Mode de Connexion (Tab to switch) ")
-                .border_style(Style::default().fg(CATPPUCCIN_MOCHA.border))
+                .border_style(Style::default().fg(app.theme.border))
         )
         .select(app.connection_mode.index())
-        .style(Style::default().fg(CATPPUCCIN_MOCHA.subtext0))
-        .highlight_style(Style::default().bg(CATPPUCCIN_MOCHA.sky).fg(CATPPUCCIN_MOCHA.bg).add_modifier(Modifier::BOLD));
+        .style(Style::default().fg(app.theme.subtext0))
+        .highlight_style(Style::default().bg(app.theme.sky).fg(app.theme.bg).add_modifier(Modifier::BOLD));
     f.render_widget(tabs, area);
 }
 
@@ -131,9 +131,9 @@ fn draw_verbose_toggle(f: &mut Frame, app: &App, area: Rect) {
     let text = format!("{} Verbose (-v)", checkbox);
     
     let style = if app.verbose_mode {
-        Style::default().fg(CATPPUCCIN_MOCHA.green).add_modifier(Modifier::BOLD)
+        Style::default().fg(app.theme.green).add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(CATPPUCCIN_MOCHA.subtext0)
+        Style::default().fg(app.theme.subtext0)
     };
     
     let verbose = Paragraph::new(text)
@@ -143,7 +143,7 @@ fn draw_verbose_toggle(f: &mut Frame, app: &App, area: Rect) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .title(" Options (v to toggle) ")
-                .border_style(Style::default().fg(CATPPUCCIN_MOCHA.border))
+                .border_style(Style::default().fg(app.theme.border))
         );
     f.render_widget(verbose, area);
 }
@@ -181,21 +181,21 @@ fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
             } else {
                 format!(" ✓ {} / {} servers match '{}' ", server_count, total_servers, app.search_query)
             };
-            return draw_search_with_results(f, area, &app.search_query, &title_text, server_count);
+            return draw_search_with_results(f, area, &app.search_query, &title_text, server_count, app.theme);
         };
         (text, " Search (press /) ".to_string())
     };
 
     let border_color = if app.is_searching {
-        CATPPUCCIN_MOCHA.sapphire
+        app.theme.sapphire
     } else {
-        CATPPUCCIN_MOCHA.border
+        app.theme.border
     };
     
     let text_color = if app.is_searching {
-        CATPPUCCIN_MOCHA.fg
+        app.theme.fg
     } else {
-        CATPPUCCIN_MOCHA.subtext0
+        app.theme.subtext0
     };
 
     let search = Paragraph::new(search_text)
@@ -210,15 +210,15 @@ fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(search, area);
 }
 
-fn draw_search_with_results(f: &mut Frame, area: Rect, query: &str, title: &str, count: usize) {
+fn draw_search_with_results(f: &mut Frame, area: Rect, query: &str, title: &str, count: usize, theme: &Theme) {
     let border_color = if count > 0 {
-        CATPPUCCIN_MOCHA.green
+        theme.green
     } else {
-        CATPPUCCIN_MOCHA.red
+        theme.red
     };
     
     let search = Paragraph::new(query)
-        .style(Style::default().fg(CATPPUCCIN_MOCHA.fg))
+        .style(Style::default().fg(theme.fg))
         .block(
             Block::default()
                 .borders(Borders::ALL)
@@ -239,7 +239,7 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
                 let id = format!("Group:{}", name);
                 let icon = if app.expanded_items.contains(&id) || !app.search_query.is_empty() { "📂" } else { "📁" }; 
                 Line::from(vec![
-                    Span::styled(format!("{} {}", icon, name), Style::default().fg(CATPPUCCIN_MOCHA.group_header).add_modifier(Modifier::BOLD)),
+                    Span::styled(format!("{} {}", icon, name), Style::default().fg(app.theme.group_header).add_modifier(Modifier::BOLD)),
                 ])
             },
             ConfigItem::Environment(g, name) => {
@@ -247,7 +247,7 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
                 let icon = if app.expanded_items.contains(&id) || !app.search_query.is_empty() { "🌩️" } else { "☁️" };
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(format!("{} {}", icon, name), Style::default().fg(CATPPUCCIN_MOCHA.env_header)),
+                    Span::styled(format!("{} {}", icon, name), Style::default().fg(app.theme.env_header)),
                 ])
             },
             ConfigItem::Server(server) => {
@@ -260,7 +260,7 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
                 };
                 Line::from(vec![
                     Span::raw(indent),
-                    Span::styled(format!("🖥️ {}", server.name), Style::default().fg(CATPPUCCIN_MOCHA.server_item)),
+                    Span::styled(format!("🖥️ {}", server.name), Style::default().fg(app.theme.server_item)),
                 ])
             },
         };
@@ -274,9 +274,9 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .title(" Servers ")
-                .border_style(Style::default().fg(CATPPUCCIN_MOCHA.border))
+                .border_style(Style::default().fg(app.theme.border))
         )
-        .highlight_style(Style::default().bg(CATPPUCCIN_MOCHA.selection_bg).fg(CATPPUCCIN_MOCHA.selection_fg).add_modifier(Modifier::BOLD))
+        .highlight_style(Style::default().bg(app.theme.selection_bg).fg(app.theme.selection_fg).add_modifier(Modifier::BOLD))
         .highlight_symbol("▎ ");
     
     f.render_stateful_widget(list, area, &mut app.list_state);
@@ -287,7 +287,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .title(" Details ")
-        .border_style(Style::default().fg(CATPPUCCIN_MOCHA.border));
+        .border_style(Style::default().fg(app.theme.border));
 
     let visible_items = app.get_visible_items();
     let text = if let Some(item) = visible_items.get(app.selected_index) {
@@ -295,23 +295,23 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
              ConfigItem::Server(server) => {
                 let mut lines = vec![
                     Line::from(vec![
-                        Span::styled("Name: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
+                        Span::styled("Name: ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
                         Span::raw(&server.name),
                     ]),
                     Line::from(vec![
-                        Span::styled("Host: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
+                        Span::styled("Host: ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
                         Span::raw(&server.host),
                     ]),
                     Line::from(vec![
-                        Span::styled("User: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
+                        Span::styled("User: ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
                         Span::raw(&server.user),
                     ]),
                     Line::from(vec![
-                        Span::styled("IdentityFile: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
+                        Span::styled("IdentityFile: ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
                         Span::raw(&server.ssh_key),
                     ]),
                     Line::from(vec![
-                        Span::styled("SSH Options:", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
+                        Span::styled("SSH Options:", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
                     ]),
                 ];
                 
@@ -319,7 +319,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                 for option in &server.ssh_options {
                     lines.push(Line::from(vec![
                         Span::raw("  • "),
-                        Span::styled(option, Style::default().fg(CATPPUCCIN_MOCHA.subtext0)),
+                        Span::styled(option, Style::default().fg(app.theme.subtext0)),
                     ]));
                 }
                 
@@ -334,7 +334,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
 
     let paragraph = Paragraph::new(text)
         .block(block)
-        .style(Style::default().fg(CATPPUCCIN_MOCHA.fg))
+        .style(Style::default().fg(app.theme.fg))
         .wrap(Wrap { trim: true });
         
     f.render_widget(paragraph, area);
@@ -344,7 +344,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     // Affiche le message temporaire (clipboard, erreur…) si présent
     if let Some((msg, _)) = &app.status_message {
         let paragraph = Paragraph::new(msg.as_str())
-            .style(Style::default().bg(CATPPUCCIN_MOCHA.selection_bg).fg(CATPPUCCIN_MOCHA.green));
+            .style(Style::default().bg(app.theme.selection_bg).fg(app.theme.green));
         f.render_widget(paragraph, area);
         return;
     }
@@ -357,6 +357,6 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | Verbose: v | y: Copy cmd | q: Quit"
     };
     let paragraph = Paragraph::new(text)
-        .style(Style::default().bg(CATPPUCCIN_MOCHA.selection_bg).fg(CATPPUCCIN_MOCHA.fg));
+        .style(Style::default().bg(app.theme.selection_bg).fg(app.theme.fg));
     f.render_widget(paragraph, area);
 }

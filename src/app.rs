@@ -26,6 +26,10 @@ pub struct App {
 
     /// Message temporaire affiché dans la barre de statut (texte, timestamp)
     pub status_message: Option<(String, Instant)>,
+
+    /// Cache de la liste visible — recalculé seulement quand `items_dirty` est vrai.
+    cached_items: Vec<ConfigItem>,
+    items_dirty: bool,
 }
 
 impl App {
@@ -43,6 +47,8 @@ impl App {
             connection_mode: ConnectionMode::Direct,
             verbose_mode: false,
             status_message: None,
+            cached_items: Vec::new(),
+            items_dirty: true,
         };
         
         app.list_state.select(Some(0));
@@ -57,6 +63,12 @@ impl App {
     /// Affiche un message temporaire dans la barre de statut.
     pub fn set_status_message(&mut self, msg: impl Into<String>) {
         self.status_message = Some((msg.into(), Instant::now()));
+    }
+
+    /// Invalide le cache de la liste visible (à appeler après toute modification
+    /// de `search_query`, `expanded_items` ou `resolved_servers`).
+    pub fn invalidate_cache(&mut self) {
+        self.items_dirty = true;
     }
 
     pub fn toggle_expansion(&mut self) {
@@ -82,9 +94,18 @@ impl App {
                 _ => {}
             }
         }
+        self.items_dirty = true; // l'état d'expansion a changé
     }
 
-    pub fn get_visible_items(&self) -> Vec<ConfigItem> {
+    pub fn get_visible_items(&mut self) -> Vec<ConfigItem> {
+        if self.items_dirty {
+            self.cached_items = self.build_visible_items();
+            self.items_dirty = false;
+        }
+        self.cached_items.clone()
+    }
+
+    fn build_visible_items(&self) -> Vec<ConfigItem> {
         let mut items = Vec::new();
         
         for entry in &self.config.groups {
@@ -243,7 +264,7 @@ mod tests {
     #[test]
     fn test_initial_visibility() {
         let config = create_test_config();
-        let app = App::new(config).unwrap();
+        let mut app = App::new(config).unwrap();
         let items = app.get_visible_items();
         
         // Initially only the group header is visible (collapsed state)
@@ -295,6 +316,7 @@ mod tests {
         let mut app = App::new(config).unwrap();
         
         app.search_query = "S1".to_string();
+        app.invalidate_cache();
         let items = app.get_visible_items();
         
         // With search "S1":

@@ -92,7 +92,7 @@ fn draw_verbose_toggle(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(verbose, area);
 }
 
-fn draw_search_bar(f: &mut Frame, app: &App, area: Rect) {
+fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
     let visible_items = app.get_visible_items();
     let server_count = visible_items.iter().filter(|item| matches!(item, ConfigItem::Server(_))).count();
     let total_servers = app.resolved_servers.len();
@@ -226,7 +226,7 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_stateful_widget(list, area, &mut app.list_state);
 }
 
-fn draw_details(f: &mut Frame, app: &App, area: Rect) {
+fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)

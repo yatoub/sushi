@@ -267,16 +267,19 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 app.search_query.clear();
                                 app.selected_index = 0;
                                 app.list_state.select(Some(0));
+                                app.invalidate_cache();
                             }
                             KeyCode::Char(c) => {
                                 app.search_query.push(c);
                                 app.selected_index = 0;
                                 app.list_state.select(Some(0));
+                                app.invalidate_cache();
                             }
                             KeyCode::Backspace => {
                                 app.search_query.pop();
                                 app.selected_index = 0;
                                 app.list_state.select(Some(0));
+                                app.invalidate_cache();
                             }
                             _ => {}
                         }

@@ -24,7 +24,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .split(f.area());
 
     draw_search_bar(f, app, chunks[0]);
-    draw_tabs(f, app, chunks[1]);
+    draw_connection_mode_area(f, app, chunks[1]);
     
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -41,6 +41,19 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_status_bar(f, app, chunks[3]);
 }
 
+fn draw_connection_mode_area(f: &mut Frame, app: &App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(70), // Tabs
+            Constraint::Percentage(30), // Verbose option
+        ])
+        .split(area);
+    
+    draw_tabs(f, app, chunks[0]);
+    draw_verbose_toggle(f, app, chunks[1]);
+}
+
 fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
     let titles = vec!["Direct", "Rebond", "Bastion"];
     let tabs = Tabs::new(titles)
@@ -55,6 +68,28 @@ fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
         .style(Style::default().fg(CATPPUCCIN_MOCHA.subtext0))
         .highlight_style(Style::default().bg(CATPPUCCIN_MOCHA.sky).fg(CATPPUCCIN_MOCHA.bg).add_modifier(Modifier::BOLD));
     f.render_widget(tabs, area);
+}
+
+fn draw_verbose_toggle(f: &mut Frame, app: &App, area: Rect) {
+    let checkbox = if app.verbose_mode { "☑" } else { "☐" };
+    let text = format!("{} Verbose (-v)", checkbox);
+    
+    let style = if app.verbose_mode {
+        Style::default().fg(CATPPUCCIN_MOCHA.green).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(CATPPUCCIN_MOCHA.subtext0)
+    };
+    
+    let verbose = Paragraph::new(text)
+        .style(style)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .title(" Options (v to toggle) ")
+                .border_style(Style::default().fg(CATPPUCCIN_MOCHA.border))
+        );
+    f.render_widget(verbose, area);
 }
 
 fn draw_search_bar(f: &mut Frame, app: &App, area: Rect) {
@@ -253,9 +288,9 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let text = if app.is_searching {
         "Search Mode: Type to filter | ESC: Cancel | Enter: Apply"
     } else if !app.search_query.is_empty() {
-        "Navigate: ↑/↓ | Clear: ESC | New search: / | Enter: Connect | q: Quit"
+        "Navigate: ↑/↓ | Clear: ESC | New search: / | Verbose: v | Enter: Connect | q: Quit"
     } else {
-        "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | q: Quit"
+        "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | Verbose: v | q: Quit"
     };
     let paragraph = Paragraph::new(text)
         .style(Style::default().bg(CATPPUCCIN_MOCHA.selection_bg).fg(CATPPUCCIN_MOCHA.fg));

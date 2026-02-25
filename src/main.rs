@@ -92,8 +92,8 @@ fn main() -> io::Result<()> {
 
     match res {
         Ok(AppResult::Exit) => {},
-        Ok(AppResult::Connect(server, mode)) => {
-            if let Err(e) = sushi::ssh::client::connect(&server, mode) {
+        Ok(AppResult::Connect(server, mode, verbose)) => {
+            if let Err(e) = sushi::ssh::client::connect(&server, mode, verbose) {
                  eprintln!("SSH Connection Error: {}", e);
             }
         },
@@ -107,7 +107,7 @@ fn main() -> io::Result<()> {
 
 pub enum AppResult {
     Exit,
-    Connect(sushi::config::ResolvedServer, usize),
+    Connect(sushi::config::ResolvedServer, usize, bool),
 }
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<AppResult> {
@@ -163,6 +163,9 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                             KeyCode::Char('3') => {
                                 app.connection_mode = 2;
                             }
+                            KeyCode::Char('v') => {
+                                app.verbose_mode = !app.verbose_mode;
+                            }
                             KeyCode::Char('/') => {
                                 app.is_searching = true;
                             }
@@ -174,7 +177,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 if let Some(item) = items.get(app.selected_index) {
                                     match item {
                                         ConfigItem::Server(server) => {
-                                            return Ok(AppResult::Connect(server.clone(), app.connection_mode));
+                                            return Ok(AppResult::Connect(server.clone(), app.connection_mode, app.verbose_mode));
                                         }
                                         _ => {
                                             app.toggle_expansion();
@@ -197,7 +200,7 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 if is_in_rect(mouse.column, mouse.row, layout.list_area) {
                                      let items = app.get_visible_items();
                                      if let Some(ConfigItem::Server(server)) = items.get(app.selected_index) {
-                                         return Ok(AppResult::Connect(server.clone(), app.connection_mode));
+                                         return Ok(AppResult::Connect(server.clone(), app.connection_mode, app.verbose_mode));
                                      }
                                 }
                             }

@@ -3,13 +3,18 @@ use std::os::unix::process::CommandExt; // Import exec
 use crate::config::ResolvedServer;
 use anyhow::{Result};
 
-pub fn connect(server: &ResolvedServer, mode: usize) -> Result<()> {
+pub fn connect(server: &ResolvedServer, mode: usize, verbose: bool) -> Result<()> {
     // Mode: 0=Direct, 1=Jump, 2=Bastion
     
     let mut command = Command::new("ssh");
     
     // Explicitly ignore user config as requested
     command.arg("-F").arg("/dev/null");
+    
+    // Add verbose flag if enabled
+    if verbose {
+        command.arg("-v");
+    }
 
     // Add extra args if needed, e.g. -t for forcing TTY allocation
     // command.arg("-t"); 

@@ -20,7 +20,8 @@ pub struct App {
     pub search_query: String,
     pub is_searching: bool,
     
-    pub connection_mode: usize, 
+    pub connection_mode: usize,
+    pub verbose_mode: bool,
 }
 
 impl App {
@@ -36,6 +37,7 @@ impl App {
             search_query: String::new(),
             is_searching: false,
             connection_mode: 0,
+            verbose_mode: false,
         };
         
         app.list_state.select(Some(0));

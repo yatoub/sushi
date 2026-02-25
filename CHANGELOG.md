@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Diagnostic rapide (`d`)**: appuyer sur `d` sur un serveur sélectionné lance un diagnostic SSH non-bloquant dans un thread dédié. Le panneau détail affiche ensuite un bloc **System** : kernel, modèle CPU, load average, et barres de progression RAM/Disk colorées (vert < 60 %, jaune 60–85 %, rouge > 85 %). Un spinner animé est affiché pendant l'attente. Appuyer à nouveau sur `d` relance le diagnostic ; changer de serveur le réinitialise.
+
 ### Changed
 - **Multi-jump SSH**: `rebond` in YAML is now a **list** of `JumpConfig` entries (`- host: … / user: …`), enabling SSH proxy-jump chains (`-J user1@h1,user2@h2`). Single-hop configs require wrapping the existing map in a list. The resolved `-J` string is pre-built at config resolution time and stored in `ResolvedServer.jump_host`; `jump_user` field removed.
 

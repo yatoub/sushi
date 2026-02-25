@@ -10,6 +10,7 @@ use ratatui::{
 };
 
 use crate::app::{App, AppMode, ConfigItem};
+use crate::probe::ProbeState;
 use crate::ui::theme::Theme;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
@@ -450,6 +451,75 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     }
                 }
 
+                // ── Bloc diagnostic (état probe) ─────────────────────────────────
+                lines.push(Line::from(""));
+                match &app.probe_state {
+                    ProbeState::Idle => {
+                        lines.push(Line::from(vec![Span::styled(
+                            "  d — diagnostiquer",
+                            Style::default().fg(app.theme.subtext0),
+                        )]));
+                    }
+                    ProbeState::Running => {
+                        let ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.subsec_millis())
+                            .unwrap_or(0);
+                        let frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+                        let spinner = frames[(ms / 100) as usize % frames.len()];
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                format!("  {} ", spinner),
+                                Style::default().fg(app.theme.sapphire),
+                            ),
+                            Span::styled(
+                                "Diagnostic en cours…",
+                                Style::default().fg(app.theme.subtext0),
+                            ),
+                        ]));
+                    }
+                    ProbeState::Done(r) => {
+                        let theme = app.theme;
+                        lines.push(Line::from(vec![Span::styled(
+                            "─── System ─────────────────────",
+                            Style::default().fg(theme.border),
+                        )]));
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                "Kernel   ",
+                                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                            ),
+                            Span::raw(r.kernel.clone()),
+                        ]));
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                "CPU      ",
+                                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                            ),
+                            Span::raw(r.cpu_model.clone()),
+                        ]));
+                        lines.push(Line::from(vec![
+                            Span::styled(
+                                "Load     ",
+                                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                            ),
+                            Span::raw(r.load.clone()),
+                        ]));
+                        lines.push(probe_bar("RAM", r.ram_pct, r.ram_total_gb, theme));
+                        lines.push(probe_bar("Disk /", r.disk_pct, r.disk_total_gb, theme));
+                    }
+                    ProbeState::Error(msg) => {
+                        lines.push(Line::from(vec![Span::styled(
+                            "─── System ─────────────────────",
+                            Style::default().fg(app.theme.border),
+                        )]));
+                        lines.push(Line::from(vec![
+                            Span::styled("✗  ", Style::default().fg(app.theme.red)),
+                            Span::raw(msg.clone()),
+                        ]));
+                    }
+                }
+
                 lines
             }
             ConfigItem::Group(name) => vec![Line::from(format!("Group: {}", name))],
@@ -469,6 +539,36 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(paragraph, area);
 }
 
+/// Construit une ligne de barre de progression textuelle pour le bloc System.
+/// `label` : libellé (ex. `"RAM"`, `"Disk /"`), `pct` : 0–100, `total_gb` : capacité.
+/// Couleur de la barre : vert < 60 %, jaune 60–85 %, rouge > 85 %.
+fn probe_bar(label: &str, pct: u8, total_gb: f32, theme: &Theme) -> Line<'static> {
+    const BAR_WIDTH: usize = 12;
+    let filled = (pct as usize * BAR_WIDTH / 100).min(BAR_WIDTH);
+    let bar_color = if pct < 60 {
+        theme.green
+    } else if pct < 85 {
+        theme.yellow
+    } else {
+        theme.red
+    };
+    Line::from(vec![
+        Span::styled(
+            format!("{:<9}", label),
+            Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+        ),
+        Span::styled("█".repeat(filled), Style::default().fg(bar_color)),
+        Span::styled(
+            "░".repeat(BAR_WIDTH - filled),
+            Style::default().fg(theme.subtext0),
+        ),
+        Span::styled(
+            format!("  {:>3}%  {:.1} GB", pct, total_gb),
+            Style::default().fg(theme.fg),
+        ),
+    ])
+}
+
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     // Affiche le message temporaire (clipboard, erreur…) si présent
     if let Some((msg, _)) = &app.status_message {
@@ -486,7 +586,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     } else if !app.search_query.is_empty() {
         "Navigate: ↑/↓ | Clear: ESC | New search: / | Verbose: v | Enter: Connect | q: Quit"
     } else {
-        "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | Verbose: v | y: Copy cmd | q: Quit"
+        "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | Verbose: v | y: Copy cmd | d: Probe | q: Quit"
     };
     let paragraph =
         Paragraph::new(text).style(Style::default().bg(app.theme.selection_bg).fg(app.theme.fg));

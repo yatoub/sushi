@@ -1,6 +1,7 @@
 use crate::config::{
     Config, ConfigEntry, ConfigError, ConnectionMode, ResolvedServer, ThemeVariant,
 };
+use crate::probe::{ProbeResult, ProbeState};
 use crate::state;
 use crate::ui::theme::{Theme, get_theme};
 use ratatui::widgets::ListState;
@@ -53,6 +54,11 @@ pub struct App {
     /// Instance du presse-papiers gardée vivante pour éviter le drop prématuré
     /// (arboard affiche un warning si l'objet est détruit trop vite après set_text).
     pub clipboard: Option<arboard::Clipboard>,
+
+    /// État du diagnostic SSH lancé avec `d`.
+    pub probe_state: ProbeState,
+    /// Récepteur du thread de diagnostic (présent seulement quand Running).
+    pub probe_rx: Option<std::sync::mpsc::Receiver<Result<ProbeResult, String>>>,
 }
 
 impl App {
@@ -82,6 +88,8 @@ impl App {
             cached_items: Vec::new(),
             items_dirty: true,
             clipboard: arboard::Clipboard::new().ok(),
+            probe_state: ProbeState::Idle,
+            probe_rx: None,
         };
 
         app.list_state.select(Some(0));
@@ -284,6 +292,9 @@ impl App {
         if let Some(ConfigItem::Server(server)) = items.get(self.selected_index) {
             self.connection_mode = server.default_mode;
         }
+        // Réinitialise le diagnostic quand on change de serveur
+        self.probe_state = ProbeState::Idle;
+        self.probe_rx = None;
     }
 }
 

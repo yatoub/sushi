@@ -14,6 +14,7 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 use sushi::app::{App, AppMode, ConfigItem};
 use sushi::config::{Config, ConnectionMode, ResolvedServer};
 use sushi::handlers::{get_layout, handle_mouse_event, is_in_rect};
+use sushi::probe::ProbeState;
 use sushi::ssh::client::build_ssh_args;
 use sushi::state;
 use sushi::ui;
@@ -287,6 +288,17 @@ fn run_app(
             app.status_message = None;
         }
 
+        // Lit le résultat du diagnostic si un thread tourne
+        if let Some(rx) = &app.probe_rx
+            && let Ok(result) = rx.try_recv()
+        {
+            app.probe_state = match result {
+                Ok(probe) => ProbeState::Done(probe),
+                Err(msg) => ProbeState::Error(msg),
+            };
+            app.probe_rx = None;
+        }
+
         if event::poll(Duration::from_millis(250))? {
             match event::read()? {
                 Event::Key(key) => {
@@ -378,6 +390,29 @@ fn run_app(
                             }
                             KeyCode::Char('/') => {
                                 app.is_searching = true;
+                            }
+                            KeyCode::Char('d') => {
+                                let items = app.get_visible_items();
+                                if let Some(ConfigItem::Server(server)) =
+                                    items.get(app.selected_index)
+                                {
+                                    let server_clone = (**server).clone();
+                                    let mode = app.connection_mode;
+                                    if mode == ConnectionMode::Bastion {
+                                        app.set_status_message(
+                                            "Diagnostic non disponible en mode Bastion",
+                                        );
+                                    } else {
+                                        let (tx, rx) = std::sync::mpsc::channel();
+                                        app.probe_rx = Some(rx);
+                                        app.probe_state = ProbeState::Running;
+                                        std::thread::spawn(move || {
+                                            let result = sushi::probe::probe(&server_clone, mode)
+                                                .map_err(|e| e.to_string());
+                                            let _ = tx.send(result);
+                                        });
+                                    }
+                                }
                             }
                             KeyCode::Char(' ') => {
                                 app.toggle_expansion();

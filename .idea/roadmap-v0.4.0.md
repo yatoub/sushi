@@ -34,7 +34,7 @@ Liste des améliorations à implémenter une par une.
 
 ## Fonctionnalités
 
-- [ ] **6. Argument CLI `--config <path>`**
+- [x] **6. Argument CLI `--config <path>`**
   - Fichier : `src/main.rs`
   - Ajouter `clap` en dépendance et exposer `--config`, `--version`, `--help`.
   - Permet de gérer plusieurs profils / contextes (perso, pro, client…).

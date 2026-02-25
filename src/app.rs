@@ -49,6 +49,10 @@ pub struct App {
     /// Cache de la liste visible — recalculé seulement quand `items_dirty` est vrai.
     cached_items: Vec<ConfigItem>,
     items_dirty: bool,
+
+    /// Instance du presse-papiers gardée vivante pour éviter le drop prématuré
+    /// (arboard affiche un warning si l'objet est détruit trop vite après set_text).
+    pub clipboard: Option<arboard::Clipboard>,
 }
 
 impl App {
@@ -77,6 +81,7 @@ impl App {
             status_message: None,
             cached_items: Vec::new(),
             items_dirty: true,
+            clipboard: arboard::Clipboard::new().ok(),
         };
 
         app.list_state.select(Some(0));

@@ -351,15 +351,17 @@ fn run_app(
                                     ) {
                                         Ok(args) => {
                                             let cmd = format!("ssh {}", args.join(" "));
-                                            match arboard::Clipboard::new()
-                                                .and_then(|mut cb| cb.set_text(&cmd))
+                                            match app.clipboard.as_mut().map(|cb| cb.set_text(&cmd))
                                             {
-                                                Ok(_) => {
+                                                Some(Ok(_)) => {
                                                     app.set_status_message(format!("Copied: {cmd}"))
                                                 }
-                                                Err(e) => app.set_status_message(format!(
+                                                Some(Err(e)) => app.set_status_message(format!(
                                                     "Clipboard error: {e}"
                                                 )),
+                                                None => app.set_status_message(
+                                                    "Clipboard unavailable".to_string(),
+                                                ),
                                             }
                                         }
                                         Err(e) => app.set_status_message(format!("SSH error: {e}")),

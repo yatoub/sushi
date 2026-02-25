@@ -1,5 +1,6 @@
 use std::{io, time::Duration};
 
+use clap::Parser;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind, MouseButton},
     execute,
@@ -8,9 +9,50 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal, layout::Rect};
 
 use sushi::app::{App, ConfigItem};
-use sushi::config::{Config, ConnectionMode};
+use sushi::config::{Config, ConnectionMode, ResolvedServer};
 use sushi::ui;
 use sushi::handlers::{handle_mouse_event, get_layout, is_in_rect};
+
+// ─── CLI ─────────────────────────────────────────────────────────────────────
+
+/// 🍣 Sushi — terminal SSH connection manager
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Chemin vers le fichier de configuration (défaut : ~/.sushi.yml)
+    #[arg(short, long, value_name = "FILE")]
+    config: Option<String>,
+
+    /// Connexion directe sans TUI : [user@]host[:port]
+    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["rebond", "bastion"])]
+    direct: Option<String>,
+
+    /// Connexion via jump host sans TUI : [user@]host[:port]
+    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "bastion"])]
+    rebond: Option<String>,
+
+    /// Connexion via bastion sans TUI : [user@]host[:port]
+    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "rebond"])]
+    bastion: Option<String>,
+
+    /// Forcer un utilisateur SSH (remplace la config et le user@host)
+    #[arg(short, long, value_name = "USER")]
+    user: Option<String>,
+
+    /// Forcer un port SSH
+    #[arg(short, long, value_name = "PORT")]
+    port: Option<u16>,
+
+    /// Forcer une clé SSH
+    #[arg(short, long, value_name = "PATH")]
+    key: Option<String>,
+
+    /// Activer le mode verbeux SSH (-v)
+    #[arg(short, long)]
+    verbose: bool,
+}
+
+// ─── Config par défaut ───────────────────────────────────────────────────────
 
 const DEFAULT_CONFIG: &str = r#"
 defaults:
@@ -37,20 +79,85 @@ groups:
             mode: "jump"
 "#;
 
-fn main() -> io::Result<()> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-    let config_path_cow = shellexpand::tilde("~/.sushi.yml");
-    let config_path = std::path::Path::new(config_path_cow.as_ref());
+/// Décompose `[user@]host[:port]` en ses parties.
+fn parse_target(s: &str) -> (Option<String>, String, Option<u16>) {
+    let (user, rest) = if let Some((u, r)) = s.split_once('@') {
+        (Some(u.to_string()), r)
+    } else {
+        (None, s)
+    };
+    let (host, port) = if let Some((h, p)) = rest.split_once(':') {
+        (h.to_string(), p.parse().ok())
+    } else {
+        (rest.to_string(), None)
+    };
+    (user, host, port)
+}
+
+/// Construit un `ResolvedServer` minimal pour une connexion sans TUI.
+fn build_adhoc_server(
+    target: &str,
+    mode: ConnectionMode,
+    cli: &Cli,
+    config: &Config,
+) -> ResolvedServer {
+    let (parsed_user, host, parsed_port) = parse_target(target);
+    let d = config.defaults.clone().unwrap_or_default();
+
+    let user = cli.user.clone()
+        .or(parsed_user)
+        .or(d.user.clone())
+        .unwrap_or_else(|| "root".to_string());
+    let port = cli.port
+        .or(parsed_port)
+        .or(d.ssh_port)
+        .unwrap_or(22);
+    let ssh_key = cli.key.clone()
+        .or(d.ssh_key.clone())
+        .unwrap_or_else(|| "~/.ssh/id_rsa".to_string());
+    let ssh_options = d.ssh_options.clone().unwrap_or_default();
+
+    let jump_host  = d.rebond.as_ref().and_then(|j| j.host.clone());
+    let jump_user  = d.rebond.as_ref().and_then(|j| j.user.clone());
+    let bastion_host = d.bastion.as_ref().and_then(|b| b.host.clone());
+    let bastion_user = d.bastion.as_ref().and_then(|b| b.user.clone());
+    let bastion_template = d.bastion.as_ref()
+        .and_then(|b| b.template.clone())
+        .unwrap_or_else(|| "{target_user}@%n:SSH:{bastion_user}".to_string());
+
+    ResolvedServer {
+        group_name: String::new(),
+        env_name: String::new(),
+        name: host.clone(),
+        host,
+        user,
+        port,
+        ssh_key,
+        ssh_options,
+        default_mode: mode,
+        jump_host,
+        jump_user,
+        bastion_host,
+        bastion_user,
+        bastion_template,
+    }
+}
+
+// ─── main ─────────────────────────────────────────────────────────────────────
+
+fn main() -> io::Result<()> {
+    let cli = Cli::parse();
+
+    // Résolution du chemin de config
+    let config_path_str = cli.config.clone().unwrap_or_else(|| {
+        shellexpand::tilde("~/.sushi.yml").into_owned()
+    });
+    let config_path = std::path::Path::new(&config_path_str);
 
     if !config_path.exists() {
         if let Err(e) = std::fs::write(config_path, DEFAULT_CONFIG) {
-            disable_raw_mode()?;
-            execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
             eprintln!("Failed to create default config: {}", e);
             return Err(e);
         }
@@ -59,8 +166,6 @@ fn main() -> io::Result<()> {
     let config_content = match std::fs::read_to_string(config_path) {
         Ok(c) => c,
         Err(e) => {
-            disable_raw_mode()?;
-            execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
             eprintln!("Failed to read config: {}", e);
             return Err(e);
         }
@@ -69,14 +174,33 @@ fn main() -> io::Result<()> {
     let mut config: Config = match serde_yaml::from_str(&config_content) {
         Ok(c) => c,
         Err(e) => {
-            disable_raw_mode()?;
-            execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
             eprintln!("Failed to parse YAML config: {}", e);
             return Err(io::Error::new(io::ErrorKind::InvalidData, e));
         }
     };
-
     config.sort();
+
+    // ── Connexion directe sans TUI ──────────────────────────────────────────
+    let cli_mode_target: Option<(ConnectionMode, String)> =
+        cli.direct.as_deref().map(|t| (ConnectionMode::Direct, t.to_string()))
+        .or_else(|| cli.rebond.as_deref().map(|t| (ConnectionMode::Jump, t.to_string())))
+        .or_else(|| cli.bastion.as_deref().map(|t| (ConnectionMode::Bastion, t.to_string())));
+
+    if let Some((mode, target)) = cli_mode_target {
+        let server = build_adhoc_server(&target, mode, &cli, &config);
+        if let Err(e) = sushi::ssh::client::connect(&server, mode, cli.verbose) {
+            eprintln!("SSH Connection Error: {}", e);
+            return Err(io::Error::new(io::ErrorKind::Other, e.to_string()));
+        }
+        return Ok(()); // exec() remplace le process ; on n'arrive jamais ici
+    }
+
+    // ── Mode TUI normal ─────────────────────────────────────────────────────
+    enable_raw_mode()?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
 
     let mut app = App::new(config);
 
@@ -94,7 +218,7 @@ fn main() -> io::Result<()> {
         Ok(AppResult::Exit) => {},
         Ok(AppResult::Connect(server, mode, verbose)) => {
             if let Err(e) = sushi::ssh::client::connect(&server, mode, verbose) {
-                 eprintln!("SSH Connection Error: {}", e);
+                eprintln!("SSH Connection Error: {}", e);
             }
         },
         Err(err) => {
@@ -105,6 +229,8 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
+// ─── TUI ─────────────────────────────────────────────────────────────────────
+
 pub enum AppResult {
     Exit,
     Connect(sushi::config::ResolvedServer, ConnectionMode, bool),
@@ -113,7 +239,7 @@ pub enum AppResult {
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<AppResult> {
     let mut last_click_time = std::time::Instant::now();
     let mut last_click_pos = (0, 0);
-    
+
     loop {
         let size_obj = terminal.size()?;
         let size = Rect::new(0, 0, size_obj.width, size_obj.height);
@@ -193,15 +319,15 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                     match mouse.kind {
                         MouseEventKind::Down(MouseButton::Left) => {
                             let handled = handle_mouse_event(mouse, app, size)?;
-                            
+
                             let now = std::time::Instant::now();
                             if handled && now.duration_since(last_click_time) < Duration::from_millis(400) && last_click_pos == (mouse.column, mouse.row) {
                                 let layout = get_layout(size);
                                 if is_in_rect(mouse.column, mouse.row, layout.list_area) {
-                                     let items = app.get_visible_items();
-                                     if let Some(ConfigItem::Server(server)) = items.get(app.selected_index) {
-                                         return Ok(AppResult::Connect(server.clone(), app.connection_mode, app.verbose_mode));
-                                     }
+                                    let items = app.get_visible_items();
+                                    if let Some(ConfigItem::Server(server)) = items.get(app.selected_index) {
+                                        return Ok(AppResult::Connect(server.clone(), app.connection_mode, app.verbose_mode));
+                                    }
                                 }
                             }
                             last_click_time = now;
@@ -215,3 +341,4 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
         }
     }
 }
+

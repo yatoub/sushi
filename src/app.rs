@@ -79,7 +79,7 @@ impl App {
             match entry {
                 ConfigEntry::Server(s_conf) => {
                     // Top-level server
-                    if !self.search_query.is_empty() && !s_conf.name.to_lowercase().contains(&self.search_query.to_lowercase()) {
+                    if !self.search_query.is_empty() && !self.matches_search(&s_conf.name, &s_conf.host) {
                         continue;
                     }
                     // Find resolved server with empty group name
@@ -107,7 +107,7 @@ impl App {
 
                                 if env_expanded {
                                     for server in &env.servers {
-                                        if !self.search_query.is_empty() && !server.name.to_lowercase().contains(&self.search_query.to_lowercase()) {
+                                        if !self.search_query.is_empty() && !self.matches_search(&server.name, &server.host) {
                                             continue;
                                         }
                                         
@@ -125,7 +125,7 @@ impl App {
                         
                         if let Some(servers) = &group.servers {
                             for server in servers {
-                                if !self.search_query.is_empty() && !server.name.to_lowercase().contains(&self.search_query.to_lowercase()) {
+                                if !self.search_query.is_empty() && !self.matches_search(&server.name, &server.host) {
                                     continue;
                                 }
 
@@ -143,6 +143,11 @@ impl App {
             }
         }
         items
+    }
+
+    fn matches_search(&self, name: &str, host: &str) -> bool {
+        let query = self.search_query.to_lowercase();
+        name.to_lowercase().contains(&query) || host.to_lowercase().contains(&query)
     }
 
     pub fn next(&mut self) {

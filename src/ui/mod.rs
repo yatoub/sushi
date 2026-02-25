@@ -65,13 +65,13 @@ fn draw_search_bar(f: &mut Frame, app: &App, area: Rect) {
     let (search_text, title) = if app.is_searching {
         let cursor = "│";
         let text = if app.search_query.is_empty() {
-            format!("{}  (type to search, ESC to cancel)", cursor)
+            format!("{}  (search by name or host, ESC to cancel)", cursor)
         } else {
             format!("{}{}", app.search_query, cursor)
         };
         
         let title_text = if app.search_query.is_empty() {
-            format!(" 🔍 Search ({} servers) ", total_servers)
+            format!(" 🔍 Search by name/host ({} servers) ", total_servers)
         } else if server_count == 0 {
             format!(" 🔍 No results for '{}' ", app.search_query)
         } else if server_count == total_servers {

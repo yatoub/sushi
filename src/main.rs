@@ -2,7 +2,7 @@ use std::{io, time::Duration};
 
 use clap::Parser;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, MouseEventKind, MouseButton},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind, MouseButton},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -262,6 +262,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                         match key.code {
                             KeyCode::Enter | KeyCode::Esc => {
                                 app.is_searching = false;
+                            }
+                            KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                app.search_query.clear();
+                                app.selected_index = 0;
+                                app.list_state.select(Some(0));
                             }
                             KeyCode::Char(c) => {
                                 app.search_query.push(c);

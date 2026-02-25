@@ -294,7 +294,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let text = if app.is_searching {
-        "Search Mode: Type to filter | ESC: Cancel | Enter: Apply"
+        "Search Mode: Type to filter | ESC: Cancel | Ctrl+U: Clear | Enter: Apply"
     } else if !app.search_query.is_empty() {
         "Navigate: ↑/↓ | Clear: ESC | New search: / | Verbose: v | Enter: Connect | q: Quit"
     } else {

@@ -5,6 +5,10 @@ use std::process::Command;
 
 /// Construit la liste complète des arguments SSH sans lancer de processus.
 /// Séparé de `connect()` pour être testable unitairement.
+///
+/// **Invariant** : la destination (`user@host` ou `bastion_host`) est toujours
+/// le **dernier** argument de la liste retournée. `probe()` s'appuie sur cet
+/// invariant pour insérer ses options juste avant elle via `args.pop()`.
 pub fn build_ssh_args(
     server: &ResolvedServer,
     mode: ConnectionMode,
@@ -21,6 +25,24 @@ pub fn build_ssh_args(
         args.push("-v".into());
     }
 
+    // Clé et options SSH — placées AVANT la destination pour que celle-ci
+    // reste en dernière position (invariant utilisé par probe()).
+    if !server.ssh_key.is_empty() {
+        let expanded = shellexpand::tilde(&server.ssh_key);
+        args.push("-i".into());
+        args.push(expanded.into_owned());
+    }
+
+    for opt in &server.ssh_options {
+        if opt.starts_with('-') {
+            args.push(opt.clone());
+        } else {
+            args.push("-o".into());
+            args.push(opt.clone());
+        }
+    }
+
+    // Destination — toujours en dernier.
     match mode {
         ConnectionMode::Direct => {
             collect_target_args(&mut args, &server.user, &server.host);
@@ -57,21 +79,6 @@ pub fn build_ssh_args(
                 args.push(p.to_string());
             }
             args.push(b_host.to_string());
-        }
-    }
-
-    if !server.ssh_key.is_empty() {
-        let expanded = shellexpand::tilde(&server.ssh_key);
-        args.push("-i".into());
-        args.push(expanded.into_owned());
-    }
-
-    for opt in &server.ssh_options {
-        if opt.starts_with('-') {
-            args.push(opt.clone());
-        } else {
-            args.push("-o".into());
-            args.push(opt.clone());
         }
     }
 

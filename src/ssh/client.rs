@@ -1,10 +1,9 @@
 use std::process::Command;
 use std::os::unix::process::CommandExt; // Import exec
-use crate::config::ResolvedServer;
+use crate::config::{ResolvedServer, ConnectionMode};
 use anyhow::{Result};
 
-pub fn connect(server: &ResolvedServer, mode: usize, verbose: bool) -> Result<()> {
-    // Mode: 0=Direct, 1=Jump, 2=Bastion
+pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> Result<()> {
     
     let mut command = Command::new("ssh");
     
@@ -20,49 +19,38 @@ pub fn connect(server: &ResolvedServer, mode: usize, verbose: bool) -> Result<()
     // command.arg("-t"); 
 
     match mode {
-        0 => { // Direct
+        ConnectionMode::Direct => {
             add_target_args(&mut command, &server.user, &server.host);
         },
-        1 => { // Jump
+        ConnectionMode::Jump => {
             let jump_host_str = server.jump_host.as_deref().unwrap_or("");
             if jump_host_str.is_empty() {
                 return Err(anyhow::anyhow!("Jump host not configured for this server"));
             }
             let jump_user = server.jump_user.as_deref().unwrap_or(&server.user);
-            
-            // Format: jump_user@jump_host[:port]
-            // We need to parse port if present in jump_host_str
             let jump_arg = format_host_arg(jump_user, jump_host_str);
-            
             command.arg("-J").arg(jump_arg);
-            
             add_target_args(&mut command, &server.user, &server.host);
         },
-        2 => { // Bastion
+        ConnectionMode::Bastion => {
             let bastion_host_str = server.bastion_host.as_deref().unwrap_or("");
             if bastion_host_str.is_empty() {
-                 return Err(anyhow::anyhow!("Bastion host not configured for this server"));
+                return Err(anyhow::anyhow!("Bastion host not configured for this server"));
             }
-
-            let bastion_user = server.bastion_user.as_deref().unwrap_or("root"); 
-
+            let bastion_user = server.bastion_user.as_deref().unwrap_or("root");
             let (t_host, _t_port) = parse_host_port(&server.host);
             let user_string = server.bastion_template
                 .replace("{target_user}", &server.user)
                 .replace("{target_host}", t_host)
                 .replace("{bastion_user}", bastion_user)
                 .replace("%n", t_host);
-            
-            // Connect to bastion as the specific user string
             command.arg("-l").arg(user_string);
-            
             let (b_host, b_port) = parse_host_port(bastion_host_str);
             if let Some(p) = b_port {
                 command.arg("-p").arg(p);
             }
             command.arg(b_host);
         },
-        _ => return Err(anyhow::anyhow!("Invalid connection mode")),
     }
 
     if !server.ssh_key.is_empty() {

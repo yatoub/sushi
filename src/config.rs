@@ -24,6 +24,31 @@ impl fmt::Display for ConnectionMode {
     }
 }
 
+impl ConnectionMode {
+    /// Indice tab (Direct=0, Jump=1, Bastion=2) — utilisé par l'UI Tabs::select().
+    pub fn index(self) -> usize {
+        match self {
+            ConnectionMode::Direct => 0,
+            ConnectionMode::Jump => 1,
+            ConnectionMode::Bastion => 2,
+        }
+    }
+
+    /// Construit depuis un indice tab. Retourne Direct pour tout indice inconnu.
+    pub fn from_index(i: usize) -> Self {
+        match i {
+            1 => ConnectionMode::Jump,
+            2 => ConnectionMode::Bastion,
+            _ => ConnectionMode::Direct,
+        }
+    }
+
+    /// Passe au mode suivant en boucle (Direct → Jump → Bastion → Direct).
+    pub fn next(self) -> Self {
+        Self::from_index((self.index() + 1) % 3)
+    }
+}
+
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error("IO error: {0}")]

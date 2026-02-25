@@ -20,7 +20,7 @@ pub struct App {
     pub search_query: String,
     pub is_searching: bool,
     
-    pub connection_mode: usize,
+    pub connection_mode: ConnectionMode,
     pub verbose_mode: bool,
 }
 
@@ -36,7 +36,7 @@ impl App {
             expanded_items: HashSet::new(),
             search_query: String::new(),
             is_searching: false,
-            connection_mode: 0,
+            connection_mode: ConnectionMode::Direct,
             verbose_mode: false,
         };
         
@@ -187,11 +187,7 @@ impl App {
         let items = self.get_visible_items();
         if let Some(item) = items.get(self.selected_index) {
             if let ConfigItem::Server(server) = item {
-                match server.default_mode {
-                    ConnectionMode::Jump => self.connection_mode = 1,
-                    ConnectionMode::Bastion => self.connection_mode = 2,
-                    ConnectionMode::Direct => self.connection_mode = 0,
-                }
+                self.connection_mode = server.default_mode;
             }
         }
     }

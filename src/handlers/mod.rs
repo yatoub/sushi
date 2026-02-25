@@ -2,6 +2,7 @@ use std::io;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use crossterm::event::MouseEvent;
 use crate::app::App;
+use crate::config::ConnectionMode;
 
 pub struct AppLayout {
     pub list_area: Rect,
@@ -58,7 +59,7 @@ pub fn handle_mouse_event(mouse: MouseEvent, app: &mut App, size: Rect) -> io::R
             let width = title.chars().count();
             // Check if click is strictly within the title text
             if rel_x >= current_x && rel_x < current_x + width {
-                app.connection_mode = i;
+                app.connection_mode = ConnectionMode::from_index(i);
                 return Ok(true);
             }
             // Advance cursor (title + separator)

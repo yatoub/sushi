@@ -8,7 +8,7 @@ use crossterm::{
 use ratatui::{backend::CrosstermBackend, Terminal, layout::Rect};
 
 use sushi::app::{App, ConfigItem};
-use sushi::config::Config;
+use sushi::config::{Config, ConnectionMode};
 use sushi::ui;
 use sushi::handlers::{handle_mouse_event, get_layout, is_in_rect};
 
@@ -107,7 +107,7 @@ fn main() -> io::Result<()> {
 
 pub enum AppResult {
     Exit,
-    Connect(sushi::config::ResolvedServer, usize, bool),
+    Connect(sushi::config::ResolvedServer, ConnectionMode, bool),
 }
 
 fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<AppResult> {
@@ -152,16 +152,16 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                 app.previous();
                             }
                             KeyCode::Tab => {
-                                app.connection_mode = (app.connection_mode + 1) % 3;
+                                app.connection_mode = app.connection_mode.next();
                             }
                             KeyCode::Char('1') => {
-                                app.connection_mode = 0;
+                                app.connection_mode = ConnectionMode::Direct;
                             }
                             KeyCode::Char('2') => {
-                                app.connection_mode = 1;
+                                app.connection_mode = ConnectionMode::Jump;
                             }
                             KeyCode::Char('3') => {
-                                app.connection_mode = 2;
+                                app.connection_mode = ConnectionMode::Bastion;
                             }
                             KeyCode::Char('v') => {
                                 app.verbose_mode = !app.verbose_mode;

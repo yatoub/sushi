@@ -64,7 +64,7 @@ fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
                 .title(" Mode de Connexion (Tab to switch) ")
                 .border_style(Style::default().fg(CATPPUCCIN_MOCHA.border))
         )
-        .select(app.connection_mode)
+        .select(app.connection_mode.index())
         .style(Style::default().fg(CATPPUCCIN_MOCHA.subtext0))
         .highlight_style(Style::default().bg(CATPPUCCIN_MOCHA.sky).fg(CATPPUCCIN_MOCHA.bg).add_modifier(Modifier::BOLD));
     f.render_widget(tabs, area);

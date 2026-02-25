@@ -11,6 +11,7 @@ use ratatui::{backend::CrosstermBackend, Terminal, layout::Rect};
 use sushi::app::{App, ConfigItem};
 use sushi::config::{Config, ConnectionMode, ResolvedServer};
 use sushi::ssh::client::build_ssh_args;
+use sushi::state;
 use sushi::ui;
 use sushi::handlers::{handle_mouse_event, get_layout, is_in_rect};
 
@@ -207,6 +208,9 @@ fn main() -> io::Result<()> {
     let mut app = App::new(config).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
     let res = run_app(&mut terminal, &mut app);
+
+    // Persiste l'état d'expansion avant de quitter la TUI
+    state::save_state(&app.to_app_state());
 
     disable_raw_mode()?;
     execute!(

@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::time::Instant;
 use ratatui::widgets::ListState;
 use crate::config::{Config, ConfigError, ResolvedServer, ConfigEntry, ConnectionMode};
+use crate::state;
 
 #[derive(Debug, Clone)]
 pub enum ConfigItem {
@@ -53,11 +54,20 @@ impl App {
         
         app.list_state.select(Some(0));
 
-        // Start collapsed by default
-        app.expanded_items.clear();
-        
+        // Restaure l'état d'expansion persistant
+        let saved = state::load_state();
+        app.expanded_items = saved.expanded_items;
+        app.items_dirty = true;
+
         app.update_mode_from_selection();
         Ok(app)
+    }
+
+    /// Retourne l'état persistable de l'application (pour la sauvegarde).
+    pub fn to_app_state(&self) -> crate::state::AppState {
+        crate::state::AppState {
+            expanded_items: self.expanded_items.clone(),
+        }
     }
 
     /// Affiche un message temporaire dans la barre de statut.

@@ -27,7 +27,8 @@
   - **Mouse Support**: Click to select, double-click to connect.
   - **Configurable Theme**: Choose from four Catppuccin flavors — `latte`, `frappe`, `macchiato`, or `mocha` (default) via `defaults.theme` in your config.
   - **Verbose Mode**: Toggle SSH verbose output with `v`.
-  - **Rich Detail Pane**: Shows port (highlighted when non-standard), connection mode, jump host, and bastion host.
+  - **Rich Detail Pane**: Shows port (highlighted when non-standard), connection mode, jump host, bastion host, and SSH options.
+  - **Quick Diagnostic** (`d`): Press `d` on any server to run a non-blocking SSH probe. The detail pane displays a **System** block with kernel, CPU model, load average, and color-coded RAM/Disk progress bars (green < 60%, yellow 60–85%, red > 85%). An animated spinner shows while the probe is running. Press `d` again to refresh; changing server resets it.
   - **Clipboard**: Copy the SSH command for any server with `y` (requires a running clipboard manager on Linux).
 - **State Persistence**: Expanded groups are saved to `~/.sushi_state.json` and restored on next launch.
 - **In-TUI Error Screen**: Connection errors are displayed as an overlay instead of crashing — press `Enter`/`Esc`/`q` to dismiss.
@@ -164,6 +165,7 @@ groups:
 | `2` | Select **Rebond** mode |
 | `3` | Select **Bastion** mode |
 | `Ctrl+U` | Clear search query (while in search mode) |
+| `d` | Run quick SSH diagnostic (kernel, CPU, load, RAM, disk) |
 | `y` | Copy SSH command to clipboard |
 | `Esc` | Cancel search / dismiss error overlay |
 
@@ -222,7 +224,7 @@ defaults:
 - **Search Bar**: Dynamic title showing result count ("🔍 45 / 387 servers")
 - **Connection Modes**: Tab interface with visual highlight
 - **Verbose Toggle**: Checkbox indicator (☐/☑) with color feedback
-- **Detail Pane**: Port, mode, identity file, jump/bastion host, SSH options
+- **Detail Pane**: Port, mode, identity file, jump/bastion host, SSH options, and **System** block (kernel, CPU, load, RAM/Disk bars) after running `d`
 - **Error Overlay**: Centered popup for connection errors — press `Enter` to dismiss
 
 ## 🤝 Contributing

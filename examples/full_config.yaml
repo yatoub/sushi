@@ -11,6 +11,7 @@ defaults:
   ssh_options:
     - "StrictHostKeyChecking=no"
     - "UserKnownHostsFile=/dev/null"
+  use_system_ssh_config: false
   bastion:
     host: "bastion.example.com"
     user: "bastion"

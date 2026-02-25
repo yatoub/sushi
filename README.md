@@ -15,6 +15,12 @@
   - **Mode Inheritance**: Connection mode inherits from defaults → group → environment → server.
 - **Configuration Inheritance**: Define defaults globally or at the group/environment level to avoid repetition.
   - Full cascading support for user, ssh_key, mode, port, options, and connection configs.
+  - `use_system_ssh_config`: opt in to respecting `~/.ssh/config` (ControlMaster, aliases…).
+- **CLI — connect without opening the TUI**:
+  - `--direct`, `--rebond`, `--bastion` `[user@]host[:port]` — instant SSH connection.
+  - `-u/--user`, `-p/--port`, `-k/--key` — override any SSH parameter.
+  - `-c/--config` — use an alternate configuration file.
+  - `-v/--verbose` — enable SSH verbose output.
 - **Advanced Search**:
   - **Multi-field Search**: Search by server name OR hostname.
   - **Live Results Counter**: See matching servers in real-time (e.g., "45 / 387 servers").
@@ -45,50 +51,65 @@ sudo cp target/release/sushi /usr/local/bin/
 
 ## ⚙️ Configuration
 
-Sushi looks for a configuration file at `~/.sushi.yml`.
+Sushi looks for a configuration file at `~/.sushi.yml`.  
+A fully annotated example covering every feature is available at [`examples/full_config.yaml`](examples/full_config.yaml).
 
 ### Example `~/.sushi.yml`
 
 ```yaml
 defaults:
   user: "admin"
-  ssh_key: "~/.ssh/id_rsa"
-  mode: "jump"  # Default connection mode for all servers
+  ssh_key: "~/.ssh/id_ed25519"
   ssh_port: 22
   ssh_options:
     - "StrictHostKeyChecking=no"
     - "UserKnownHostsFile=/dev/null"
+  # Set to true to honour ~/.ssh/config (ControlMaster, aliases, etc.)
+  use_system_ssh_config: false
   rebond:
-    host: "jumphost.example.com"
-    user: "jumpuser"
+    host: "jump.example.com"
+    user: "jump"
+  bastion:
+    host: "bastion.example.com"
+    user: "bastion"
 
 groups:
-  - name: "Production"
-    user: "prod_user" # Overrides default user
-    mode: "direct"    # Override mode for this group
+  # Level 3: Group → Environment → Server
+  - name: "Projet Alpha"
+    user: "dev"             # overrides default user for this group
     environments:
-      - name: "AWS"
-        mode: "bastion"  # Override mode for this environment
-        bastion:
-          host: "bastion.aws.example.com"
-          user: "ubuntu"
-          template: "{target_user}@%n:SSH:{bastion_user}"
+      - name: "Production"
         servers:
-          - name: "Web Server 01"
-            host: "10.0.1.5"
-            # Inherits bastion mode from environment
+          - name: "web-01"
+            host: "192.168.1.10"
+            mode: "direct"
+          - name: "db-01"
+            host: "192.168.1.11"  # inherits mode from defaults
+      - name: "Staging"
+        servers:
+          - name: "web-stg"
+            host: "192.168.1.20"
+            mode: "jump"          # override at server level
 
-  - name: "Staging"
+  # Level 2: Group → Server
+  - name: "Infrastructure"
     servers:
-      - name: "API Server"
-        host: "192.168.1.50"
-        # Uses defaults
+      - name: "proxmox-host"
+        host: "192.168.1.100"
+        mode: "direct"
+      - name: "internal-nas"
+        host: "192.168.1.200"
+        user: "root"
+        mode: "bastion"
 
-  # Single server at root
-  - name: "My VPS"
-    host: "vps.example.org"
-    user: "root"
+  # Level 1: Single server at root
+  - name: "Raspberry-Pi-Home"
+    host: "raspberrypi.local"
+    user: "pi"
+    mode: "direct"
 ```
+
+> See [`examples/full_config.yaml`](examples/full_config.yaml) for a complete reference with all options and inline comments.
 
 ### Configuration Breakdown
 
@@ -96,6 +117,7 @@ groups:
   - `mode`: Default connection mode (`direct`, `jump`, or `bastion`).
   - `rebond`: Jump host configuration (required when using `jump` mode).
   - `bastion`: Bastion configuration (required when using `bastion` mode).
+  - `use_system_ssh_config`: Set to `true` to honour `~/.ssh/config` instead of passing `-F /dev/null`. Defaults to `false`.
 - **`groups`**: The top-level hierarchy. Can contain `environments` or direct `servers`.
   - Can override any default setting including `mode`.
 - **`environments`**: A sub-grouping under a Group.
@@ -125,6 +147,31 @@ groups:
 
 - **Click**: Select server or change tab
 - **Double-click**: Connect to selected server
+
+## 🖥️ CLI Usage
+
+Sushi can connect directly without opening the TUI:
+
+```bash
+# Connect directly
+sushi --direct root@myserver
+sushi --direct admin@10.0.1.5:2222
+
+# Connect via jump host
+sushi --rebond root@192.168.1.50
+
+# Connect via bastion
+sushi --bastion web-01.prod.example.com
+
+# Override SSH parameters
+sushi --direct myserver.com --user deploy --port 2222 --key ~/.ssh/deploy_rsa
+
+# Use a custom config file
+sushi --config ~/work/.sushi.yml
+
+# Show all options
+sushi --help
+```
 
 ## 🎨 Theme & UI
 

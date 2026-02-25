@@ -3,8 +3,6 @@
 git_release_enable = true
 # Use the [Unreleased] section content as release notes
 git_release_body = "{{ changelog }}"
-# Prefix git tags with "v"
-tag_name = "v{{ version }}"
 
 [changelog]
 # Keep a Changelog-compatible format

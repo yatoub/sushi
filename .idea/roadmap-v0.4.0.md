@@ -59,7 +59,7 @@ Liste des améliorations à implémenter une par une.
   - Changer `rebond: Option<JumpConfig>` en `rebond: Option<Vec<JumpConfig>>`.
   - Construire la chaîne `-J user1@host1,user2@host2` dans `client.rs`.
 
-- [ ] **11. Persistance de l'état d'expansion**
+- [x] **11. Persistance de l'état d'expansion**
   - Fichier : `src/app.rs`, nouveau module `src/state.rs`
   - Sauvegarder `expanded_items: HashSet<String>` dans `~/.sushi_state.json` (serde_json) à la fermeture, restaurer au démarrage.
 

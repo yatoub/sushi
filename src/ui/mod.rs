@@ -293,36 +293,77 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
     let text = if let Some(item) = visible_items.get(app.selected_index) {
         match item {
              ConfigItem::Server(server) => {
+                // Port : jaune si différent de 22
+                let port_style = if server.port != 22 {
+                    Style::default().fg(app.theme.yellow).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(app.theme.subtext0)
+                };
+
                 let mut lines = vec![
                     Line::from(vec![
-                        Span::styled("Name: ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled("Name:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
                         Span::raw(&server.name),
                     ]),
                     Line::from(vec![
-                        Span::styled("Host: ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled("Host:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
                         Span::raw(&server.host),
                     ]),
                     Line::from(vec![
-                        Span::styled("User: ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled("Port:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled(server.port.to_string(), port_style),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("User:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
                         Span::raw(&server.user),
                     ]),
                     Line::from(vec![
-                        Span::styled("IdentityFile: ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
-                        Span::raw(&server.ssh_key),
+                        Span::styled("Mode:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled(server.default_mode.to_string(), Style::default().fg(app.theme.sapphire)),
                     ]),
                     Line::from(vec![
-                        Span::styled("SSH Options:", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled("Key:    ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::raw(&server.ssh_key),
                     ]),
                 ];
-                
-                // Add each SSH option as a separate line with indentation
-                for option in &server.ssh_options {
+
+                // Jump host (mode Rebond)
+                if let Some(jump) = &server.jump_host {
+                    let jump_display = match &server.jump_user {
+                        Some(u) => format!("{}@{}", u, jump),
+                        None => jump.clone(),
+                    };
                     lines.push(Line::from(vec![
-                        Span::raw("  • "),
-                        Span::styled(option, Style::default().fg(app.theme.subtext0)),
+                        Span::styled("Jump:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled(jump_display, Style::default().fg(app.theme.sky)),
                     ]));
                 }
-                
+
+                // Bastion host
+                if let Some(bhost) = &server.bastion_host {
+                    let bastion_display = match &server.bastion_user {
+                        Some(u) => format!("{}@{}", u, bhost),
+                        None => bhost.clone(),
+                    };
+                    lines.push(Line::from(vec![
+                        Span::styled("Bastion:", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::raw(" "),
+                        Span::styled(bastion_display, Style::default().fg(app.theme.sky)),
+                    ]));
+                }
+
+                if !server.ssh_options.is_empty() {
+                    lines.push(Line::from(vec![
+                        Span::styled("Options:", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                    ]));
+                    for option in &server.ssh_options {
+                        lines.push(Line::from(vec![
+                            Span::raw("  • "),
+                            Span::styled(option, Style::default().fg(app.theme.subtext0)),
+                        ]));
+                    }
+                }
+
                 lines
              },
              ConfigItem::Group(name) => vec![Line::from(format!("Group: {}", name))],

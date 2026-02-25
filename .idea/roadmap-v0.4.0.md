@@ -84,7 +84,7 @@ Liste des améliorations à implémenter une par une.
 
 ## Tests & maintenabilité
 
-- [ ] **15. Tests unitaires pour `ssh/client.rs`**
+- [x] **15. Tests unitaires pour `ssh/client.rs`**
   - Fichier : `src/ssh/client.rs`
   - Extraire la construction de la commande dans `build_ssh_args(server, mode, verbose) -> Vec<String>`.
   - Écrire des tests couvrant les 3 modes et les cas d'erreur (jump_host vide, bastion_host vide).

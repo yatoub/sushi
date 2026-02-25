@@ -203,7 +203,7 @@ fn main() -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(config);
+    let mut app = App::new(config).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
     let res = run_app(&mut terminal, &mut app);
 

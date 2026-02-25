@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use ratatui::widgets::ListState;
-use crate::config::{Config, ResolvedServer, ConfigEntry, ConnectionMode};
+use crate::config::{Config, ConfigError, ResolvedServer, ConfigEntry, ConnectionMode};
 
 #[derive(Debug, Clone)]
 pub enum ConfigItem {
@@ -25,8 +25,8 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: Config) -> Self {
-        let resolved = config.resolve().unwrap_or_default(); 
+    pub fn new(config: Config) -> Result<Self, ConfigError> {
+        let resolved = config.resolve()?;
         
         let mut app = Self {
             config,
@@ -46,7 +46,7 @@ impl App {
         app.expanded_items.clear();
         
         app.update_mode_from_selection();
-        app
+        Ok(app)
     }
 
     pub fn toggle_expansion(&mut self) {
@@ -233,7 +233,7 @@ mod tests {
     #[test]
     fn test_initial_visibility() {
         let config = create_test_config();
-        let app = App::new(config);
+        let app = App::new(config).unwrap();
         let items = app.get_visible_items();
         
         // Initially only the group header is visible (collapsed state)
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn test_expansion() {
         let config = create_test_config();
-        let mut app = App::new(config);
+        let mut app = App::new(config).unwrap();
         
         // Expand Expand group G1
         app.toggle_expansion(); 
@@ -282,7 +282,7 @@ mod tests {
     #[test]
     fn test_search_filtering() {
         let config = create_test_config();
-        let mut app = App::new(config);
+        let mut app = App::new(config).unwrap();
         
         app.search_query = "S1".to_string();
         let items = app.get_visible_items();

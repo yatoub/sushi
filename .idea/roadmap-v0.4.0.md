@@ -16,7 +16,7 @@ Liste des améliorations à implémenter une par une.
   - Créer `enum ConnectionModeCfg { Direct, Jump, Bastion }` avec `#[serde(rename_all = "lowercase")]`.
   - Une faute de frappe dans le YAML sera rejetée à la désérialisation au lieu de tomber silencieusement en mode `"direct"`.
 
-- [ ] **3. Mise en cache de `get_visible_items()`**
+- [x] **3. Mise en cache de `get_visible_items()`**
   - Fichier : `src/app.rs`
   - Ajouter un champ `cached_items: Vec<ConfigItem>` et un flag `dirty: bool`.
   - Recalculer uniquement quand la config, la recherche ou l'état d'expansion change.

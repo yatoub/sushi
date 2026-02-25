@@ -21,7 +21,7 @@ Liste des améliorations à implémenter une par une.
   - Ajouter un champ `cached_items: Vec<ConfigItem>` et un flag `dirty: bool`.
   - Recalculer uniquement quand la config, la recherche ou l'état d'expansion change.
 
-- [ ] **4. Remonter l'erreur de `config.resolve()` dans `App::new()`**
+- [x] **4. Remonter l'erreur de `config.resolve()` dans `App::new()`**
   - Fichier : `src/app.rs`
   - Changer la signature en `App::new(config: Config) -> Result<Self, ConfigError>` pour ne plus avaler les erreurs silencieusement avec `unwrap_or_default()`.
 

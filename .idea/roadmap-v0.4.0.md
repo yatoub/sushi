@@ -40,7 +40,7 @@ Liste des améliorations à implémenter une par une.
   - Permet de gérer plusieurs profils / contextes (perso, pro, client…).
   - exposer `--direct`, `--rebond` et `--bastion` suivi d'un host pour initier une connexion directe sans passer par l'ui  
 
-- [ ] **7. Rendre `-F /dev/null` optionnel**
+- [x] **7. Rendre `-F /dev/null` optionnel**
   - Fichier : `src/ssh/client.rs`
   - Ajouter un champ `use_system_ssh_config: bool` dans `Defaults` (défaut `false`).
   - Quand `true`, ne pas passer `-F /dev/null` afin de respecter `~/.ssh/config` (ControlMaster, aliases, clés…).

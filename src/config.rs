@@ -1,7 +1,7 @@
 use serde::Deserialize;
-use thiserror::Error;
-use std::path::Path;
 use std::fmt;
+use std::path::Path;
+use thiserror::Error;
 
 /// Mode de connexion SSH. Remplace les chaînes magiques "direct"/"jump"/"bastion".
 /// Copy car l'enum ne contient aucune donnée — pas besoin de clone explicite.
@@ -155,7 +155,7 @@ pub struct Server {
 #[derive(Debug, Clone)]
 pub struct ResolvedServer {
     pub group_name: String,
-    pub env_name: String, 
+    pub env_name: String,
     pub name: String,
     pub host: String,
     pub user: String,
@@ -215,10 +215,10 @@ impl Config {
 
     pub fn resolve(&self) -> Result<Vec<ResolvedServer>, ConfigError> {
         let mut resolved = Vec::new();
-        
+
         let d = self.defaults.clone().unwrap_or_default();
         let use_sys_cfg = d.use_system_ssh_config.unwrap_or(false);
-        
+
         for entry in &self.groups {
             match entry {
                 ConfigEntry::Group(group) => {
@@ -228,9 +228,9 @@ impl Config {
                     let g_mode = group.mode.or(d.mode);
                     let g_port = group.ssh_port.or(d.ssh_port);
                     let g_opts = if let Some(opts) = &group.ssh_options {
-                         Some(opts.clone())
+                        Some(opts.clone())
                     } else {
-                         d.ssh_options.clone()
+                        d.ssh_options.clone()
                     };
 
                     let g_bastion = merge_bastion(&d.bastion, &group.bastion);
@@ -244,71 +244,90 @@ impl Config {
                             let e_mode = env.mode.or(g_mode);
                             let e_port = env.ssh_port.or(g_port);
                             let e_opts = if let Some(opts) = &env.ssh_options {
-                                 Some(opts.clone())
+                                Some(opts.clone())
                             } else {
-                                 g_opts.clone()
+                                g_opts.clone()
                             };
-                            
+
                             let e_bastion = merge_bastion(&g_bastion, &env.bastion);
                             let e_jump = merge_jump(&g_jump, &env.rebond);
 
                             for server in &env.servers {
-                                 let r = resolve_server(
-                                     server, 
-                                     &group.name, 
-                                     &env.name,
-                                     e_user, e_key, e_mode, e_port, e_opts.as_ref(),
-                                     &e_bastion, &e_jump, use_sys_cfg
-                                 )?;
-                                 resolved.push(r);
+                                let r = resolve_server(
+                                    server,
+                                    &group.name,
+                                    &env.name,
+                                    e_user,
+                                    e_key,
+                                    e_mode,
+                                    e_port,
+                                    e_opts.as_ref(),
+                                    &e_bastion,
+                                    &e_jump,
+                                    use_sys_cfg,
+                                )?;
+                                resolved.push(r);
                             }
                         }
                     }
-                    
+
                     if let Some(servers) = &group.servers {
                         for server in servers {
-                             let r = resolve_server(
-                                 server, 
-                                 &group.name, 
-                                 "",
-                                 g_user, g_key, g_mode, g_port, g_opts.as_ref(),
-                                 &g_bastion, &g_jump, use_sys_cfg
-                             )?;
-                             resolved.push(r);
+                            let r = resolve_server(
+                                server,
+                                &group.name,
+                                "",
+                                g_user,
+                                g_key,
+                                g_mode,
+                                g_port,
+                                g_opts.as_ref(),
+                                &g_bastion,
+                                &g_jump,
+                                use_sys_cfg,
+                            )?;
+                            resolved.push(r);
                         }
                     }
-                },
+                }
                 ConfigEntry::Server(server) => {
-                     // Top-level server
-                     // Use empty string for group/env to signify top-level
-                     let r = resolve_server(
-                         server, 
-                         "", 
-                         "",
-                         d.user.as_deref(), d.ssh_key.as_deref(), d.mode, d.ssh_port, d.ssh_options.as_ref(),
-                         &d.bastion, &d.rebond, use_sys_cfg
-                     )?;
-                     resolved.push(r);
+                    // Top-level server
+                    // Use empty string for group/env to signify top-level
+                    let r = resolve_server(
+                        server,
+                        "",
+                        "",
+                        d.user.as_deref(),
+                        d.ssh_key.as_deref(),
+                        d.mode,
+                        d.ssh_port,
+                        d.ssh_options.as_ref(),
+                        &d.bastion,
+                        &d.rebond,
+                        use_sys_cfg,
+                    )?;
+                    resolved.push(r);
                 }
             }
         }
-        
+
         Ok(resolved)
     }
 }
 
-fn merge_bastion(parent: &Option<BastionConfig>, child: &Option<BastionConfig>) -> Option<BastionConfig> {
+fn merge_bastion(
+    parent: &Option<BastionConfig>,
+    child: &Option<BastionConfig>,
+) -> Option<BastionConfig> {
     match (parent, child) {
         (None, None) => None,
         (Some(p), None) => Some(p.clone()),
         (None, Some(c)) => Some(c.clone()),
-        (Some(p), Some(c)) => {
-            Some(BastionConfig {
-                host: c.host.clone().or(p.host.clone()),
-                user: c.user.clone().or(p.user.clone()),
-                template: c.template.clone().or(p.template.clone()),
-            })
-        }
+        (Some(p), Some(c)) => Some(BastionConfig {
+            host: c.host.clone().or(p.host.clone()),
+            user: c.user.clone().or(p.user.clone()),
+            template: c.template.clone().or(p.template.clone()),
+        }),
     }
 }
 
@@ -317,12 +336,10 @@ fn merge_jump(parent: &Option<JumpConfig>, child: &Option<JumpConfig>) -> Option
         (None, None) => None,
         (Some(p), None) => Some(p.clone()),
         (None, Some(c)) => Some(c.clone()),
-        (Some(p), Some(c)) => {
-             Some(JumpConfig {
-                host: c.host.clone().or(p.host.clone()),
-                user: c.user.clone().or(p.user.clone()),
-            })
-        }
+        (Some(p), Some(c)) => Some(JumpConfig {
+            host: c.host.clone().or(p.host.clone()),
+            user: c.user.clone().or(p.user.clone()),
+        }),
     }
 }
 
@@ -339,23 +356,28 @@ fn resolve_server(
     def_jump: &Option<JumpConfig>,
     use_system_ssh_config: bool,
 ) -> Result<ResolvedServer, ConfigError> {
-    
     let user = s.user.as_deref().or(def_user).unwrap_or("root").to_string();
     let port = s.ssh_port.or(def_port).unwrap_or(22);
-    let key = s.ssh_key.as_deref().or(def_key).unwrap_or("~/.ssh/id_rsa").to_string();
-    
+    let key = s
+        .ssh_key
+        .as_deref()
+        .or(def_key)
+        .unwrap_or("~/.ssh/id_rsa")
+        .to_string();
+
     let opts = if let Some(o) = &s.ssh_options {
         o.clone()
     } else {
         def_opts.cloned().unwrap_or_default()
     };
-    
+
     let final_bastion = merge_bastion(def_bastion, &s.bastion);
     let final_jump = merge_jump(def_jump, &s.rebond);
 
     let mode = s.mode.or(def_mode).unwrap_or(ConnectionMode::Direct);
-    
-    let bastion_template = final_bastion.as_ref()
+
+    let bastion_template = final_bastion
+        .as_ref()
         .and_then(|b| b.template.clone())
         .unwrap_or_else(|| "{target_user}@%n:SSH:{bastion_user}".to_string());
 
@@ -411,16 +433,38 @@ mod tests {
             groups: vec![
                 ConfigEntry::Group(Group {
                     name: "Zeus".to_string(),
-                    user: None, ssh_key: None, mode: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None, environments: None, servers: None
+                    user: None,
+                    ssh_key: None,
+                    mode: None,
+                    ssh_port: None,
+                    ssh_options: None,
+                    bastion: None,
+                    rebond: None,
+                    environments: None,
+                    servers: None,
                 }),
                 ConfigEntry::Server(Server {
                     name: "Alpha".to_string(),
                     host: "10.0.0.1".to_string(),
-                    user: None, ssh_key: None, ssh_port: None, ssh_options: None, mode: None, bastion: None, rebond: None
+                    user: None,
+                    ssh_key: None,
+                    ssh_port: None,
+                    ssh_options: None,
+                    mode: None,
+                    bastion: None,
+                    rebond: None,
                 }),
                 ConfigEntry::Group(Group {
                     name: "Beta".to_string(),
-                    user: None, ssh_key: None, mode: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None, environments: None, servers: None
+                    user: None,
+                    ssh_key: None,
+                    mode: None,
+                    ssh_port: None,
+                    ssh_options: None,
+                    bastion: None,
+                    rebond: None,
+                    environments: None,
+                    servers: None,
                 }),
             ],
         };
@@ -450,51 +494,45 @@ mod tests {
                 ssh_port: Some(2222),
                 ..Default::default()
             }),
-            groups: vec![
-                ConfigEntry::Group(Group {
-                    name: "G1".to_string(),
-                    user: Some("group_user".to_string()), // Override default
+            groups: vec![ConfigEntry::Group(Group {
+                name: "G1".to_string(),
+                user: Some("group_user".to_string()), // Override default
+                ssh_key: None,
+                mode: None,
+                ssh_port: None, // Inherits 2222
+                ssh_options: None,
+                bastion: None,
+                rebond: None,
+                environments: Some(vec![Environment {
+                    name: "Env1".to_string(),
+                    user: None, // Inherits "group_user"
                     ssh_key: None,
                     mode: None,
                     ssh_port: None, // Inherits 2222
                     ssh_options: None,
                     bastion: None,
                     rebond: None,
-                    environments: Some(vec![
-                        Environment {
-                            name: "Env1".to_string(),
-                            user: None, // Inherits "group_user"
-                            ssh_key: None,
-                            mode: None,
-                            ssh_port: None, // Inherits 2222
-                            ssh_options: None,
-                            bastion: None,
-                            rebond: None,
-                            servers: vec![
-                                Server {
-                                    name: "S1".to_string(),
-                                    host: "1.1.1.1".to_string(),
-                                    user: None, // Inherits "group_user"
-                                    ssh_key: None,
-                                    ssh_port: Some(8080), // Override 2222
-                                    ssh_options: None,
-                                    mode: None,
-                                    bastion: None,
-                                    rebond: None,
-                                }
-                            ]
-                        }
-                    ]),
-                    servers: None,
-                })
-            ]
+                    servers: vec![Server {
+                        name: "S1".to_string(),
+                        host: "1.1.1.1".to_string(),
+                        user: None, // Inherits "group_user"
+                        ssh_key: None,
+                        ssh_port: Some(8080), // Override 2222
+                        ssh_options: None,
+                        mode: None,
+                        bastion: None,
+                        rebond: None,
+                    }],
+                }]),
+                servers: None,
+            })],
         };
 
         let resolved = config.resolve().unwrap();
         let s1 = &resolved[0];
 
         assert_eq!(s1.name, "S1");
-        assert_eq!(s1.user, "group_user"); 
+        assert_eq!(s1.user, "group_user");
         assert_eq!(s1.port, 8080);
     }
 }

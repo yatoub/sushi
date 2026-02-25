@@ -1,11 +1,15 @@
-use std::process::Command;
-use std::os::unix::process::CommandExt;
-use crate::config::{ResolvedServer, ConnectionMode};
+use crate::config::{ConnectionMode, ResolvedServer};
 use anyhow::Result;
+use std::os::unix::process::CommandExt;
+use std::process::Command;
 
 /// Construit la liste complète des arguments SSH sans lancer de processus.
 /// Séparé de `connect()` pour être testable unitairement.
-pub fn build_ssh_args(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> Result<Vec<String>> {
+pub fn build_ssh_args(
+    server: &ResolvedServer,
+    mode: ConnectionMode,
+    verbose: bool,
+) -> Result<Vec<String>> {
     let mut args: Vec<String> = Vec::new();
 
     if !server.use_system_ssh_config {
@@ -35,11 +39,14 @@ pub fn build_ssh_args(server: &ResolvedServer, mode: ConnectionMode, verbose: bo
         ConnectionMode::Bastion => {
             let bastion_host_str = server.bastion_host.as_deref().unwrap_or("");
             if bastion_host_str.is_empty() {
-                return Err(anyhow::anyhow!("Bastion host not configured for this server"));
+                return Err(anyhow::anyhow!(
+                    "Bastion host not configured for this server"
+                ));
             }
             let bastion_user = server.bastion_user.as_deref().unwrap_or("root");
             let (t_host, _t_port) = parse_host_port(&server.host);
-            let user_string = server.bastion_template
+            let user_string = server
+                .bastion_template
                 .replace("{target_user}", &server.user)
                 .replace("{target_host}", t_host)
                 .replace("{bastion_user}", bastion_user)
@@ -289,5 +296,3 @@ mod tests {
         assert_eq!(args[l_pos + 1], "buser+admin@10.0.0.1");
     }
 }
-
-

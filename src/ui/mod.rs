@@ -2,11 +2,11 @@ pub mod theme;
 pub mod widgets;
 
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap, Tabs},
-    Frame,
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Tabs, Wrap},
 };
 
 use crate::app::{App, AppMode, ConfigItem};
@@ -25,7 +25,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     draw_search_bar(f, app, chunks[0]);
     draw_connection_mode_area(f, app, chunks[1]);
-    
+
     let main_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -36,7 +36,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     draw_tree(f, app, main_chunks[0]);
     draw_details(f, app, main_chunks[1]);
-    
+
     // draw_status_bar(f, app, chunks[3]); -> Correct index
     draw_status_bar(f, app, chunks[3]);
 
@@ -60,7 +60,8 @@ fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect, theme: &Theme) {
     let inner_h = (lines.len() as u16).max(1);
     // bordure (2) + titre (0 = inclus dans bordure) + contenu + hint (1) + marges (1)
     let popup_h = inner_h + 5;
-    let popup_w = (msg.lines().map(|l| l.len()).max().unwrap_or(20) as u16 + 6).clamp(40, area.width.saturating_sub(4));
+    let popup_w = (msg.lines().map(|l| l.len()).max().unwrap_or(20) as u16 + 6)
+        .clamp(40, area.width.saturating_sub(4));
 
     let popup_area = centered_rect(popup_w, popup_h, area);
 
@@ -80,10 +81,7 @@ fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect, theme: &Theme) {
     // Splits inner: message + hint
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(1),
-            Constraint::Length(1),
-        ])
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
         .split(inner);
 
     let text: Vec<Line> = lines
@@ -98,14 +96,15 @@ fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect, theme: &Theme) {
     f.render_widget(hint, chunks[1]);
 }
 
-fn draw_connection_mode_area(f: &mut Frame, app: &App, area: Rect) {    let chunks = Layout::default()
+fn draw_connection_mode_area(f: &mut Frame, app: &App, area: Rect) {
+    let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
             Constraint::Percentage(70), // Tabs
             Constraint::Percentage(30), // Verbose option
         ])
         .split(area);
-    
+
     draw_tabs(f, app, chunks[0]);
     draw_verbose_toggle(f, app, chunks[1]);
 }
@@ -118,41 +117,49 @@ fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .title(" Mode de Connexion (Tab to switch) ")
-                .border_style(Style::default().fg(app.theme.border))
+                .border_style(Style::default().fg(app.theme.border)),
         )
         .select(app.connection_mode.index())
         .style(Style::default().fg(app.theme.subtext0))
-        .highlight_style(Style::default().bg(app.theme.sky).fg(app.theme.bg).add_modifier(Modifier::BOLD));
+        .highlight_style(
+            Style::default()
+                .bg(app.theme.sky)
+                .fg(app.theme.bg)
+                .add_modifier(Modifier::BOLD),
+        );
     f.render_widget(tabs, area);
 }
 
 fn draw_verbose_toggle(f: &mut Frame, app: &App, area: Rect) {
     let checkbox = if app.verbose_mode { "☑" } else { "☐" };
     let text = format!("{} Verbose (-v)", checkbox);
-    
+
     let style = if app.verbose_mode {
-        Style::default().fg(app.theme.green).add_modifier(Modifier::BOLD)
+        Style::default()
+            .fg(app.theme.green)
+            .add_modifier(Modifier::BOLD)
     } else {
         Style::default().fg(app.theme.subtext0)
     };
-    
-    let verbose = Paragraph::new(text)
-        .style(style)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .title(" Options (v to toggle) ")
-                .border_style(Style::default().fg(app.theme.border))
-        );
+
+    let verbose = Paragraph::new(text).style(style).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .title(" Options (v to toggle) ")
+            .border_style(Style::default().fg(app.theme.border)),
+    );
     f.render_widget(verbose, area);
 }
 
 fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
     let visible_items = app.get_visible_items();
-    let server_count = visible_items.iter().filter(|item| matches!(item, ConfigItem::Server(_))).count();
+    let server_count = visible_items
+        .iter()
+        .filter(|item| matches!(item, ConfigItem::Server(_)))
+        .count();
     let total_servers = app.resolved_servers.len();
-    
+
     let (search_text, title) = if app.is_searching {
         let cursor = "│";
         let text = if app.search_query.is_empty() {
@@ -160,7 +167,7 @@ fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
         } else {
             format!("{}{}", app.search_query, cursor)
         };
-        
+
         let title_text = if app.search_query.is_empty() {
             format!(" 🔍 Search by name/host ({} servers) ", total_servers)
         } else if server_count == 0 {
@@ -170,7 +177,7 @@ fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
         } else {
             format!(" 🔍 {} / {} servers ", server_count, total_servers)
         };
-        
+
         (text, title_text)
     } else {
         let text = if app.search_query.is_empty() {
@@ -179,9 +186,19 @@ fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
             let title_text = if server_count == total_servers {
                 format!(" ✓ Showing all {} servers ", server_count)
             } else {
-                format!(" ✓ {} / {} servers match '{}' ", server_count, total_servers, app.search_query)
+                format!(
+                    " ✓ {} / {} servers match '{}' ",
+                    server_count, total_servers, app.search_query
+                )
             };
-            return draw_search_with_results(f, area, &app.search_query, &title_text, server_count, app.theme);
+            return draw_search_with_results(
+                f,
+                area,
+                &app.search_query,
+                &title_text,
+                server_count,
+                app.theme,
+            );
         };
         (text, " Search (press /) ".to_string())
     };
@@ -191,7 +208,7 @@ fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         app.theme.border
     };
-    
+
     let text_color = if app.is_searching {
         app.theme.fg
     } else {
@@ -205,18 +222,21 @@ fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(border_color))
-                .title(title)
+                .title(title),
         );
     f.render_widget(search, area);
 }
 
-fn draw_search_with_results(f: &mut Frame, area: Rect, query: &str, title: &str, count: usize, theme: &Theme) {
-    let border_color = if count > 0 {
-        theme.green
-    } else {
-        theme.red
-    };
-    
+fn draw_search_with_results(
+    f: &mut Frame,
+    area: Rect,
+    query: &str,
+    title: &str,
+    count: usize,
+    theme: &Theme,
+) {
+    let border_color = if count > 0 { theme.green } else { theme.red };
+
     let search = Paragraph::new(query)
         .style(Style::default().fg(theme.fg))
         .block(
@@ -224,7 +244,7 @@ fn draw_search_with_results(f: &mut Frame, area: Rect, query: &str, title: &str,
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(border_color))
-                .title(title)
+                .title(title),
         );
     f.render_widget(search, area);
 }
@@ -237,19 +257,33 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
         let content = match item {
             ConfigItem::Group(name) => {
                 let id = format!("Group:{}", name);
-                let icon = if app.expanded_items.contains(&id) || !app.search_query.is_empty() { "📂" } else { "📁" }; 
-                Line::from(vec![
-                    Span::styled(format!("{} {}", icon, name), Style::default().fg(app.theme.group_header).add_modifier(Modifier::BOLD)),
-                ])
-            },
+                let icon = if app.expanded_items.contains(&id) || !app.search_query.is_empty() {
+                    "📂"
+                } else {
+                    "📁"
+                };
+                Line::from(vec![Span::styled(
+                    format!("{} {}", icon, name),
+                    Style::default()
+                        .fg(app.theme.group_header)
+                        .add_modifier(Modifier::BOLD),
+                )])
+            }
             ConfigItem::Environment(g, name) => {
                 let id = format!("Env:{}:{}", g, name);
-                let icon = if app.expanded_items.contains(&id) || !app.search_query.is_empty() { "🌩️" } else { "☁️" };
+                let icon = if app.expanded_items.contains(&id) || !app.search_query.is_empty() {
+                    "🌩️"
+                } else {
+                    "☁️"
+                };
                 Line::from(vec![
                     Span::raw("  "),
-                    Span::styled(format!("{} {}", icon, name), Style::default().fg(app.theme.env_header)),
+                    Span::styled(
+                        format!("{} {}", icon, name),
+                        Style::default().fg(app.theme.env_header),
+                    ),
                 ])
-            },
+            }
             ConfigItem::Server(server) => {
                 let indent = if server.group_name.is_empty() {
                     "" // Root level
@@ -260,9 +294,12 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
                 };
                 Line::from(vec![
                     Span::raw(indent),
-                    Span::styled(format!("🖥️ {}", server.name), Style::default().fg(app.theme.server_item)),
+                    Span::styled(
+                        format!("🖥️ {}", server.name),
+                        Style::default().fg(app.theme.server_item),
+                    ),
                 ])
-            },
+            }
         };
 
         list_items.push(ListItem::new(content));
@@ -274,11 +311,16 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .title(" Servers ")
-                .border_style(Style::default().fg(app.theme.border))
+                .border_style(Style::default().fg(app.theme.border)),
         )
-        .highlight_style(Style::default().bg(app.theme.selection_bg).fg(app.theme.selection_fg).add_modifier(Modifier::BOLD))
+        .highlight_style(
+            Style::default()
+                .bg(app.theme.selection_bg)
+                .fg(app.theme.selection_fg)
+                .add_modifier(Modifier::BOLD),
+        )
         .highlight_symbol("▎ ");
-    
+
     f.render_stateful_widget(list, area, &mut app.list_state);
 }
 
@@ -292,37 +334,72 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
     let visible_items = app.get_visible_items();
     let text = if let Some(item) = visible_items.get(app.selected_index) {
         match item {
-             ConfigItem::Server(server) => {
+            ConfigItem::Server(server) => {
                 // Port : jaune si différent de 22
                 let port_style = if server.port != 22 {
-                    Style::default().fg(app.theme.yellow).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(app.theme.yellow)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(app.theme.subtext0)
                 };
 
                 let mut lines = vec![
                     Line::from(vec![
-                        Span::styled("Name:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled(
+                            "Name:   ",
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .fg(app.theme.fg),
+                        ),
                         Span::raw(&server.name),
                     ]),
                     Line::from(vec![
-                        Span::styled("Host:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled(
+                            "Host:   ",
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .fg(app.theme.fg),
+                        ),
                         Span::raw(&server.host),
                     ]),
                     Line::from(vec![
-                        Span::styled("Port:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled(
+                            "Port:   ",
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .fg(app.theme.fg),
+                        ),
                         Span::styled(server.port.to_string(), port_style),
                     ]),
                     Line::from(vec![
-                        Span::styled("User:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled(
+                            "User:   ",
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .fg(app.theme.fg),
+                        ),
                         Span::raw(&server.user),
                     ]),
                     Line::from(vec![
-                        Span::styled("Mode:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
-                        Span::styled(server.default_mode.to_string(), Style::default().fg(app.theme.sapphire)),
+                        Span::styled(
+                            "Mode:   ",
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .fg(app.theme.fg),
+                        ),
+                        Span::styled(
+                            server.default_mode.to_string(),
+                            Style::default().fg(app.theme.sapphire),
+                        ),
                     ]),
                     Line::from(vec![
-                        Span::styled("Key:    ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled(
+                            "Key:    ",
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .fg(app.theme.fg),
+                        ),
                         Span::raw(&server.ssh_key),
                     ]),
                 ];
@@ -334,7 +411,12 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         None => jump.clone(),
                     };
                     lines.push(Line::from(vec![
-                        Span::styled("Jump:   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled(
+                            "Jump:   ",
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .fg(app.theme.fg),
+                        ),
                         Span::styled(jump_display, Style::default().fg(app.theme.sky)),
                     ]));
                 }
@@ -346,16 +428,24 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         None => bhost.clone(),
                     };
                     lines.push(Line::from(vec![
-                        Span::styled("Bastion:", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+                        Span::styled(
+                            "Bastion:",
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .fg(app.theme.fg),
+                        ),
                         Span::raw(" "),
                         Span::styled(bastion_display, Style::default().fg(app.theme.sky)),
                     ]));
                 }
 
                 if !server.ssh_options.is_empty() {
-                    lines.push(Line::from(vec![
-                        Span::styled("Options:", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
-                    ]));
+                    lines.push(Line::from(vec![Span::styled(
+                        "Options:",
+                        Style::default()
+                            .add_modifier(Modifier::BOLD)
+                            .fg(app.theme.fg),
+                    )]));
                     for option in &server.ssh_options {
                         lines.push(Line::from(vec![
                             Span::raw("  • "),
@@ -365,9 +455,11 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                 }
 
                 lines
-             },
-             ConfigItem::Group(name) => vec![Line::from(format!("Group: {}", name))],
-             ConfigItem::Environment(g, e) => vec![Line::from(format!("Environment: {} / {}", g, e))],
+            }
+            ConfigItem::Group(name) => vec![Line::from(format!("Group: {}", name))],
+            ConfigItem::Environment(g, e) => {
+                vec![Line::from(format!("Environment: {} / {}", g, e))]
+            }
         }
     } else {
         vec![Line::from("Select a server to view details.")]
@@ -377,15 +469,18 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
         .block(block)
         .style(Style::default().fg(app.theme.fg))
         .wrap(Wrap { trim: true });
-        
+
     f.render_widget(paragraph, area);
 }
 
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     // Affiche le message temporaire (clipboard, erreur…) si présent
     if let Some((msg, _)) = &app.status_message {
-        let paragraph = Paragraph::new(msg.as_str())
-            .style(Style::default().bg(app.theme.selection_bg).fg(app.theme.green));
+        let paragraph = Paragraph::new(msg.as_str()).style(
+            Style::default()
+                .bg(app.theme.selection_bg)
+                .fg(app.theme.green),
+        );
         f.render_widget(paragraph, area);
         return;
     }
@@ -397,7 +492,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     } else {
         "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | Verbose: v | y: Copy cmd | q: Quit"
     };
-    let paragraph = Paragraph::new(text)
-        .style(Style::default().bg(app.theme.selection_bg).fg(app.theme.fg));
+    let paragraph =
+        Paragraph::new(text).style(Style::default().bg(app.theme.selection_bg).fg(app.theme.fg));
     f.render_widget(paragraph, area);
 }

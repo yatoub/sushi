@@ -1,8 +1,8 @@
-use std::io;
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use crossterm::event::MouseEvent;
 use crate::app::App;
 use crate::config::ConnectionMode;
+use crossterm::event::MouseEvent;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use std::io;
 
 pub struct AppLayout {
     pub list_area: Rect,
@@ -43,18 +43,18 @@ pub fn handle_mouse_event(mouse: MouseEvent, app: &mut App, size: Rect) -> io::R
 
     if is_in_rect(mouse.column, mouse.row, layout.tabs_area) {
         let titles = vec!["Direct [1]", "Rebond [2]", "Bastion [3]"];
-        let separator_width = 1; 
-        
+        let separator_width = 1;
+
         // Tabs block has Borders::ALL, so content starts at x+1
         let start_x = layout.tabs_area.x + 1;
-        
+
         if mouse.column < start_x {
-             return Ok(false);
+            return Ok(false);
         }
 
         let rel_x = (mouse.column - start_x) as usize;
         let mut current_x = 0;
-        
+
         for (i, title) in titles.iter().enumerate() {
             let width = title.chars().count();
             // Check if click is strictly within the title text
@@ -65,20 +65,20 @@ pub fn handle_mouse_event(mouse: MouseEvent, app: &mut App, size: Rect) -> io::R
             // Advance cursor (title + separator)
             current_x += width + separator_width;
         }
-        
-        return Ok(true); 
+
+        return Ok(true);
     } else if is_in_rect(mouse.column, mouse.row, layout.list_area) {
         // Determine item index
         // List renders inside the block. Block has Borders::ALL -> 1px padding
         let inner_y = layout.list_area.y + 1;
         let inner_h = layout.list_area.height.saturating_sub(2);
-        
+
         if mouse.row >= inner_y && mouse.row < inner_y + inner_h {
             let row_idx = (mouse.row - inner_y) as usize;
-            
-            let offset = app.list_state.offset(); 
+
+            let offset = app.list_state.offset();
             let target_index = offset + row_idx;
-            
+
             // Check bounds
             if target_index < app.get_visible_items().len() {
                 app.select(target_index);
@@ -88,6 +88,6 @@ pub fn handle_mouse_event(mouse: MouseEvent, app: &mut App, size: Rect) -> io::R
             }
         }
     }
-    
+
     Ok(false)
 }

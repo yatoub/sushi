@@ -1,5 +1,5 @@
-use std::sync::LazyLock;
 use ratatui::style::Color;
+use std::sync::LazyLock;
 
 use crate::config::ThemeVariant;
 

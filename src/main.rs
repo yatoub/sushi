@@ -2,18 +2,21 @@ use std::{io, time::Duration};
 
 use clap::Parser;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseEventKind, MouseButton},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton,
+        MouseEventKind,
+    },
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{backend::CrosstermBackend, Terminal, layout::Rect};
+use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
 use sushi::app::{App, AppMode, ConfigItem};
 use sushi::config::{Config, ConnectionMode, ResolvedServer};
+use sushi::handlers::{get_layout, handle_mouse_event, is_in_rect};
 use sushi::ssh::client::build_ssh_args;
 use sushi::state;
 use sushi::ui;
-use sushi::handlers::{handle_mouse_event, get_layout, is_in_rect};
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
@@ -108,24 +111,27 @@ fn build_adhoc_server(
     let (parsed_user, host, parsed_port) = parse_target(target);
     let d = config.defaults.clone().unwrap_or_default();
 
-    let user = cli.user.clone()
+    let user = cli
+        .user
+        .clone()
         .or(parsed_user)
         .or(d.user.clone())
         .unwrap_or_else(|| "root".to_string());
-    let port = cli.port
-        .or(parsed_port)
-        .or(d.ssh_port)
-        .unwrap_or(22);
-    let ssh_key = cli.key.clone()
+    let port = cli.port.or(parsed_port).or(d.ssh_port).unwrap_or(22);
+    let ssh_key = cli
+        .key
+        .clone()
         .or(d.ssh_key.clone())
         .unwrap_or_else(|| "~/.ssh/id_rsa".to_string());
     let ssh_options = d.ssh_options.clone().unwrap_or_default();
 
-    let jump_host  = d.rebond.as_ref().and_then(|j| j.host.clone());
-    let jump_user  = d.rebond.as_ref().and_then(|j| j.user.clone());
+    let jump_host = d.rebond.as_ref().and_then(|j| j.host.clone());
+    let jump_user = d.rebond.as_ref().and_then(|j| j.user.clone());
     let bastion_host = d.bastion.as_ref().and_then(|b| b.host.clone());
     let bastion_user = d.bastion.as_ref().and_then(|b| b.user.clone());
-    let bastion_template = d.bastion.as_ref()
+    let bastion_template = d
+        .bastion
+        .as_ref()
         .and_then(|b| b.template.clone())
         .unwrap_or_else(|| "{target_user}@%n:SSH:{bastion_user}".to_string());
 
@@ -154,9 +160,10 @@ fn main() -> io::Result<()> {
     let cli = Cli::parse();
 
     // Résolution du chemin de config
-    let config_path_str = cli.config.clone().unwrap_or_else(|| {
-        shellexpand::tilde("~/.sushi.yml").into_owned()
-    });
+    let config_path_str = cli
+        .config
+        .clone()
+        .unwrap_or_else(|| shellexpand::tilde("~/.sushi.yml").into_owned());
     let config_path = std::path::Path::new(&config_path_str);
 
     if !config_path.exists() {
@@ -184,10 +191,20 @@ fn main() -> io::Result<()> {
     config.sort();
 
     // ── Connexion directe sans TUI ──────────────────────────────────────────
-    let cli_mode_target: Option<(ConnectionMode, String)> =
-        cli.direct.as_deref().map(|t| (ConnectionMode::Direct, t.to_string()))
-        .or_else(|| cli.rebond.as_deref().map(|t| (ConnectionMode::Jump, t.to_string())))
-        .or_else(|| cli.bastion.as_deref().map(|t| (ConnectionMode::Bastion, t.to_string())));
+    let cli_mode_target: Option<(ConnectionMode, String)> = cli
+        .direct
+        .as_deref()
+        .map(|t| (ConnectionMode::Direct, t.to_string()))
+        .or_else(|| {
+            cli.rebond
+                .as_deref()
+                .map(|t| (ConnectionMode::Jump, t.to_string()))
+        })
+        .or_else(|| {
+            cli.bastion
+                .as_deref()
+                .map(|t| (ConnectionMode::Bastion, t.to_string()))
+        });
 
     if let Some((mode, target)) = cli_mode_target {
         let server = build_adhoc_server(&target, mode, &cli, &config);
@@ -221,12 +238,12 @@ fn main() -> io::Result<()> {
     terminal.show_cursor()?;
 
     match res {
-        Ok(AppResult::Exit) => {},
+        Ok(AppResult::Exit) => {}
         Ok(AppResult::Connect(server, mode, verbose)) => {
             if let Err(e) = sushi::ssh::client::connect(&server, mode, verbose) {
                 eprintln!("SSH Connection Error: {}", e);
             }
-        },
+        }
         Err(err) => {
             eprintln!("Application Error: {:?}", err);
         }
@@ -242,7 +259,10 @@ pub enum AppResult {
     Connect(sushi::config::ResolvedServer, ConnectionMode, bool),
 }
 
-fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) -> io::Result<AppResult> {
+fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+) -> io::Result<AppResult> {
     let mut last_click_time = std::time::Instant::now();
     let mut last_click_pos = (0, 0);
 
@@ -321,13 +341,25 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                             }
                             KeyCode::Char('y') => {
                                 let items = app.get_visible_items();
-                                if let Some(ConfigItem::Server(server)) = items.get(app.selected_index) {
-                                    match build_ssh_args(server, app.connection_mode, app.verbose_mode) {
+                                if let Some(ConfigItem::Server(server)) =
+                                    items.get(app.selected_index)
+                                {
+                                    match build_ssh_args(
+                                        server,
+                                        app.connection_mode,
+                                        app.verbose_mode,
+                                    ) {
                                         Ok(args) => {
                                             let cmd = format!("ssh {}", args.join(" "));
-                                            match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(&cmd)) {
-                                                Ok(_) => app.set_status_message(format!("Copied: {cmd}")),
-                                                Err(e) => app.set_status_message(format!("Clipboard error: {e}")),
+                                            match arboard::Clipboard::new()
+                                                .and_then(|mut cb| cb.set_text(&cmd))
+                                            {
+                                                Ok(_) => {
+                                                    app.set_status_message(format!("Copied: {cmd}"))
+                                                }
+                                                Err(e) => app.set_status_message(format!(
+                                                    "Clipboard error: {e}"
+                                                )),
                                             }
                                         }
                                         Err(e) => app.set_status_message(format!("SSH error: {e}")),
@@ -345,7 +377,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                     let items = app.get_visible_items();
                                     match items.get(app.selected_index) {
                                         Some(ConfigItem::Server(server)) => {
-                                            match build_ssh_args(server, app.connection_mode, app.verbose_mode) {
+                                            match build_ssh_args(
+                                                server,
+                                                app.connection_mode,
+                                                app.verbose_mode,
+                                            ) {
                                                 Ok(_) => Some(Ok(server.clone())),
                                                 Err(e) => Some(Err(format!("{e}"))),
                                             }
@@ -354,7 +390,13 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                                     }
                                 };
                                 match action {
-                                    Some(Ok(server)) => return Ok(AppResult::Connect(server, app.connection_mode, app.verbose_mode)),
+                                    Some(Ok(server)) => {
+                                        return Ok(AppResult::Connect(
+                                            server,
+                                            app.connection_mode,
+                                            app.verbose_mode,
+                                        ));
+                                    }
                                     Some(Err(msg)) => app.set_error(msg),
                                     None => app.toggle_expansion(),
                                 }
@@ -363,43 +405,53 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                         }
                     }
                 }
-                Event::Mouse(mouse) => {
-                    match mouse.kind {
-                        MouseEventKind::Down(MouseButton::Left) => {
-                            let handled = handle_mouse_event(mouse, app, size)?;
+                Event::Mouse(mouse) => match mouse.kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        let handled = handle_mouse_event(mouse, app, size)?;
 
-                            let now = std::time::Instant::now();
-                            if handled && now.duration_since(last_click_time) < Duration::from_millis(400) && last_click_pos == (mouse.column, mouse.row) {
-                                let layout = get_layout(size);
-                                if is_in_rect(mouse.column, mouse.row, layout.list_area) {
-                                    let action = {
-                                        let items = app.get_visible_items();
-                                        match items.get(app.selected_index) {
-                                            Some(ConfigItem::Server(server)) => {
-                                                match build_ssh_args(server, app.connection_mode, app.verbose_mode) {
-                                                    Ok(_) => Some(Ok(server.clone())),
-                                                    Err(e) => Some(Err(format!("{e}"))),
-                                                }
+                        let now = std::time::Instant::now();
+                        if handled
+                            && now.duration_since(last_click_time) < Duration::from_millis(400)
+                            && last_click_pos == (mouse.column, mouse.row)
+                        {
+                            let layout = get_layout(size);
+                            if is_in_rect(mouse.column, mouse.row, layout.list_area) {
+                                let action = {
+                                    let items = app.get_visible_items();
+                                    match items.get(app.selected_index) {
+                                        Some(ConfigItem::Server(server)) => {
+                                            match build_ssh_args(
+                                                server,
+                                                app.connection_mode,
+                                                app.verbose_mode,
+                                            ) {
+                                                Ok(_) => Some(Ok(server.clone())),
+                                                Err(e) => Some(Err(format!("{e}"))),
                                             }
-                                            _ => None,
                                         }
-                                    };
-                                    match action {
-                                        Some(Ok(server)) => return Ok(AppResult::Connect(server, app.connection_mode, app.verbose_mode)),
-                                        Some(Err(msg)) => app.set_error(msg),
-                                        None => {}
+                                        _ => None,
                                     }
+                                };
+                                match action {
+                                    Some(Ok(server)) => {
+                                        return Ok(AppResult::Connect(
+                                            server,
+                                            app.connection_mode,
+                                            app.verbose_mode,
+                                        ));
+                                    }
+                                    Some(Err(msg)) => app.set_error(msg),
+                                    None => {}
                                 }
                             }
-                            last_click_time = now;
-                            last_click_pos = (mouse.column, mouse.row);
                         }
-                        _ => {}
+                        last_click_time = now;
+                        last_click_pos = (mouse.column, mouse.row);
                     }
-                }
+                    _ => {}
+                },
                 _ => {}
             }
         }
     }
 }
-

@@ -6,7 +6,7 @@ Liste des améliorations à implémenter une par une.
 
 ## Robustesse & qualité du code
 
-- [ ] **1. `ConnectionMode` en enum**
+- [x] **1. `ConnectionMode` en enum**
   - Fichiers : `src/app.rs`, `src/main.rs`, `src/ssh/client.rs`
   - Remplacer `connection_mode: usize` (valeurs magiques 0/1/2) par un enum `ConnectionMode { Direct, Jump, Bastion }`.
   - Élimine les risques de valeur hors-borne et rend le `match` exhaustif.
@@ -38,6 +38,7 @@ Liste des améliorations à implémenter une par une.
   - Fichier : `src/main.rs`
   - Ajouter `clap` en dépendance et exposer `--config`, `--version`, `--help`.
   - Permet de gérer plusieurs profils / contextes (perso, pro, client…).
+  - exposer `--direct`, `--rebond` et `--bastion` suivi d'un host pour initier une connexion directe sans passer par l'ui  
 
 - [ ] **7. Rendre `-F /dev/null` optionnel**
   - Fichier : `src/ssh/client.rs`

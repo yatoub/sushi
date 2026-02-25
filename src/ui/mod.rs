@@ -285,12 +285,20 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
+    // Affiche le message temporaire (clipboard, erreur…) si présent
+    if let Some((msg, _)) = &app.status_message {
+        let paragraph = Paragraph::new(msg.as_str())
+            .style(Style::default().bg(CATPPUCCIN_MOCHA.selection_bg).fg(CATPPUCCIN_MOCHA.green));
+        f.render_widget(paragraph, area);
+        return;
+    }
+
     let text = if app.is_searching {
         "Search Mode: Type to filter | ESC: Cancel | Enter: Apply"
     } else if !app.search_query.is_empty() {
         "Navigate: ↑/↓ | Clear: ESC | New search: / | Verbose: v | Enter: Connect | q: Quit"
     } else {
-        "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | Verbose: v | q: Quit"
+        "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | Verbose: v | y: Copy cmd | q: Quit"
     };
     let paragraph = Paragraph::new(text)
         .style(Style::default().bg(CATPPUCCIN_MOCHA.selection_bg).fg(CATPPUCCIN_MOCHA.fg));

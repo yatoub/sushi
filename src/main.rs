@@ -10,6 +10,7 @@ use ratatui::{backend::CrosstermBackend, Terminal, layout::Rect};
 
 use sushi::app::{App, ConfigItem};
 use sushi::config::{Config, ConnectionMode, ResolvedServer};
+use sushi::ssh::client::build_ssh_args;
 use sushi::ui;
 use sushi::handlers::{handle_mouse_event, get_layout, is_in_rect};
 
@@ -247,6 +248,13 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
 
         terminal.draw(|f| ui::draw(f, app))?;
 
+        // Expire le message de statut après 3 secondes
+        if let Some((_, ts)) = &app.status_message {
+            if ts.elapsed() > Duration::from_secs(3) {
+                app.status_message = None;
+            }
+        }
+
         if event::poll(Duration::from_millis(250))? {
             match event::read()? {
                 Event::Key(key) => {
@@ -292,6 +300,21 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App)
                             }
                             KeyCode::Char('v') => {
                                 app.verbose_mode = !app.verbose_mode;
+                            }
+                            KeyCode::Char('y') => {
+                                let items = app.get_visible_items();
+                                if let Some(ConfigItem::Server(server)) = items.get(app.selected_index) {
+                                    match build_ssh_args(server, app.connection_mode, app.verbose_mode) {
+                                        Ok(args) => {
+                                            let cmd = format!("ssh {}", args.join(" "));
+                                            match arboard::Clipboard::new().and_then(|mut cb| cb.set_text(&cmd)) {
+                                                Ok(_) => app.set_status_message(format!("Copied: {cmd}")),
+                                                Err(e) => app.set_status_message(format!("Clipboard error: {e}")),
+                                            }
+                                        }
+                                        Err(e) => app.set_status_message(format!("SSH error: {e}")),
+                                    }
+                                }
                             }
                             KeyCode::Char('/') => {
                                 app.is_searching = true;

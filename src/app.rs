@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::time::Instant;
 use ratatui::widgets::ListState;
 use crate::config::{Config, ConfigError, ResolvedServer, ConfigEntry, ConnectionMode};
 
@@ -22,6 +23,9 @@ pub struct App {
     
     pub connection_mode: ConnectionMode,
     pub verbose_mode: bool,
+
+    /// Message temporaire affiché dans la barre de statut (texte, timestamp)
+    pub status_message: Option<(String, Instant)>,
 }
 
 impl App {
@@ -38,6 +42,7 @@ impl App {
             is_searching: false,
             connection_mode: ConnectionMode::Direct,
             verbose_mode: false,
+            status_message: None,
         };
         
         app.list_state.select(Some(0));
@@ -47,6 +52,11 @@ impl App {
         
         app.update_mode_from_selection();
         Ok(app)
+    }
+
+    /// Affiche un message temporaire dans la barre de statut.
+    pub fn set_status_message(&mut self, msg: impl Into<String>) {
+        self.status_message = Some((msg.into(), Instant::now()));
     }
 
     pub fn toggle_expansion(&mut self) {

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.102"
+arboard = "3"
 catppuccin = "2.6.0"
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.29.0"

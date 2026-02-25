@@ -343,6 +343,7 @@ fn merge_jump(parent: &Option<JumpConfig>, child: &Option<JumpConfig>) -> Option
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_server(
     s: &Server,
     group: &str,

@@ -42,7 +42,7 @@ pub fn handle_mouse_event(mouse: MouseEvent, app: &mut App, size: Rect) -> io::R
     let layout = get_layout(size);
 
     if is_in_rect(mouse.column, mouse.row, layout.tabs_area) {
-        let titles = vec!["Direct [1]", "Rebond [2]", "Bastion [3]"];
+        let titles = ["Direct [1]", "Rebond [2]", "Bastion [3]"];
         let separator_width = 1;
 
         // Tabs block has Borders::ALL, so content starts at x+1

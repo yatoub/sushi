@@ -166,11 +166,11 @@ fn main() -> io::Result<()> {
         .unwrap_or_else(|| shellexpand::tilde("~/.sushi.yml").into_owned());
     let config_path = std::path::Path::new(&config_path_str);
 
-    if !config_path.exists() {
-        if let Err(e) = std::fs::write(config_path, DEFAULT_CONFIG) {
-            eprintln!("Failed to create default config: {}", e);
-            return Err(e);
-        }
+    if !config_path.exists()
+        && let Err(e) = std::fs::write(config_path, DEFAULT_CONFIG)
+    {
+        eprintln!("Failed to create default config: {}", e);
+        return Err(e);
     }
 
     let config_content = match std::fs::read_to_string(config_path) {
@@ -210,7 +210,7 @@ fn main() -> io::Result<()> {
         let server = build_adhoc_server(&target, mode, &cli, &config);
         if let Err(e) = sushi::ssh::client::connect(&server, mode, cli.verbose) {
             eprintln!("SSH Connection Error: {}", e);
-            return Err(io::Error::new(io::ErrorKind::Other, e.to_string()));
+            return Err(io::Error::other(e.to_string()));
         }
         return Ok(()); // exec() remplace le process ; on n'arrive jamais ici
     }
@@ -222,7 +222,7 @@ fn main() -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(config).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let mut app = App::new(config).map_err(io::Error::other)?;
 
     let res = run_app(&mut terminal, &mut app);
 
@@ -256,7 +256,7 @@ fn main() -> io::Result<()> {
 
 pub enum AppResult {
     Exit,
-    Connect(sushi::config::ResolvedServer, ConnectionMode, bool),
+    Connect(Box<sushi::config::ResolvedServer>, ConnectionMode, bool),
 }
 
 fn run_app(
@@ -273,10 +273,10 @@ fn run_app(
         terminal.draw(|f| ui::draw(f, app))?;
 
         // Expire le message de statut après 3 secondes
-        if let Some((_, ts)) = &app.status_message {
-            if ts.elapsed() > Duration::from_secs(3) {
-                app.status_message = None;
-            }
+        if let Some((_, ts)) = &app.status_message
+            && ts.elapsed() > Duration::from_secs(3)
+        {
+            app.status_message = None;
         }
 
         if event::poll(Duration::from_millis(250))? {
@@ -382,7 +382,7 @@ fn run_app(
                                                 app.connection_mode,
                                                 app.verbose_mode,
                                             ) {
-                                                Ok(_) => Some(Ok(server.clone())),
+                                                Ok(_) => Some(Ok(Box::new((**server).clone()))),
                                                 Err(e) => Some(Err(format!("{e}"))),
                                             }
                                         }
@@ -405,8 +405,8 @@ fn run_app(
                         }
                     }
                 }
-                Event::Mouse(mouse) => match mouse.kind {
-                    MouseEventKind::Down(MouseButton::Left) => {
+                Event::Mouse(mouse) => {
+                    if let MouseEventKind::Down(MouseButton::Left) = mouse.kind {
                         let handled = handle_mouse_event(mouse, app, size)?;
 
                         let now = std::time::Instant::now();
@@ -425,7 +425,7 @@ fn run_app(
                                                 app.connection_mode,
                                                 app.verbose_mode,
                                             ) {
-                                                Ok(_) => Some(Ok(server.clone())),
+                                                Ok(_) => Some(Ok(Box::new((**server).clone()))),
                                                 Err(e) => Some(Err(format!("{e}"))),
                                             }
                                         }
@@ -448,8 +448,7 @@ fn run_app(
                         last_click_time = now;
                         last_click_pos = (mouse.column, mouse.row);
                     }
-                    _ => {}
-                },
+                }
                 _ => {}
             }
         }

@@ -20,7 +20,7 @@ pub enum AppMode {
 pub enum ConfigItem {
     Group(String),
     Environment(String, String),
-    Server(ResolvedServer),
+    Server(Box<ResolvedServer>),
 }
 
 pub struct App {
@@ -168,7 +168,7 @@ impl App {
                     if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
                         rs.name == s_conf.name && rs.group_name.is_empty() && rs.env_name.is_empty()
                     }) {
-                        items.push(ConfigItem::Server(resolved.clone()));
+                        items.push(ConfigItem::Server(Box::new(resolved.clone())));
                     }
                 }
                 ConfigEntry::Group(group) => {
@@ -205,7 +205,9 @@ impl App {
                                                     && rs.group_name == group.name
                                             })
                                         {
-                                            items.push(ConfigItem::Server(resolved.clone()));
+                                            items.push(ConfigItem::Server(Box::new(
+                                                resolved.clone(),
+                                            )));
                                         }
                                     }
                                 }
@@ -225,7 +227,7 @@ impl App {
                                         && rs.env_name.is_empty()
                                         && rs.group_name == group.name
                                 }) {
-                                    items.push(ConfigItem::Server(resolved.clone()));
+                                    items.push(ConfigItem::Server(Box::new(resolved.clone())));
                                 }
                             }
                         }
@@ -274,10 +276,8 @@ impl App {
 
     fn update_mode_from_selection(&mut self) {
         let items = self.get_visible_items();
-        if let Some(item) = items.get(self.selected_index) {
-            if let ConfigItem::Server(server) = item {
-                self.connection_mode = server.default_mode;
-            }
+        if let Some(ConfigItem::Server(server)) = items.get(self.selected_index) {
+            self.connection_mode = server.default_mode;
         }
     }
 }

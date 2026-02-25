@@ -66,9 +66,9 @@ pub static CATPPUCCIN_MOCHA: LazyLock<Theme> =
 /// Retourne le thème statique correspondant à la variante choisie.
 pub fn get_theme(variant: ThemeVariant) -> &'static Theme {
     match variant {
-        ThemeVariant::Latte => &*CATPPUCCIN_LATTE,
-        ThemeVariant::Frappe => &*CATPPUCCIN_FRAPPE,
-        ThemeVariant::Macchiato => &*CATPPUCCIN_MACCHIATO,
-        ThemeVariant::Mocha => &*CATPPUCCIN_MOCHA,
+        ThemeVariant::Latte => &CATPPUCCIN_LATTE,
+        ThemeVariant::Frappe => &CATPPUCCIN_FRAPPE,
+        ThemeVariant::Macchiato => &CATPPUCCIN_MACCHIATO,
+        ThemeVariant::Mocha => &CATPPUCCIN_MOCHA,
     }
 }

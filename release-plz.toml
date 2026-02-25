@@ -41,6 +41,4 @@ commit_parsers = [
   { message = "^test", group = "Testing" },
 ]
 
-# Ignore merge commits and release-plz bumps
 protect_breaking_commits = false
-filter_unconventional = true

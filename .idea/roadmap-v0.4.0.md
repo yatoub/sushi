@@ -45,7 +45,7 @@ Liste des améliorations à implémenter une par une.
   - Ajouter un champ `use_system_ssh_config: bool` dans `Defaults` (défaut `false`).
   - Quand `true`, ne pas passer `-F /dev/null` afin de respecter `~/.ssh/config` (ControlMaster, aliases, clés…).
 
-- [ ] **8. Raccourci `Ctrl+U` pour vider la recherche**
+- [x] **8. Raccourci `Ctrl+U` pour vider la recherche**
   - Fichier : `src/main.rs`
   - En mode recherche, capturer `KeyCode::Char('u')` + `KeyModifiers::CONTROL` pour effacer `search_query` en entier.
 

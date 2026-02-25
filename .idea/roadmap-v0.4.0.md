@@ -67,7 +67,7 @@ Liste des améliorations à implémenter une par une.
 
 ## UX / Interface
 
-- [ ] **12. Écran d'erreur in-TUI**
+- [x] **12. Écran d'erreur in-TUI**
   - Fichier : `src/main.rs`, `src/ui/mod.rs`
   - Ajouter un variant `AppState::Error(String)` et afficher un panneau d'erreur centré dans la TUI au lieu de quitter brutalement avec `eprintln!`.
 

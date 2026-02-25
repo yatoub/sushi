@@ -75,7 +75,7 @@ Liste des améliorations à implémenter une par une.
   - Fichier : `src/ui/mod.rs` (`draw_details`)
   - Vérifier que le port résolu (issu de `ResolvedServer.port`) est bien rendu visible, en particulier quand il diffère de 22.
 
-- [ ] **14. Thème configurable (variantes Catppuccin)**
+- [x] **14. Thème configurable (variantes Catppuccin)**
   - Fichiers : `src/config.rs`, `src/ui/theme.rs`
   - Ajouter `theme: Option<String>` dans `Defaults` (`"latte"`, `"frappe"`, `"macchiato"`, `"mocha"`).
   - Charger la palette correspondante depuis la crate `catppuccin` déjà présente.

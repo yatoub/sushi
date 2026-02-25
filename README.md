@@ -7,7 +7,7 @@
 - **Hierarchical Organization**: Structure your infrastructure with Groups, Environments, and Servers.
 - **Connection Modes**:
   - **Direct**: Standard SSH connection.
-  - **Jump/Rebond**: Connect via a jump host (`-J`).
+  - **Jump/Rebond**: Connect via one or more jump hosts (`-J`). Supports multi-hop chains.
   - **Bastion**: Connect via a hardened bastion using custom login string.
   - **Mode Inheritance**: Connection mode inherits from defaults → group → environment → server.
 - **Configuration Inheritance**: Define defaults globally or at the group/environment level to avoid repetition.
@@ -118,12 +118,26 @@ groups:
 
 > See [`examples/full_config.yaml`](examples/full_config.yaml) for a complete reference with all options and inline comments.
 
+> **⚠️ Breaking change (v0.5.0)** — `rebond` is now a **list** of jump hosts, even for a single hop.
+> If you used the old map syntax, wrap it in a list:
+> ```yaml
+> # Before (v0.4.x)
+> rebond:
+>   host: "jump.example.com"
+>   user: "jump"
+>
+> # After (v0.5.0+)
+> rebond:
+>   - host: "jump.example.com"
+>     user: "jump"
+> ```
+
 ### Configuration Breakdown
 
 - **`defaults`**: Global settings applied to all servers unless overridden.
   - `mode`: Default connection mode (`direct`, `jump`, or `bastion`).
   - `theme`: UI color theme — `latte`, `frappe`, `macchiato`, or `mocha` (default).
-  - `rebond`: Jump host configuration (required when using `jump` mode).
+  - `rebond`: Jump host chain — a **list** of `{ host, user }` entries. SSH receives `-J user1@host1,user2@host2`. Even a single hop must be written as a list item.
   - `bastion`: Bastion configuration (required when using `bastion` mode).
   - `use_system_ssh_config`: Set to `true` to honour `~/.ssh/config` instead of passing `-F /dev/null`. Defaults to `false`.
 - **`groups`**: The top-level hierarchy. Can contain `environments` or direct `servers`.

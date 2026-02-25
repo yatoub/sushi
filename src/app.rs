@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use ratatui::widgets::ListState;
-use crate::config::{Config, ResolvedServer, ConfigEntry};
+use crate::config::{Config, ResolvedServer, ConfigEntry, ConnectionMode};
 
 #[derive(Debug, Clone)]
 pub enum ConfigItem {
@@ -187,10 +187,10 @@ impl App {
         let items = self.get_visible_items();
         if let Some(item) = items.get(self.selected_index) {
             if let ConfigItem::Server(server) = item {
-                match server.default_mode.as_str() {
-                    "jump" => self.connection_mode = 1,
-                    "bastion" => self.connection_mode = 2,
-                    _ => self.connection_mode = 0, // "direct" or default
+                match server.default_mode {
+                    ConnectionMode::Jump => self.connection_mode = 1,
+                    ConnectionMode::Bastion => self.connection_mode = 2,
+                    ConnectionMode::Direct => self.connection_mode = 0,
                 }
             }
         }

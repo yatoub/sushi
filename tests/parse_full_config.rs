@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use sushi::config::Config;
+    use sushi::config::{Config, ConnectionMode};
     use std::path::PathBuf;
 
     #[test]
@@ -21,7 +21,7 @@ mod tests {
         let nextcloud = resolved.iter().find(|s| s.name == "nextcloud").expect("nextcloud found");
         assert_eq!(nextcloud.host, "192.168.1.13");
         assert_eq!(nextcloud.user, "root"); // server override
-        assert_eq!(nextcloud.default_mode, "direct");
+        assert_eq!(nextcloud.default_mode, ConnectionMode::Direct);
         
         // Find db-01
         let db01 = resolved.iter().find(|s| s.name == "db-01").expect("db-01 found");
@@ -32,7 +32,7 @@ mod tests {
         // Find internal-nas
         let nas = resolved.iter().find(|s| s.name == "internal-nas").expect("internal-nas found");
         assert_eq!(nas.user, "root"); // server override
-        assert_eq!(nas.default_mode, "bastion");
+        assert_eq!(nas.default_mode, ConnectionMode::Bastion);
         // Bastion should be inherited from defaults
         assert_eq!(nas.bastion_host.as_deref().unwrap(), "bastion.example.com");
         assert_eq!(nas.bastion_user.as_deref().unwrap(), "bastion");

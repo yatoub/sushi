@@ -1,6 +1,28 @@
 use serde::Deserialize;
 use thiserror::Error;
 use std::path::Path;
+use std::fmt;
+
+/// Mode de connexion SSH. Remplace les chaînes magiques "direct"/"jump"/"bastion".
+/// Copy car l'enum ne contient aucune donnée — pas besoin de clone explicite.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ConnectionMode {
+    #[default]
+    Direct,
+    Jump,
+    Bastion,
+}
+
+impl fmt::Display for ConnectionMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ConnectionMode::Direct => write!(f, "direct"),
+            ConnectionMode::Jump => write!(f, "jump"),
+            ConnectionMode::Bastion => write!(f, "bastion"),
+        }
+    }
+}
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -29,7 +51,7 @@ pub enum ConfigEntry {
 pub struct Defaults {
     pub user: Option<String>,
     pub ssh_key: Option<String>,
-    pub mode: Option<String>,
+    pub mode: Option<ConnectionMode>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
@@ -54,7 +76,7 @@ pub struct Group {
     pub name: String,
     pub user: Option<String>,
     pub ssh_key: Option<String>,
-    pub mode: Option<String>,
+    pub mode: Option<ConnectionMode>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
@@ -68,7 +90,7 @@ pub struct Environment {
     pub name: String,
     pub user: Option<String>,
     pub ssh_key: Option<String>,
-    pub mode: Option<String>,
+    pub mode: Option<ConnectionMode>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
@@ -84,7 +106,7 @@ pub struct Server {
     pub ssh_key: Option<String>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
-    pub mode: Option<String>, // "direct", "jump", "bastion"
+    pub mode: Option<ConnectionMode>,
     pub bastion: Option<BastionConfig>,
     pub rebond: Option<JumpConfig>,
 }
@@ -99,7 +121,7 @@ pub struct ResolvedServer {
     pub port: u16,
     pub ssh_key: String,
     pub ssh_options: Vec<String>,
-    pub default_mode: String, 
+    pub default_mode: ConnectionMode,
     pub jump_host: Option<String>,
     pub jump_user: Option<String>,
     pub bastion_host: Option<String>,
@@ -159,7 +181,7 @@ impl Config {
                     // Merge defaults -> Group
                     let g_user = group.user.as_deref().or(d.user.as_deref());
                     let g_key = group.ssh_key.as_deref().or(d.ssh_key.as_deref());
-                    let g_mode = group.mode.as_deref().or(d.mode.as_deref());
+                    let g_mode = group.mode.or(d.mode);
                     let g_port = group.ssh_port.or(d.ssh_port);
                     let g_opts = if let Some(opts) = &group.ssh_options {
                          Some(opts.clone())
@@ -175,7 +197,7 @@ impl Config {
                             // Merge Group -> Env
                             let e_user = env.user.as_deref().or(g_user);
                             let e_key = env.ssh_key.as_deref().or(g_key);
-                            let e_mode = env.mode.as_deref().or(g_mode);
+                            let e_mode = env.mode.or(g_mode);
                             let e_port = env.ssh_port.or(g_port);
                             let e_opts = if let Some(opts) = &env.ssh_options {
                                  Some(opts.clone())
@@ -219,7 +241,7 @@ impl Config {
                          server, 
                          "", 
                          "",
-                         d.user.as_deref(), d.ssh_key.as_deref(), d.mode.as_deref(), d.ssh_port, d.ssh_options.as_ref(),
+                         d.user.as_deref(), d.ssh_key.as_deref(), d.mode, d.ssh_port, d.ssh_options.as_ref(),
                          &d.bastion, &d.rebond
                      )?;
                      resolved.push(r);
@@ -266,7 +288,7 @@ fn resolve_server(
     env: &str,
     def_user: Option<&str>,
     def_key: Option<&str>,
-    def_mode: Option<&str>,
+    def_mode: Option<ConnectionMode>,
     def_port: Option<u16>,
     def_opts: Option<&Vec<String>>,
     def_bastion: &Option<BastionConfig>,
@@ -286,7 +308,7 @@ fn resolve_server(
     let final_bastion = merge_bastion(def_bastion, &s.bastion);
     let final_jump = merge_jump(def_jump, &s.rebond);
 
-    let mode_str = s.mode.as_deref().or(def_mode).unwrap_or("direct").to_string();
+    let mode = s.mode.or(def_mode).unwrap_or(ConnectionMode::Direct);
     
     let bastion_template = final_bastion.as_ref()
         .and_then(|b| b.template.clone())
@@ -301,7 +323,7 @@ fn resolve_server(
         port,
         ssh_key: key,
         ssh_options: opts,
-        default_mode: mode_str,
+        default_mode: mode,
         
         jump_host: final_jump.as_ref().and_then(|j| j.host.clone()),
         jump_user: final_jump.as_ref().and_then(|j| j.user.clone()),

@@ -1,0 +1,46 @@
+[workspace]
+# Automatically create/update the GitHub Release with the CHANGELOG section
+git_release_enable = true
+# Use the [Unreleased] section content as release notes
+git_release_body = "{{ changelog }}"
+# Prefix git tags with "v"
+tag_name = "v{{ version }}"
+
+[changelog]
+# Keep a Changelog-compatible format
+header = """
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
+
+---
+"""
+
+# Map conventional commit types to changelog sections
+body = """
+{% if version %}## [{{ version | trim_start_matches(pat="v") }}] — {{ timestamp | date(format="%Y-%m-%d") }}{% else %}## [Unreleased]{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }}{% if commit.breaking %} (**BREAKING**){% endif %}
+{% endfor %}
+{% endfor %}
+"""
+
+commit_parsers = [
+  { message = "^feat", group = "Added" },
+  { message = "^fix", group = "Fixed" },
+  { message = "^perf", group = "Changed" },
+  { message = "^refactor", group = "Changed" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^chore\\(roadmap\\)", skip = true },
+  { message = "^chore", group = "Miscellaneous" },
+  { message = "^test", group = "Testing" },
+]
+
+# Ignore merge commits and release-plz bumps
+protect_breaking_commits = false
+filter_unconventional = true

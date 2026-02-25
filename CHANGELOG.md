@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [Unreleased] — v0.4.0
+## [0.4.0] — 2026-02-25
 
 ### Added
 - **`ConnectionMode` enum**: replaced `"direct"/"jump"/"bastion"` strings and the `usize` integer with a typed enum throughout the codebase (`config`, `app`, `client`, `handlers`, `ui`). Typos in YAML are now rejected at deserialization.
@@ -62,7 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - First working version: TUI SSH manager with YAML config file support.
 
-[Unreleased]: https://github.com/yatoub/sushi/compare/v0.3.0...HEAD
+[0.4.0]: https://github.com/yatoub/sushi/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/yatoub/sushi/compare/v0.1.1...v0.3.0
 [0.2.0]: https://github.com/yatoub/sushi/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/yatoub/sushi/releases/tag/v0.1.0

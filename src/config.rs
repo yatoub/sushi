@@ -29,7 +29,7 @@ pub enum ConfigEntry {
 pub struct Defaults {
     pub user: Option<String>,
     pub ssh_key: Option<String>,
-
+    pub mode: Option<String>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
@@ -54,6 +54,7 @@ pub struct Group {
     pub name: String,
     pub user: Option<String>,
     pub ssh_key: Option<String>,
+    pub mode: Option<String>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
@@ -67,6 +68,7 @@ pub struct Environment {
     pub name: String,
     pub user: Option<String>,
     pub ssh_key: Option<String>,
+    pub mode: Option<String>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub bastion: Option<BastionConfig>,
@@ -157,6 +159,7 @@ impl Config {
                     // Merge defaults -> Group
                     let g_user = group.user.as_deref().or(d.user.as_deref());
                     let g_key = group.ssh_key.as_deref().or(d.ssh_key.as_deref());
+                    let g_mode = group.mode.as_deref().or(d.mode.as_deref());
                     let g_port = group.ssh_port.or(d.ssh_port);
                     let g_opts = if let Some(opts) = &group.ssh_options {
                          Some(opts.clone())
@@ -172,6 +175,7 @@ impl Config {
                             // Merge Group -> Env
                             let e_user = env.user.as_deref().or(g_user);
                             let e_key = env.ssh_key.as_deref().or(g_key);
+                            let e_mode = env.mode.as_deref().or(g_mode);
                             let e_port = env.ssh_port.or(g_port);
                             let e_opts = if let Some(opts) = &env.ssh_options {
                                  Some(opts.clone())
@@ -187,7 +191,7 @@ impl Config {
                                      server, 
                                      &group.name, 
                                      &env.name,
-                                     e_user, e_key, e_port, e_opts.as_ref(), // Pass ref
+                                     e_user, e_key, e_mode, e_port, e_opts.as_ref(), // Pass ref
                                      &e_bastion, &e_jump
                                  )?;
                                  resolved.push(r);
@@ -201,7 +205,7 @@ impl Config {
                                  server, 
                                  &group.name, 
                                  "",
-                                 g_user, g_key, g_port, g_opts.as_ref(),
+                                 g_user, g_key, g_mode, g_port, g_opts.as_ref(),
                                  &g_bastion, &g_jump
                              )?;
                              resolved.push(r);
@@ -215,7 +219,7 @@ impl Config {
                          server, 
                          "", 
                          "",
-                         d.user.as_deref(), d.ssh_key.as_deref(), d.ssh_port, d.ssh_options.as_ref(),
+                         d.user.as_deref(), d.ssh_key.as_deref(), d.mode.as_deref(), d.ssh_port, d.ssh_options.as_ref(),
                          &d.bastion, &d.rebond
                      )?;
                      resolved.push(r);
@@ -262,6 +266,7 @@ fn resolve_server(
     env: &str,
     def_user: Option<&str>,
     def_key: Option<&str>,
+    def_mode: Option<&str>,
     def_port: Option<u16>,
     def_opts: Option<&Vec<String>>,
     def_bastion: &Option<BastionConfig>,
@@ -281,7 +286,7 @@ fn resolve_server(
     let final_bastion = merge_bastion(def_bastion, &s.bastion);
     let final_jump = merge_jump(def_jump, &s.rebond);
 
-    let mode_str = s.mode.as_deref().unwrap_or("direct").to_string();
+    let mode_str = s.mode.as_deref().or(def_mode).unwrap_or("direct").to_string();
     
     let bastion_template = final_bastion.as_ref()
         .and_then(|b| b.template.clone())
@@ -339,7 +344,7 @@ mod tests {
             groups: vec![
                 ConfigEntry::Group(Group {
                     name: "Zeus".to_string(),
-                    user: None, ssh_key: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None, environments: None, servers: None
+                    user: None, ssh_key: None, mode: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None, environments: None, servers: None
                 }),
                 ConfigEntry::Server(Server {
                     name: "Alpha".to_string(),
@@ -348,7 +353,7 @@ mod tests {
                 }),
                 ConfigEntry::Group(Group {
                     name: "Beta".to_string(),
-                    user: None, ssh_key: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None, environments: None, servers: None
+                    user: None, ssh_key: None, mode: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None, environments: None, servers: None
                 }),
             ],
         };
@@ -383,6 +388,7 @@ mod tests {
                     name: "G1".to_string(),
                     user: Some("group_user".to_string()), // Override default
                     ssh_key: None,
+                    mode: None,
                     ssh_port: None, // Inherits 2222
                     ssh_options: None,
                     bastion: None,
@@ -392,6 +398,7 @@ mod tests {
                             name: "Env1".to_string(),
                             user: None, // Inherits "group_user"
                             ssh_key: None,
+                            mode: None,
                             ssh_port: None, // Inherits 2222
                             ssh_options: None,
                             bastion: None,

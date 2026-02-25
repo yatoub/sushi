@@ -16,6 +16,10 @@ pub struct Theme {
     pub search_text: Color,
     #[allow(dead_code)]
     pub yellow: Color,
+    pub green: Color,
+    pub red: Color,
+    pub sky: Color,
+    pub sapphire: Color,
     pub subtext0: Color,
 }
 
@@ -35,6 +39,10 @@ pub static CATPPUCCIN_MOCHA: LazyLock<Theme> = LazyLock::new(|| {
         search_box: to_ratatui(colors.surface1),
         search_text: to_ratatui(colors.text),
         yellow: to_ratatui(colors.yellow),
+        green: to_ratatui(colors.green),
+        red: to_ratatui(colors.red),
+        sky: to_ratatui(colors.sky),
+        sapphire: to_ratatui(colors.sapphire),
         subtext0: to_ratatui(colors.subtext0),
     }
 });

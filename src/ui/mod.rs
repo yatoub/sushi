@@ -42,7 +42,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 }
 
 fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
-    let titles = vec!["Direct [1]", "Rebond [2]", "Bastion [3]"];
+    let titles = vec!["Direct", "Rebond", "Bastion"];
     let tabs = Tabs::new(titles)
         .block(
             Block::default()
@@ -53,25 +53,87 @@ fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
         )
         .select(app.connection_mode)
         .style(Style::default().fg(CATPPUCCIN_MOCHA.subtext0))
-        .highlight_style(Style::default().fg(CATPPUCCIN_MOCHA.yellow).add_modifier(Modifier::BOLD));
+        .highlight_style(Style::default().bg(CATPPUCCIN_MOCHA.sky).fg(CATPPUCCIN_MOCHA.bg).add_modifier(Modifier::BOLD));
     f.render_widget(tabs, area);
 }
 
 fn draw_search_bar(f: &mut Frame, app: &App, area: Rect) {
-    let search_text = if app.search_query.is_empty() {
-        "Type / to search..."
+    let visible_items = app.get_visible_items();
+    let server_count = visible_items.iter().filter(|item| matches!(item, ConfigItem::Server(_))).count();
+    let total_servers = app.resolved_servers.len();
+    
+    let (search_text, title) = if app.is_searching {
+        let cursor = "│";
+        let text = if app.search_query.is_empty() {
+            format!("{}  (type to search, ESC to cancel)", cursor)
+        } else {
+            format!("{}{}", app.search_query, cursor)
+        };
+        
+        let title_text = if app.search_query.is_empty() {
+            format!(" 🔍 Search ({} servers) ", total_servers)
+        } else if server_count == 0 {
+            format!(" 🔍 No results for '{}' ", app.search_query)
+        } else if server_count == total_servers {
+            format!(" 🔍 All {} servers match ", server_count)
+        } else {
+            format!(" 🔍 {} / {} servers ", server_count, total_servers)
+        };
+        
+        (text, title_text)
     } else {
-        &app.search_query
+        let text = if app.search_query.is_empty() {
+            "Press / to search...".to_string()
+        } else {
+            let title_text = if server_count == total_servers {
+                format!(" ✓ Showing all {} servers ", server_count)
+            } else {
+                format!(" ✓ {} / {} servers match '{}' ", server_count, total_servers, app.search_query)
+            };
+            return draw_search_with_results(f, area, &app.search_query, &title_text, server_count);
+        };
+        (text, " Search (press /) ".to_string())
+    };
+
+    let border_color = if app.is_searching {
+        CATPPUCCIN_MOCHA.sapphire
+    } else {
+        CATPPUCCIN_MOCHA.border
+    };
+    
+    let text_color = if app.is_searching {
+        CATPPUCCIN_MOCHA.fg
+    } else {
+        CATPPUCCIN_MOCHA.subtext0
     };
 
     let search = Paragraph::new(search_text)
-        .style(Style::default().fg(CATPPUCCIN_MOCHA.search_text))
+        .style(Style::default().fg(text_color))
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(CATPPUCCIN_MOCHA.border))
-                .title(" Search ")
+                .border_style(Style::default().fg(border_color))
+                .title(title)
+        );
+    f.render_widget(search, area);
+}
+
+fn draw_search_with_results(f: &mut Frame, area: Rect, query: &str, title: &str, count: usize) {
+    let border_color = if count > 0 {
+        CATPPUCCIN_MOCHA.green
+    } else {
+        CATPPUCCIN_MOCHA.red
+    };
+    
+    let search = Paragraph::new(query)
+        .style(Style::default().fg(CATPPUCCIN_MOCHA.fg))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(border_color))
+                .title(title)
         );
     f.render_widget(search, area);
 }
@@ -139,28 +201,39 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
     let visible_items = app.get_visible_items();
     let text = if let Some(item) = visible_items.get(app.selected_index) {
         match item {
-             ConfigItem::Server(server) => vec![
-                Line::from(vec![
-                    Span::styled("Name: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
-                    Span::raw(&server.name),
-                ]),
-                Line::from(vec![
-                    Span::styled("Host: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
-                    Span::raw(&server.host),
-                ]),
-                Line::from(vec![
-                    Span::styled("User: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
-                    Span::raw(&server.user),
-                ]),
-                Line::from(vec![
-                    Span::styled("SSH Path: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
-                    Span::raw(&server.ssh_key),
-                ]),
-                Line::from(vec![
-                    Span::styled("SSH Options: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
-                    Span::raw(server.ssh_options.join(" ")),
-                ]),
-             ],
+             ConfigItem::Server(server) => {
+                let mut lines = vec![
+                    Line::from(vec![
+                        Span::styled("Name: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
+                        Span::raw(&server.name),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("Host: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
+                        Span::raw(&server.host),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("User: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
+                        Span::raw(&server.user),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("IdentityFile: ", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
+                        Span::raw(&server.ssh_key),
+                    ]),
+                    Line::from(vec![
+                        Span::styled("SSH Options:", Style::default().add_modifier(Modifier::BOLD).fg(CATPPUCCIN_MOCHA.fg)),
+                    ]),
+                ];
+                
+                // Add each SSH option as a separate line with indentation
+                for option in &server.ssh_options {
+                    lines.push(Line::from(vec![
+                        Span::raw("  • "),
+                        Span::styled(option, Style::default().fg(CATPPUCCIN_MOCHA.subtext0)),
+                    ]));
+                }
+                
+                lines
+             },
              ConfigItem::Group(name) => vec![Line::from(format!("Group: {}", name))],
              ConfigItem::Environment(g, e) => vec![Line::from(format!("Environment: {} / {}", g, e))],
         }
@@ -176,8 +249,14 @@ fn draw_details(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_status_bar(f: &mut Frame, _app: &App, area: Rect) {
-    let text = "Navigate: ↑/↓ | Search: / | Quit: q";
+fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
+    let text = if app.is_searching {
+        "Search Mode: Type to filter | ESC: Cancel | Enter: Apply"
+    } else if !app.search_query.is_empty() {
+        "Navigate: ↑/↓ | Clear: ESC | New search: / | Enter: Connect | q: Quit"
+    } else {
+        "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | q: Quit"
+    };
     let paragraph = Paragraph::new(text)
         .style(Style::default().bg(CATPPUCCIN_MOCHA.selection_bg).fg(CATPPUCCIN_MOCHA.fg));
     f.render_widget(paragraph, area);

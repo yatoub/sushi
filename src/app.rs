@@ -201,11 +201,11 @@ mod tests {
             groups: vec![
                 ConfigEntry::Group(Group {
                     name: "G1".to_string(),
-                    user: None, ssh_key: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None,
+                    user: None, ssh_key: None, mode: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None,
                     environments: Some(vec![
                         Environment {
                             name: "E1".to_string(),
-                            user: None, ssh_key: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None,
+                            user: None, ssh_key: None, mode: None, ssh_port: None, ssh_options: None, bastion: None, rebond: None,
                             servers: vec![
                                 Server {
                                     name: "S1".to_string(),

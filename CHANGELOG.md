@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.4.1] — 2026-02-25
+
+### Fixed
+- Clipboard warning (`clipboard managers may not have seen the contents`) no longer leaks into the TUI. The `arboard::Clipboard` instance is now kept alive in `App` for the duration of the session instead of being dropped immediately after each copy.
+
+---
+
 ## [0.4.0] — 2026-02-25
 
 ### Added
@@ -62,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 - First working version: TUI SSH manager with YAML config file support.
 
+[0.4.1]: https://github.com/yatoub/sushi/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/yatoub/sushi/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/yatoub/sushi/compare/v0.1.1...v0.3.0
 [0.2.0]: https://github.com/yatoub/sushi/compare/v0.1.0...v0.1.1

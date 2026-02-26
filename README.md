@@ -118,20 +118,21 @@ groups:
 ```
 
 > See [`examples/full_config.yaml`](examples/full_config.yaml) for a complete reference with all options and inline comments.
-
-> **⚠️ Breaking change (v0.5.0)** — `rebond` is now a **list** of jump hosts, even for a single hop.
-> If you used the old map syntax, wrap it in a list:
-> ```yaml
-> # Before (v0.4.x)
-> rebond:
->   host: "jump.example.com"
->   user: "jump"
 >
-> # After (v0.5.0+)
-> rebond:
->   - host: "jump.example.com"
->     user: "jump"
-> ```
+> **⚠️ Breaking change (v0.5.0)** — `rebond` is now a **list** of jump hosts,
+> even for a single hop. If you used the old map syntax, wrap it in a list:
+
+```yaml
+# Before (v0.4.x)
+rebond:
+  host: "jump.example.com"
+  user: "jump"
+
+# After (v0.5.0+)
+rebond:
+  - host: "jump.example.com"
+    user: "jump"
+```
 
 ### Configuration Breakdown
 

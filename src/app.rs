@@ -315,6 +315,7 @@ mod tests {
                 ssh_options: None,
                 bastion: None,
                 rebond: None,
+                probe_filesystems: None,
                 environments: Some(vec![Environment {
                     name: "E1".to_string(),
                     user: None,
@@ -324,6 +325,7 @@ mod tests {
                     ssh_options: None,
                     bastion: None,
                     rebond: None,
+                    probe_filesystems: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
                         host: "10.0.0.1".to_string(),
@@ -334,6 +336,7 @@ mod tests {
                         mode: None,
                         bastion: None,
                         rebond: None,
+                        probe_filesystems: None,
                     }],
                 }]),
                 servers: Some(vec![Server {
@@ -346,6 +349,7 @@ mod tests {
                     mode: None,
                     bastion: None,
                     rebond: None,
+                    probe_filesystems: None,
                 }]),
             })],
         }

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased]
+
+### Added
+- **`probe_filesystems`**: new optional list key at every config level (`defaults`, group, environment, server). Extra mount points are probed during the quick diagnostic (`d`) and rendered as color-coded progress bars in the detail pane. If a path is not mounted on the target, a yellow `⚠ /path — not mounted` line is shown instead. Inheritance is **additive**: each level appends its paths to those of the parent (no deduplication across levels).
+
+---
+
 ## [0.5.0] — 2026-02-25
 
 ### Added

@@ -97,6 +97,8 @@ pub struct Defaults {
     /// Variante Catppuccin à utiliser pour le thème TUI.
     /// Valeurs : `latte`, `frappe`, `macchiato`, `mocha` (défaut).
     pub theme: Option<ThemeVariant>,
+    /// Points de montage supplémentaires à interroger lors d'un probe.
+    pub probe_filesystems: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -124,6 +126,7 @@ pub struct Group {
     pub rebond: Option<Vec<JumpConfig>>,
     pub environments: Option<Vec<Environment>>,
     pub servers: Option<Vec<Server>>,
+    pub probe_filesystems: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -137,6 +140,7 @@ pub struct Environment {
     pub bastion: Option<BastionConfig>,
     pub rebond: Option<Vec<JumpConfig>>,
     pub servers: Vec<Server>,
+    pub probe_filesystems: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -150,6 +154,7 @@ pub struct Server {
     pub mode: Option<ConnectionMode>,
     pub bastion: Option<BastionConfig>,
     pub rebond: Option<Vec<JumpConfig>>,
+    pub probe_filesystems: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -170,6 +175,8 @@ pub struct ResolvedServer {
     pub bastion_template: String,
     /// Respecte `~/.ssh/config` si `true` (ne passe pas `-F /dev/null`).
     pub use_system_ssh_config: bool,
+    /// Points de montage à interroger lors d'un probe (hérités en cascade).
+    pub probe_filesystems: Vec<String>,
 }
 
 impl Config {
@@ -232,6 +239,10 @@ impl Config {
                     } else {
                         d.ssh_options.clone()
                     };
+                    let g_fs = extend_filesystems(
+                        d.probe_filesystems.as_ref(),
+                        group.probe_filesystems.as_ref(),
+                    );
 
                     let g_bastion = merge_bastion(&d.bastion, &group.bastion);
                     let g_jump = merge_jump(&d.rebond, &group.rebond);
@@ -248,6 +259,10 @@ impl Config {
                             } else {
                                 g_opts.clone()
                             };
+                            let e_fs = extend_filesystems(
+                                g_fs.as_ref().map(|v| v as &Vec<String>),
+                                env.probe_filesystems.as_ref(),
+                            );
 
                             let e_bastion = merge_bastion(&g_bastion, &env.bastion);
                             let e_jump = merge_jump(&g_jump, &env.rebond);
@@ -265,6 +280,7 @@ impl Config {
                                     &e_bastion,
                                     &e_jump,
                                     use_sys_cfg,
+                                    e_fs.clone(),
                                 )?;
                                 resolved.push(r);
                             }
@@ -285,6 +301,7 @@ impl Config {
                                 &g_bastion,
                                 &g_jump,
                                 use_sys_cfg,
+                                g_fs.clone(),
                             )?;
                             resolved.push(r);
                         }
@@ -305,6 +322,7 @@ impl Config {
                         &d.bastion,
                         &d.rebond,
                         use_sys_cfg,
+                        d.probe_filesystems.clone(),
                     )?;
                     resolved.push(r);
                 }
@@ -340,6 +358,30 @@ fn merge_jump(
     child.clone().or_else(|| parent.clone())
 }
 
+/// Les probe_filesystems s'accumulent en cascade : chaque niveau ajoute ses
+/// entrées à celles du niveau parent (sans doublon).
+/// Un groupe définissant `/kafka_data` héritera donc aussi des filesystems
+/// déclarés dans les defaults.
+fn extend_filesystems(
+    parent: Option<&Vec<String>>,
+    child: Option<&Vec<String>>,
+) -> Option<Vec<String>> {
+    match (parent, child) {
+        (None, None) => None,
+        (Some(p), None) => Some(p.clone()),
+        (None, Some(c)) => Some(c.clone()),
+        (Some(p), Some(c)) => {
+            let mut merged = p.clone();
+            for item in c {
+                if !merged.contains(item) {
+                    merged.push(item.clone());
+                }
+            }
+            Some(merged)
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn resolve_server(
     s: &Server,
@@ -353,6 +395,7 @@ fn resolve_server(
     def_bastion: &Option<BastionConfig>,
     def_jump: &Option<Vec<JumpConfig>>,
     use_system_ssh_config: bool,
+    def_fs: Option<Vec<String>>,
 ) -> Result<ResolvedServer, ConfigError> {
     let user = s.user.as_deref().or(def_user).unwrap_or("root").to_string();
     let port = s.ssh_port.or(def_port).unwrap_or(22);
@@ -368,6 +411,9 @@ fn resolve_server(
     } else {
         def_opts.cloned().unwrap_or_default()
     };
+
+    let probe_filesystems =
+        extend_filesystems(def_fs.as_ref(), s.probe_filesystems.as_ref()).unwrap_or_default();
 
     let final_bastion = merge_bastion(def_bastion, &s.bastion);
     let final_jump = merge_jump(def_jump, &s.rebond);
@@ -406,6 +452,7 @@ fn resolve_server(
         bastion_user: final_bastion.as_ref().and_then(|b| b.user.clone()),
         bastion_template,
         use_system_ssh_config,
+        probe_filesystems,
     })
 }
 
@@ -451,6 +498,7 @@ mod tests {
                     rebond: None,
                     environments: None,
                     servers: None,
+                    probe_filesystems: None,
                 }),
                 ConfigEntry::Server(Server {
                     name: "Alpha".to_string(),
@@ -462,6 +510,7 @@ mod tests {
                     mode: None,
                     bastion: None,
                     rebond: None,
+                    probe_filesystems: None,
                 }),
                 ConfigEntry::Group(Group {
                     name: "Beta".to_string(),
@@ -474,6 +523,7 @@ mod tests {
                     rebond: None,
                     environments: None,
                     servers: None,
+                    probe_filesystems: None,
                 }),
             ],
         };
@@ -512,6 +562,7 @@ mod tests {
                 ssh_options: None,
                 bastion: None,
                 rebond: None,
+                probe_filesystems: None,
                 environments: Some(vec![Environment {
                     name: "Env1".to_string(),
                     user: None, // Inherits "group_user"
@@ -521,6 +572,7 @@ mod tests {
                     ssh_options: None,
                     bastion: None,
                     rebond: None,
+                    probe_filesystems: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
                         host: "1.1.1.1".to_string(),
@@ -531,6 +583,7 @@ mod tests {
                         mode: None,
                         bastion: None,
                         rebond: None,
+                        probe_filesystems: None,
                     }],
                 }]),
                 servers: None,
@@ -543,5 +596,119 @@ mod tests {
         assert_eq!(s1.name, "S1");
         assert_eq!(s1.user, "group_user");
         assert_eq!(s1.port, 8080);
+    }
+
+    #[test]
+    fn test_probe_filesystems_inheritance() {
+        let config = Config {
+            defaults: Some(Defaults {
+                probe_filesystems: Some(vec!["/data".to_string(), "/var/log".to_string()]),
+                ..Default::default()
+            }),
+            groups: vec![ConfigEntry::Group(Group {
+                name: "G".to_string(),
+                user: None,
+                ssh_key: None,
+                mode: None,
+                ssh_port: None,
+                ssh_options: None,
+                bastion: None,
+                rebond: None,
+                probe_filesystems: None, // hérite des defaults
+                environments: None,
+                servers: Some(vec![
+                    Server {
+                        name: "inherits".to_string(),
+                        host: "1.2.3.4".to_string(),
+                        user: None,
+                        ssh_key: None,
+                        ssh_port: None,
+                        ssh_options: None,
+                        mode: None,
+                        bastion: None,
+                        rebond: None,
+                        probe_filesystems: None, // hérite du groupe → defaults
+                    },
+                    Server {
+                        name: "extends".to_string(),
+                        host: "1.2.3.5".to_string(),
+                        user: None,
+                        ssh_key: None,
+                        ssh_port: None,
+                        ssh_options: None,
+                        mode: None,
+                        bastion: None,
+                        rebond: None,
+                        probe_filesystems: Some(vec!["/mnt/nas".to_string()]), // s'ajoute aux defaults
+                    },
+                ]),
+            })],
+        };
+
+        let resolved = config.resolve().unwrap();
+
+        let inherits = resolved.iter().find(|s| s.name == "inherits").unwrap();
+        assert_eq!(
+            inherits.probe_filesystems,
+            vec!["/data".to_string(), "/var/log".to_string()]
+        );
+
+        // Le serveur ajoute /mnt/nas aux defaults — il ne les remplace PAS
+        let extends = resolved.iter().find(|s| s.name == "extends").unwrap();
+        assert_eq!(
+            extends.probe_filesystems,
+            vec![
+                "/data".to_string(),
+                "/var/log".to_string(),
+                "/mnt/nas".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_probe_filesystems_group_extends_defaults() {
+        let config = Config {
+            defaults: Some(Defaults {
+                probe_filesystems: Some(vec!["/pg_backup".to_string(), "/pg_xlogs".to_string()]),
+                ..Default::default()
+            }),
+            groups: vec![ConfigEntry::Group(Group {
+                name: "ONDE".to_string(),
+                user: None,
+                ssh_key: None,
+                mode: None,
+                ssh_port: None,
+                ssh_options: None,
+                bastion: None,
+                rebond: None,
+                probe_filesystems: Some(vec!["/kafka_data".to_string()]), // s'ajoute
+                environments: None,
+                servers: Some(vec![Server {
+                    name: "kafka01".to_string(),
+                    host: "10.0.0.1".to_string(),
+                    user: None,
+                    ssh_key: None,
+                    ssh_port: None,
+                    ssh_options: None,
+                    mode: None,
+                    bastion: None,
+                    rebond: None,
+                    probe_filesystems: None,
+                }]),
+            })],
+        };
+
+        let resolved = config.resolve().unwrap();
+        let kafka = resolved.iter().find(|s| s.name == "kafka01").unwrap();
+
+        // Le groupe ajoute /kafka_data aux defaults — PG filesystems toujours présents
+        assert_eq!(
+            kafka.probe_filesystems,
+            vec![
+                "/pg_backup".to_string(),
+                "/pg_xlogs".to_string(),
+                "/kafka_data".to_string()
+            ]
+        );
     }
 }

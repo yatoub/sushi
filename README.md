@@ -28,7 +28,7 @@
   - **Configurable Theme**: Choose from four Catppuccin flavors — `latte`, `frappe`, `macchiato`, or `mocha` (default) via `defaults.theme` in your config.
   - **Verbose Mode**: Toggle SSH verbose output with `v`.
   - **Rich Detail Pane**: Shows port (highlighted when non-standard), connection mode, jump host, bastion host, and SSH options.
-  - **Quick Diagnostic** (`d`): Press `d` on any server to run a non-blocking SSH probe. The detail pane displays a **System** block with kernel, CPU model, load average, and color-coded RAM/Disk progress bars (green < 60%, yellow 60–85%, red > 85%). An animated spinner shows while the probe is running. Press `d` again to refresh; changing server resets it.
+  - **Quick Diagnostic** (`d`): Press `d` on any server to run a non-blocking SSH probe. The detail pane displays a **System** block with kernel, CPU model, load average, and color-coded RAM/Disk progress bars (green < 60%, yellow 60–85%, red > 85%). Additional mount points configured via `probe_filesystems` are also shown: each extra path gets its own bar, or a yellow `⚠ /path — not mounted` warning if absent. An animated spinner shows while the probe is running. Press `d` again to refresh; changing server resets it.
   - **Clipboard**: Copy the SSH command for any server with `y` (requires a running clipboard manager on Linux).
 - **State Persistence**: Expanded groups are saved to `~/.sushi_state.json` and restored on next launch.
 - **In-TUI Error Screen**: Connection errors are displayed as an overlay instead of crashing — press `Enter`/`Esc`/`q` to dismiss.
@@ -141,6 +141,7 @@ groups:
   - `rebond`: Jump host chain — a **list** of `{ host, user }` entries. SSH receives `-J user1@host1,user2@host2`. Even a single hop must be written as a list item.
   - `bastion`: Bastion configuration (required when using `bastion` mode).
   - `use_system_ssh_config`: Set to `true` to honour `~/.ssh/config` instead of passing `-F /dev/null`. Defaults to `false`.
+  - `probe_filesystems`: List of extra mount points to inspect during the quick diagnostic (`d`). Uses **additive inheritance**: each level appends its paths to the parent list (unlike `user` or `ssh_key` which replace). If a path is not mounted on the target server a yellow `⚠` warning is shown instead of a progress bar.
 - **`groups`**: The top-level hierarchy. Can contain `environments` or direct `servers`.
   - Can override any default setting including `mode`.
 - **`environments`**: A sub-grouping under a Group.
@@ -224,7 +225,7 @@ defaults:
 - **Search Bar**: Dynamic title showing result count ("🔍 45 / 387 servers")
 - **Connection Modes**: Tab interface with visual highlight
 - **Verbose Toggle**: Checkbox indicator (☐/☑) with color feedback
-- **Detail Pane**: Port, mode, identity file, jump/bastion host, SSH options, and **System** block (kernel, CPU, load, RAM/Disk bars) after running `d`
+- **Detail Pane**: Port, mode, identity file, jump/bastion host, SSH options, and **System** block (kernel, CPU, load, RAM/Disk bars, plus extra mount points) after running `d`
 - **Error Overlay**: Centered popup for connection errors — press `Enter` to dismiss
 
 ## 🤝 Contributing

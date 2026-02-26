@@ -507,6 +507,28 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         ]));
                         lines.push(probe_bar("RAM", r.ram_pct, r.ram_total_gb, theme));
                         lines.push(probe_bar("Disk /", r.disk_pct, r.disk_total_gb, theme));
+                        for fs_entry in &r.extra_fs {
+                            match &fs_entry.usage {
+                                Some(usage) => {
+                                    let label = format!("Disk {}", fs_entry.mountpoint);
+                                    lines.push(probe_bar(&label, usage.pct, usage.total_gb, theme));
+                                }
+                                None => {
+                                    lines.push(Line::from(vec![
+                                        Span::styled(
+                                            format!("⚠  {}", fs_entry.mountpoint),
+                                            Style::default()
+                                                .fg(theme.yellow)
+                                                .add_modifier(Modifier::BOLD),
+                                        ),
+                                        Span::styled(
+                                            " — non monté",
+                                            Style::default().fg(theme.subtext0),
+                                        ),
+                                    ]));
+                                }
+                            }
+                        }
                     }
                     ProbeState::Error(msg) => {
                         lines.push(Line::from(vec![Span::styled(

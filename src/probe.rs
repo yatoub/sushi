@@ -8,14 +8,14 @@ use crate::ssh::client::build_ssh_args;
 use anyhow::Result;
 use std::process::Command;
 
-/// One-liner bash envoyé en argument SSH.
+/// Partie fixe du one-liner bash envoyé en argument SSH.
 /// Retourne exactement 5 lignes :
 /// 1. kernel (`uname -r`)
 /// 2. modèle CPU (première entrée `/proc/cpuinfo`)
 /// 3. load average 1/5/15m
 /// 4. RAM : `<pct_used> <total_bytes>`
 /// 5. Disque `/` : `<pct_used> <total_bytes>`
-const PROBE_CMD: &str = concat!(
+const PROBE_BASE: &str = concat!(
     "uname -r; ",
     "awk '/^model name/{sub(/.*: /,\"\"); print; exit}' /proc/cpuinfo; ",
     "uptime | awk -F'load average:' '{print $2}' | xargs; ",
@@ -23,7 +23,43 @@ const PROBE_CMD: &str = concat!(
     "df -B1 / | awk 'NR==2{printf \"%.0f %.0f\\n\", $3/$2*100, $2}'",
 );
 
+/// Construit le one-liner complet en ajoutant une commande `df` par filesystem
+/// supplémentaire configuré. Chaque filesystem produit soit `<pct> <bytes>`
+/// (présent) soit `absent` (non monté ou inaccessible).
+fn build_probe_cmd(extra_filesystems: &[String]) -> String {
+    if extra_filesystems.is_empty() {
+        return PROBE_BASE.to_string();
+    }
+    let mut cmd = PROBE_BASE.to_string();
+    for fs in extra_filesystems {
+        cmd.push_str(&format!(
+            "; df -B1 {fs} 2>/dev/null \
+            | awk 'NR==2{{printf \"%.0f %.0f\\n\", $3/$2*100, $2; found=1}} \
+                   END{{if(!found) print \"absent\"}}'"
+        ));
+    }
+    cmd
+}
+
 // ─── Types publics ────────────────────────────────────────────────────────────
+
+/// Usage d'un point de montage retourné par le probe.
+#[derive(Debug, Clone)]
+pub struct FsUsage {
+    /// Pourcentage utilisé (0–100).
+    pub pct: u8,
+    /// Capacité totale en Go.
+    pub total_gb: f32,
+}
+
+/// Résultat de l'interrogation d'un filesystem supplémentaire.
+#[derive(Debug, Clone)]
+pub struct FsEntry {
+    /// Chemin du point de montage configuré (ex. `/data`).
+    pub mountpoint: String,
+    /// `None` si le filesystem est absent ou non monté sur le serveur.
+    pub usage: Option<FsUsage>,
+}
 
 /// Métriques système collectées par [`probe`].
 #[derive(Debug, Clone)]
@@ -40,6 +76,8 @@ pub struct ProbeResult {
     pub disk_pct: u8,
     /// Capacité disque `/` en Go.
     pub disk_total_gb: f32,
+    /// Filesystems supplémentaires configurés via `probe_filesystems`.
+    pub extra_fs: Vec<FsEntry>,
 }
 
 /// État courant d'un diagnostic lancé sur un serveur.
@@ -59,8 +97,9 @@ pub enum ProbeState {
 // ─── Parsing ──────────────────────────────────────────────────────────────────
 
 impl ProbeResult {
-    /// Parse les 5 lignes retournées par `PROBE_CMD`.
-    pub fn parse(raw: &str) -> Result<Self> {
+    /// Parse la sortie de `build_probe_cmd` : 5 lignes fixes + N lignes pour
+    /// les filesystems supplémentaires (soit `<pct> <bytes>` soit `absent`).
+    pub fn parse(raw: &str, extra_filesystems: &[String]) -> Result<Self> {
         let lines: Vec<&str> = raw
             .lines()
             .map(str::trim)
@@ -78,6 +117,21 @@ impl ProbeResult {
         let (ram_pct, ram_total_gb) = parse_pct_bytes(lines[3], "RAM")?;
         let (disk_pct, disk_total_gb) = parse_pct_bytes(lines[4], "Disk")?;
 
+        let mut extra_fs = Vec::new();
+        for (i, mountpoint) in extra_filesystems.iter().enumerate() {
+            let usage = match lines.get(5 + i) {
+                Some(&"absent") | None => None,
+                Some(line) => {
+                    let (pct, total_gb) = parse_pct_bytes(line, mountpoint)?;
+                    Some(FsUsage { pct, total_gb })
+                }
+            };
+            extra_fs.push(FsEntry {
+                mountpoint: mountpoint.clone(),
+                usage,
+            });
+        }
+
         Ok(ProbeResult {
             kernel: lines[0].to_string(),
             cpu_model: lines[1].to_string(),
@@ -86,6 +140,7 @@ impl ProbeResult {
             ram_total_gb,
             disk_pct,
             disk_total_gb,
+            extra_fs,
         })
     }
 }
@@ -136,7 +191,8 @@ pub fn probe(server: &ResolvedServer, mode: ConnectionMode) -> Result<ProbeResul
     args.push("BatchMode=yes".into()); // pas d'invite interactive
 
     args.push(destination);
-    args.push(PROBE_CMD.into()); // commande distante
+    let cmd = build_probe_cmd(&server.probe_filesystems);
+    args.push(cmd); // commande distante
 
     let output = Command::new("ssh").args(&args).output()?;
 
@@ -145,7 +201,10 @@ pub fn probe(server: &ResolvedServer, mode: ConnectionMode) -> Result<ProbeResul
         anyhow::bail!("SSH probe échoué : {}", stderr.trim());
     }
 
-    ProbeResult::parse(&String::from_utf8_lossy(&output.stdout))
+    ProbeResult::parse(
+        &String::from_utf8_lossy(&output.stdout),
+        &server.probe_filesystems,
+    )
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -163,7 +222,7 @@ mod tests {
 
     #[test]
     fn parse_valid() {
-        let r = ProbeResult::parse(SAMPLE).unwrap();
+        let r = ProbeResult::parse(SAMPLE, &[]).unwrap();
         assert_eq!(r.kernel, "6.1.0-28-amd64");
         assert_eq!(r.cpu_model, "Intel(R) Xeon(R) CPU E5-2670 0 @ 2.60GHz");
         assert_eq!(r.load, "0.42, 0.38, 0.31");
@@ -171,42 +230,98 @@ mod tests {
         assert!((r.ram_total_gb - 15.0).abs() < 1.0, "ram ~15 GB");
         assert_eq!(r.disk_pct, 23);
         assert!((r.disk_total_gb - 465.7).abs() < 1.0, "disk ~465 GB");
+        assert!(r.extra_fs.is_empty());
     }
 
     #[test]
     fn parse_ignores_trailing_blank_lines() {
         let with_blanks = format!("{}\n\n", SAMPLE);
-        assert!(ProbeResult::parse(&with_blanks).is_ok());
+        assert!(ProbeResult::parse(&with_blanks, &[]).is_ok());
     }
 
     #[test]
     fn parse_too_few_lines() {
-        let err = ProbeResult::parse("only one line\n").unwrap_err();
+        let err = ProbeResult::parse("only one line\n", &[]).unwrap_err();
         assert!(err.to_string().contains("lignes"));
     }
 
     #[test]
     fn parse_bad_ram_pct() {
         let bad = "6.1.0\nIntel\n0.1\nXX 16000000000\n23 500000000000\n";
-        assert!(ProbeResult::parse(bad).is_err());
+        assert!(ProbeResult::parse(bad, &[]).is_err());
     }
 
     #[test]
     fn parse_bad_ram_bytes() {
         let bad = "6.1.0\nIntel\n0.1\n67 not_a_number\n23 500000000000\n";
-        assert!(ProbeResult::parse(bad).is_err());
+        assert!(ProbeResult::parse(bad, &[]).is_err());
     }
 
     #[test]
     fn parse_bad_disk_pct() {
         let bad = "6.1.0\nIntel\n0.1\n67 16000000000\nXX 500000000000\n";
-        assert!(ProbeResult::parse(bad).is_err());
+        assert!(ProbeResult::parse(bad, &[]).is_err());
     }
 
     #[test]
     fn parse_disk_single_column() {
         // Seulement un champ sur la ligne disk → erreur
         let bad = "6.1.0\nIntel\n0.1\n67 16000000000\n23\n";
-        assert!(ProbeResult::parse(bad).is_err());
+        assert!(ProbeResult::parse(bad, &[]).is_err());
+    }
+
+    #[test]
+    fn parse_extra_fs_present() {
+        // Sortie avec deux filesystems supplémentaires présents
+        let raw = format!("{}{}", SAMPLE, "45 107374182400\n30 53687091200\n");
+        let fs_list = vec!["/data".to_string(), "/var/log".to_string()];
+        let r = ProbeResult::parse(&raw, &fs_list).unwrap();
+        assert_eq!(r.extra_fs.len(), 2);
+
+        let data = &r.extra_fs[0];
+        assert_eq!(data.mountpoint, "/data");
+        let usage = data.usage.as_ref().expect("/data should be present");
+        assert_eq!(usage.pct, 45);
+        assert!((usage.total_gb - 100.0).abs() < 1.0, "expected ~100 GB");
+
+        let varlog = &r.extra_fs[1];
+        assert_eq!(varlog.mountpoint, "/var/log");
+        assert!(varlog.usage.is_some());
+    }
+
+    #[test]
+    fn parse_extra_fs_absent() {
+        // Premier filesystem présent, second absent
+        let raw = format!("{}{}", SAMPLE, "45 107374182400\nabsent\n");
+        let fs_list = vec!["/data".to_string(), "/backup".to_string()];
+        let r = ProbeResult::parse(&raw, &fs_list).unwrap();
+        assert_eq!(r.extra_fs.len(), 2);
+        assert!(r.extra_fs[0].usage.is_some());
+        assert!(r.extra_fs[1].usage.is_none(), "/backup should be absent");
+    }
+
+    #[test]
+    fn parse_extra_fs_all_absent() {
+        // Aucun filesystem supplémentaire dans la sortie (ligne manquante → None)
+        let fs_list = vec!["/mnt/nas".to_string()];
+        let r = ProbeResult::parse(SAMPLE, &fs_list).unwrap();
+        assert_eq!(r.extra_fs.len(), 1);
+        assert!(r.extra_fs[0].usage.is_none(), "/mnt/nas should be absent");
+    }
+
+    #[test]
+    fn build_probe_cmd_no_extra() {
+        let cmd = build_probe_cmd(&[]);
+        assert!(cmd.contains("uname -r"));
+        assert!(!cmd.contains("df -B1 /data"));
+    }
+
+    #[test]
+    fn build_probe_cmd_with_extra() {
+        let fs = vec!["/data".to_string(), "/backup".to_string()];
+        let cmd = build_probe_cmd(&fs);
+        assert!(cmd.contains("df -B1 /data"));
+        assert!(cmd.contains("df -B1 /backup"));
+        assert!(cmd.contains("if(!found) print \"absent\""));
     }
 }

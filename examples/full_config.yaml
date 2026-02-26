@@ -33,10 +33,23 @@ defaults:
   #   - host: "jump2.example.com"
   #     user: "jump"
 
+  # Points de montage supplémentaires à surveiller lors du diagnostic (`d`).
+  # Sémantique : EXTENSION — chaque niveau AJOUTE ses chemins à ceux du parent
+  # (contrairement à user/ssh_key qui remplacent).
+  # Si un filesystem n'est pas monté sur le serveur, un avertissement ⚠ est affiché
+  # à la place de la barre de progression.
+  probe_filesystems:
+    - "/var/log"
+    - "/data"
+
 groups:
   # --- EXEMPLE NIVEAU 3 : Projet -> Environnement -> Serveur ---
   - name: "Projet Alpha"
     user: "dev" # Surcharge le défaut pour tout le projet Alpha
+    # Ajoute /app_data aux filesystems définis dans defaults (/var/log, /data).
+    # Un serveur de ce groupe avec mode: direct surveillera /var/log, /data ET /app_data.
+    probe_filesystems:
+      - "/app_data"
     environments:
       - name: "Production"
         servers:
@@ -46,6 +59,9 @@ groups:
             mode: "direct" # Connexion classique
           - name: "db-01"
             host: "192.168.1.11"
+            # Ajoute /pg_data au niveau serveur : surveille /var/log, /data, /app_data ET /pg_data.
+            probe_filesystems:
+              - "/pg_data"
       - name: "Staging"
         servers:
           - name: "web-stg"

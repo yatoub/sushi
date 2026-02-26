@@ -163,6 +163,117 @@ Tous les textes hardcodés dans `ui/mod.rs`, `main.rs` et `probe.rs` sont rempla
 
 ---
 
+---
+
+## Fonctionnalité secondaire : points de montage configurables dans le probe
+
+### Objectif
+
+En plus du point de montage fixe `/`, le probe peut lire l'utilisation de **filesystems supplémentaires** définis dans la configuration YAML. Si un filesystem déclaré est absent du serveur (occupation non retournée par `df`), un message explicite est affiché dans les résultats.
+
+### Configuration YAML
+
+Nouveau champ optionnel `probe_filesystems` au niveau `defaults`, groupe, environnement ou serveur :
+
+```yaml
+defaults:
+  probe_filesystems:
+    - /data
+    - /var/log
+
+groups:
+  - name: "Storage"
+    probe_filesystems:
+      - /mnt/nas
+      - /backup
+    servers:
+      - name: "nas01"
+        host: "nas01.internal"
+        probe_filesystems:   # surcharge locale (remplace héritage)
+          - /mnt/data
+```
+
+L'héritage suit la même cascade que les autres champs : `defaults → groupe → environnement → serveur`.
+
+### Architecture technique
+
+**`src/config.rs`** — ajout du champ dans les structs existantes :
+
+```rust
+// Dans Defaults, Group, Environment, Server
+pub probe_filesystems: Option<Vec<String>>,
+
+// Dans ResolvedServer
+pub probe_filesystems: Vec<String>,  // vide si non configuré
+```
+
+`resolve_server()` fusionne le champ en cascade (même logique que `ssh_options`).
+
+**`src/probe.rs`** — extension de la commande distante :
+
+La commande SSH exécutée passe de `df -h /` à une commande composite qui interroge `/` plus tous les points de montage configurés :
+
+```rust
+// Commande générée si probe_filesystems = ["/data", "/var/log"]
+"df -h / /data /var/log 2>/dev/null; echo '---FS-DONE---'"
+```
+
+Le parsing du retour identifie chaque ligne par son point de montage.  
+Si un filesystem demandé est absent de la sortie `df`, la struct résultat contient une entrée dédiée :
+
+```rust
+pub struct FsEntry {
+    pub mountpoint: String,
+    pub usage:      Option<FsUsage>,  // None → absent du serveur
+}
+
+pub struct FsUsage {
+    pub size:    String,
+    pub used:    String,
+    pub avail:   String,
+    pub percent: String,
+}
+```
+
+**`src/ui/mod.rs`** — affichage dans le panneau détails :
+
+- `/` est toujours affiché en premier (comportement actuel inchangé).
+- Les filesystems additionnels suivent, un par ligne, avec le même format `Disk /data   10G / 2G (20%)`.
+- Si `usage` est `None` : ligne affichée en jaune avec le libellé `⚠ /data — not mounted` (`probe_fs_absent` dans `Strings`).
+
+**`src/i18n.rs`** — deux nouvelles clés dans `Strings` :
+
+```rust
+pub probe_disk_extra:  &'static str,  // "Disk {}"  (format string, mountpoint)
+pub probe_fs_absent:   &'static str,  // "⚠ {} — not mounted" / "⚠ {} — non monté"
+```
+
+### Inventaire des textes supplémentaires
+
+| Fichier | Clé `Strings` |
+|---------|---------------|
+| `ui/mod.rs` | `probe_disk_extra` |
+| `ui/mod.rs` | `probe_fs_absent` |
+
+### Ordre d'implémentation (ajout à la séquence existante)
+
+Insérer entre les étapes 6 et 7 :
+
+**6b.** `src/config.rs` — `probe_filesystems: Option<Vec<String>>` dans `Defaults`, `Group`, `Environment`, `Server` et `ResolvedServer` ; cascade dans `resolve_server()`.
+
+**6c.** `src/probe.rs` — commande `df` étendue, parsing multi-filesystem, struct `FsEntry` / `FsUsage`.
+
+**6d.** `src/ui/mod.rs` — rendu des entrées supplémentaires avec indicateur jaune si absent.
+
+**6e.** `src/i18n.rs` — ajout de `probe_disk_extra` et `probe_fs_absent` dans `STRINGS_EN` et `STRINGS_FR`.
+
+### Tests
+
+- `config::tests` : `probe_filesystems` hérité correctement depuis `defaults` ; surcharge au niveau serveur.
+- `probe::tests` : parsing `df` avec un filesystem absent → `FsEntry { usage: None }`.
+
+---
+
 ## Non inclus dans cette version
 
 - Autres langues (espagnol, allemand…) — l'architecture `Strings` est extensible mais seules Fr/En sont livrées.

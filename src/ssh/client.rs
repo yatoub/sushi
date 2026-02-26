@@ -136,6 +136,7 @@ mod tests {
             bastion_user: None,
             bastion_template: "{target_user}@%n:SSH:{bastion_user}".into(),
             use_system_ssh_config: false,
+            probe_filesystems: vec![],
         }
     }
 

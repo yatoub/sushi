@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.7.1] — 2026-02-28
+
+### Fixed
+
+- **Panic au démarrage** : les chaînes littérales `conflicts_with_all` de clap référençaient les anciens noms de champs `"rebond"` et `"bastion"` après leur renommage en `"jump"` et `"wallix"`.
+
+---
+
 ## [0.7.0] — 2026-02-28
 
 ### Added

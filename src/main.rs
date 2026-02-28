@@ -159,7 +159,7 @@ fn build_adhoc_server(
         bastion_host,
         bastion_user,
         bastion_template,
-        use_system_ssh_config: false,
+        use_system_ssh_config: d.use_system_ssh_config.unwrap_or(false),
         probe_filesystems: vec![],
     }
 }

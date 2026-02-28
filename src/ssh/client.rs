@@ -45,7 +45,7 @@ pub fn build_ssh_args(
     // Destination — toujours en dernier.
     match mode {
         ConnectionMode::Direct => {
-            collect_target_args(&mut args, &server.user, &server.host);
+            collect_target_args(&mut args, &server.user, &server.host, server.port);
         }
         ConnectionMode::Jump => {
             let jump_str = server.jump_host.as_deref().unwrap_or("");
@@ -54,7 +54,7 @@ pub fn build_ssh_args(
             }
             args.push("-J".into());
             args.push(jump_str.to_string());
-            collect_target_args(&mut args, &server.user, &server.host);
+            collect_target_args(&mut args, &server.user, &server.host, server.port);
         }
         ConnectionMode::Bastion => {
             let bastion_host_str = server.bastion_host.as_deref().unwrap_or("");
@@ -96,11 +96,15 @@ pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> 
 
 // ─── helpers privés ──────────────────────────────────────────────────────────
 
-fn collect_target_args(args: &mut Vec<String>, user: &str, host_str: &str) {
-    let (host, port) = parse_host_port(host_str);
-    if let Some(p) = port {
+fn collect_target_args(args: &mut Vec<String>, user: &str, host_str: &str, server_port: u16) {
+    let (host, embedded_port) = parse_host_port(host_str);
+    // Priorité : port embarqué dans host_str (ex. "host:2222") puis server.port.
+    let port = embedded_port
+        .and_then(|p| p.parse::<u16>().ok())
+        .unwrap_or(server_port);
+    if port != 22 {
         args.push("-p".into());
-        args.push(p.to_string());
+        args.push(port.to_string());
     }
     args.push(format!("{}@{}", user, host));
 }
@@ -163,6 +167,18 @@ mod tests {
     fn direct_with_port_in_host() {
         let mut s = base_server();
         s.host = "10.0.0.1:2222".into();
+        let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
+        assert!(args.contains(&"-p".to_string()));
+        assert!(args.contains(&"2222".to_string()));
+        assert!(args.contains(&"admin@10.0.0.1".to_string()));
+    }
+
+    #[test]
+    fn direct_with_port_field() {
+        // Port via server.port (cas CLI --port ou ssh_port dans la config),
+        // sans port embarqué dans la chaîne hôte.
+        let mut s = base_server();
+        s.port = 2222;
         let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
         assert!(args.contains(&"-p".to_string()));
         assert!(args.contains(&"2222".to_string()));

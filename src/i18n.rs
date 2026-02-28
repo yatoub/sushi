@@ -96,6 +96,14 @@ pub struct Strings {
     pub status_searching: &'static str,
     pub status_search_active: &'static str,
 
+    // ── Avertissements includes ─────────────────────────────────────────────
+    /// `{}` = label, `{}` = chemin, `{}` = erreur
+    pub include_warn_load: &'static str,
+    /// `{}` = label, `{}` = chemin
+    pub include_warn_circular: &'static str,
+    /// `{}` = label
+    pub include_warn_nested: &'static str,
+
     // ── Messages de statut (gabarits) ───────────────────────────────────────
     /// `{}` = commande SSH copiée.
     pub copied: &'static str,
@@ -160,6 +168,10 @@ pub static STRINGS_FR: Strings = Strings {
     status_searching: "Recherche : Tapez pour filtrer… | Échap : Annuler | Ctrl+U : Effacer | Entrée : Valider",
     status_search_active: "Navigation : ↑/↓ | Effacer : Échap | Nouvelle recherche : / | Verbose : v | Entrée : Connecter | q : Quitter",
 
+    include_warn_load: "Impossible de charger '{}' ({}) : {}",
+    include_warn_circular: "Dépendance circulaire ignorée : '{}' ({})",
+    include_warn_nested: "Les includes imbriqués dans '{}' sont ignorés (v0.7)",
+
     copied: "Copié : {}",
     clipboard_error: "Erreur presse-papiers : {}",
     clipboard_unavailable: "Presse-papiers indisponible",
@@ -219,6 +231,10 @@ pub static STRINGS_EN: Strings = Strings {
     status_normal: "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | Verbose: v | y: Copy cmd | d: Probe | q: Quit",
     status_searching: "Search Mode: Type to filter | ESC: Cancel | Ctrl+U: Clear | Enter: Apply",
     status_search_active: "Navigate: ↑/↓ | Clear: ESC | New search: / | Verbose: v | Enter: Connect | q: Quit",
+
+    include_warn_load: "Failed to load '{}' ({}) : {}",
+    include_warn_circular: "Circular dependency ignored: '{}' ({})",
+    include_warn_nested: "Nested includes in '{}' are ignored (v0.7)",
 
     copied: "Copied: {}",
     clipboard_error: "Clipboard error: {}",

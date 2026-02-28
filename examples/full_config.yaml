@@ -2,6 +2,21 @@
 # sushi - Configuration d'exemple
 # ==========================================
 
+# ─── MULTI-FICHIERS (optionnel) ─────────────────────────────────────────────
+# Permet de répartir la configuration par équipe ou périmètre.
+# Chaque fichier inclus apparaît dans la TUI comme un namespace collapsible (📦).
+#
+# includes:
+#   - label: "DEV"                  # Libellé affiché dans la TUI
+#     path: "~/.sushi_dev.yml"      # Chemin absolu ou ~ étendu
+#   - label: "QUALITY ASSURANCE"
+#     path: "~/.sushi_quality.yml"
+#
+# Règles :
+#   - Les `defaults` d'un fichier inclus sont locaux à ce fichier.
+#   - Les includes imbriqués (includes dans un sous-fichier) sont ignorés (v0.7).
+#   - Un fichier manquant ou circulaire produit un avertissement non-bloquant.
+
 # 1. Paramètres par défaut (Niveau Global)
 # Ces valeurs sont utilisées si elles ne sont pas redéfinies plus bas.
 defaults:
@@ -14,7 +29,7 @@ defaults:
   use_system_ssh_config: false
   # Thème Catppuccin : latte | frappe | macchiato | mocha (défaut)
   theme: mocha
-  bastion:
+  wallix:
     host: "bastion.example.com"
     user: "bastion"
   # BREAKING CHANGE v0.5.0 : rebond est désormais une LISTE (même pour un seul saut).
@@ -23,7 +38,7 @@ defaults:
   #     host: "jump.example.com"
   #     user: "jump"
   # Nouvelle syntaxe (v0.5.0+) — rebond simple (un saut) :
-  rebond:
+  jump:
     - host: "jump.example.com"
       user: "jump"
   # Rebond multi-sauts (deux sauts successifs) :

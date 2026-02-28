@@ -1,5 +1,5 @@
 use crate::config::{
-    Config, ConfigEntry, ConfigError, ConnectionMode, ResolvedServer, ThemeVariant,
+    Config, ConfigEntry, ConfigError, ConnectionMode, IncludeWarning, ResolvedServer, ThemeVariant,
 };
 use crate::probe::{ProbeResult, ProbeState};
 use crate::state;
@@ -19,8 +19,12 @@ pub enum AppMode {
 
 #[derive(Debug, Clone)]
 pub enum ConfigItem {
-    Group(String),
-    Environment(String, String),
+    /// En-tête de namespace (fichier inclus).
+    Namespace(String),
+    /// En-tête de groupe — `(name, ns_label)`, ns_label="" si niveau racine.
+    Group(String, String),
+    /// En-tête d'environnement — `(group_name, env_name, ns_label)`.
+    Environment(String, String, String),
     Server(Box<ResolvedServer>),
 }
 
@@ -51,6 +55,9 @@ pub struct App {
     cached_items: Vec<ConfigItem>,
     items_dirty: bool,
 
+    /// Avertissements non-bloquants collectés lors du chargement des includes.
+    pub warnings: Vec<IncludeWarning>,
+
     /// Instance du presse-papiers gardée vivante pour éviter le drop prématuré
     /// (arboard affiche un warning si l'objet est détruit trop vite après set_text).
     pub clipboard: Option<arboard::Clipboard>,
@@ -65,7 +72,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: Config) -> Result<Self, ConfigError> {
+    pub fn new(config: Config, warnings: Vec<IncludeWarning>) -> Result<Self, ConfigError> {
         let resolved = config.resolve()?;
 
         // Résout le thème avant de déplacer config dans le struct
@@ -94,6 +101,7 @@ impl App {
             probe_state: ProbeState::Idle,
             probe_rx: None,
             lang: crate::i18n::get_strings(crate::i18n::detect_lang()),
+            warnings,
         };
 
         app.list_state.select(Some(0));
@@ -104,6 +112,32 @@ impl App {
         app.items_dirty = true;
 
         app.update_mode_from_selection();
+
+        // Affiche les avertissements d'includes comme erreur non-bloquante
+        if !app.warnings.is_empty() {
+            let lines: Vec<String> = app
+                .warnings
+                .iter()
+                .map(|w| match w {
+                    crate::config::IncludeWarning::LoadError { label, path, error } => app
+                        .lang
+                        .include_warn_load
+                        .replacen("{}", label, 1)
+                        .replacen("{}", path, 1)
+                        .replacen("{}", error, 1),
+                    crate::config::IncludeWarning::Circular { label, path } => app
+                        .lang
+                        .include_warn_circular
+                        .replacen("{}", label, 1)
+                        .replacen("{}", path, 1),
+                    crate::config::IncludeWarning::NestedIgnored { label } => {
+                        app.lang.include_warn_nested.replacen("{}", label, 1)
+                    }
+                })
+                .collect();
+            app.app_mode = AppMode::Error(lines.join("\n"));
+        }
+
         Ok(app)
     }
 
@@ -138,24 +172,28 @@ impl App {
     pub fn toggle_expansion(&mut self) {
         let items = self.get_visible_items();
         if let Some(item) = items.get(self.selected_index) {
-            match item {
-                ConfigItem::Group(name) => {
-                    let id = format!("Group:{}", name);
-                    if self.expanded_items.contains(&id) {
-                        self.expanded_items.remove(&id);
+            let id = match item {
+                ConfigItem::Namespace(label) => format!("NS:{}", label),
+                ConfigItem::Group(name, ns) => {
+                    if ns.is_empty() {
+                        format!("Group:{}", name)
                     } else {
-                        self.expanded_items.insert(id);
+                        format!("NS:{}:Group:{}", ns, name)
                     }
                 }
-                ConfigItem::Environment(g, e) => {
-                    let id = format!("Env:{}:{}", g, e);
-                    if self.expanded_items.contains(&id) {
-                        self.expanded_items.remove(&id);
+                ConfigItem::Environment(g, e, ns) => {
+                    if ns.is_empty() {
+                        format!("Env:{}:{}", g, e)
                     } else {
-                        self.expanded_items.insert(id);
+                        format!("NS:{}:Env:{}:{}", ns, g, e)
                     }
                 }
-                _ => {}
+                ConfigItem::Server(_) => return,
+            };
+            if self.expanded_items.contains(&id) {
+                self.expanded_items.remove(&id);
+            } else {
+                self.expanded_items.insert(id);
             }
         }
         self.items_dirty = true; // l'état d'expansion a changé
@@ -171,88 +209,181 @@ impl App {
 
     fn build_visible_items(&self) -> Vec<ConfigItem> {
         let mut items = Vec::new();
+        let searching = !self.search_query.is_empty();
 
         for entry in &self.config.groups {
             match entry {
+                ConfigEntry::Namespace(ns) => {
+                    items.push(ConfigItem::Namespace(ns.label.clone()));
+                    let ns_id = format!("NS:{}", ns.label);
+                    let ns_expanded = self.expanded_items.contains(&ns_id) || searching;
+                    if ns_expanded {
+                        self.push_entries(&ns.entries, &ns.label, &mut items);
+                    }
+                }
                 ConfigEntry::Server(s_conf) => {
-                    // Top-level server
-                    if !self.search_query.is_empty()
-                        && !self.matches_search(&s_conf.name, &s_conf.host)
-                    {
+                    if searching && !self.matches_search(&s_conf.name, &s_conf.host) {
                         continue;
                     }
-                    // Find resolved server with empty group name
                     if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
-                        rs.name == s_conf.name && rs.group_name.is_empty() && rs.env_name.is_empty()
+                        rs.name == s_conf.name
+                            && rs.group_name.is_empty()
+                            && rs.env_name.is_empty()
+                            && rs.namespace.is_empty()
                     }) {
                         items.push(ConfigItem::Server(Box::new(resolved.clone())));
                     }
                 }
                 ConfigEntry::Group(group) => {
-                    items.push(ConfigItem::Group(group.name.clone()));
-
+                    items.push(ConfigItem::Group(group.name.clone(), String::new()));
                     let group_id = format!("Group:{}", group.name);
-                    let group_expanded =
-                        self.expanded_items.contains(&group_id) || !self.search_query.is_empty();
+                    let group_expanded = self.expanded_items.contains(&group_id) || searching;
 
                     if group_expanded {
-                        if let Some(envs) = &group.environments {
-                            for env in envs {
-                                items.push(ConfigItem::Environment(
-                                    group.name.clone(),
-                                    env.name.clone(),
-                                ));
-
-                                let env_id = format!("Env:{}:{}", group.name, env.name);
-                                let env_expanded = self.expanded_items.contains(&env_id)
-                                    || !self.search_query.is_empty();
-
-                                if env_expanded {
-                                    for server in &env.servers {
-                                        if !self.search_query.is_empty()
-                                            && !self.matches_search(&server.name, &server.host)
-                                        {
-                                            continue;
-                                        }
-
-                                        if let Some(resolved) =
-                                            self.resolved_servers.iter().find(|rs| {
-                                                rs.name == server.name
-                                                    && rs.env_name == env.name
-                                                    && rs.group_name == group.name
-                                            })
-                                        {
-                                            items.push(ConfigItem::Server(Box::new(
-                                                resolved.clone(),
-                                            )));
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if let Some(servers) = &group.servers {
-                            for server in servers {
-                                if !self.search_query.is_empty()
-                                    && !self.matches_search(&server.name, &server.host)
-                                {
-                                    continue;
-                                }
-
-                                if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
-                                    rs.name == server.name
-                                        && rs.env_name.is_empty()
-                                        && rs.group_name == group.name
-                                }) {
-                                    items.push(ConfigItem::Server(Box::new(resolved.clone())));
-                                }
-                            }
-                        }
+                        self.push_group_children(group, "", &mut items);
                     }
                 }
             }
         }
         items
+    }
+
+    /// Itère les entrées d'un namespace et les pousse dans `items`.
+    fn push_entries(&self, entries: &[ConfigEntry], ns: &str, items: &mut Vec<ConfigItem>) {
+        let searching = !self.search_query.is_empty();
+
+        for entry in entries {
+            match entry {
+                ConfigEntry::Group(group) => {
+                    items.push(ConfigItem::Group(group.name.clone(), ns.to_string()));
+                    let group_id = format!("NS:{}:Group:{}", ns, group.name);
+                    let group_expanded = self.expanded_items.contains(&group_id) || searching;
+                    if group_expanded {
+                        self.push_group_children_ns(group, ns, items);
+                    }
+                }
+                ConfigEntry::Server(s_conf) => {
+                    if searching && !self.matches_search(&s_conf.name, &s_conf.host) {
+                        continue;
+                    }
+                    if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
+                        rs.name == s_conf.name
+                            && rs.group_name.is_empty()
+                            && rs.env_name.is_empty()
+                            && rs.namespace == ns
+                    }) {
+                        items.push(ConfigItem::Server(Box::new(resolved.clone())));
+                    }
+                }
+                ConfigEntry::Namespace(_) => {} // imbriqué — ignoré
+            }
+        }
+    }
+
+    /// Enfants d'un groupe racine (pas de namespace).
+    fn push_group_children(
+        &self,
+        group: &crate::config::Group,
+        _ns: &str,
+        items: &mut Vec<ConfigItem>,
+    ) {
+        let searching = !self.search_query.is_empty();
+
+        if let Some(envs) = &group.environments {
+            for env in envs {
+                items.push(ConfigItem::Environment(
+                    group.name.clone(),
+                    env.name.clone(),
+                    String::new(),
+                ));
+                let env_id = format!("Env:{}:{}", group.name, env.name);
+                let env_expanded = self.expanded_items.contains(&env_id) || searching;
+                if env_expanded {
+                    for server in &env.servers {
+                        if searching && !self.matches_search(&server.name, &server.host) {
+                            continue;
+                        }
+                        if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
+                            rs.name == server.name
+                                && rs.env_name == env.name
+                                && rs.group_name == group.name
+                                && rs.namespace.is_empty()
+                        }) {
+                            items.push(ConfigItem::Server(Box::new(resolved.clone())));
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(servers) = &group.servers {
+            for server in servers {
+                if searching && !self.matches_search(&server.name, &server.host) {
+                    continue;
+                }
+                if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
+                    rs.name == server.name
+                        && rs.env_name.is_empty()
+                        && rs.group_name == group.name
+                        && rs.namespace.is_empty()
+                }) {
+                    items.push(ConfigItem::Server(Box::new(resolved.clone())));
+                }
+            }
+        }
+    }
+
+    /// Enfants d'un groupe sous namespace.
+    fn push_group_children_ns(
+        &self,
+        group: &crate::config::Group,
+        ns: &str,
+        items: &mut Vec<ConfigItem>,
+    ) {
+        let searching = !self.search_query.is_empty();
+
+        if let Some(envs) = &group.environments {
+            for env in envs {
+                items.push(ConfigItem::Environment(
+                    group.name.clone(),
+                    env.name.clone(),
+                    ns.to_string(),
+                ));
+                let env_id = format!("NS:{}:Env:{}:{}", ns, group.name, env.name);
+                let env_expanded = self.expanded_items.contains(&env_id) || searching;
+                if env_expanded {
+                    for server in &env.servers {
+                        if searching && !self.matches_search(&server.name, &server.host) {
+                            continue;
+                        }
+                        if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
+                            rs.name == server.name
+                                && rs.env_name == env.name
+                                && rs.group_name == group.name
+                                && rs.namespace == ns
+                        }) {
+                            items.push(ConfigItem::Server(Box::new(resolved.clone())));
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(servers) = &group.servers {
+            for server in servers {
+                if searching && !self.matches_search(&server.name, &server.host) {
+                    continue;
+                }
+                if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
+                    rs.name == server.name
+                        && rs.env_name.is_empty()
+                        && rs.group_name == group.name
+                        && rs.namespace == ns
+                }) {
+                    items.push(ConfigItem::Server(Box::new(resolved.clone())));
+                }
+            }
+        }
     }
 
     fn matches_search(&self, name: &str, host: &str) -> bool {
@@ -313,6 +444,7 @@ mod tests {
     fn create_test_config() -> Config {
         Config {
             defaults: None,
+            includes: vec![],
             groups: vec![ConfigEntry::Group(Group {
                 name: "G1".to_string(),
                 user: None,
@@ -320,8 +452,8 @@ mod tests {
                 mode: None,
                 ssh_port: None,
                 ssh_options: None,
-                bastion: None,
-                rebond: None,
+                wallix: None,
+                jump: None,
                 probe_filesystems: None,
                 environments: Some(vec![Environment {
                     name: "E1".to_string(),
@@ -330,8 +462,8 @@ mod tests {
                     mode: None,
                     ssh_port: None,
                     ssh_options: None,
-                    bastion: None,
-                    rebond: None,
+                    wallix: None,
+                    jump: None,
                     probe_filesystems: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
@@ -341,8 +473,8 @@ mod tests {
                         ssh_port: None,
                         ssh_options: None,
                         mode: None,
-                        bastion: None,
-                        rebond: None,
+                        wallix: None,
+                        jump: None,
                         probe_filesystems: None,
                     }],
                 }]),
@@ -354,8 +486,8 @@ mod tests {
                     ssh_port: None,
                     ssh_options: None,
                     mode: None,
-                    bastion: None,
-                    rebond: None,
+                    wallix: None,
+                    jump: None,
                     probe_filesystems: None,
                 }]),
             })],
@@ -365,13 +497,13 @@ mod tests {
     #[test]
     fn test_initial_visibility() {
         let config = create_test_config();
-        let mut app = App::new(config).unwrap();
+        let mut app = App::new(config, vec![]).unwrap();
         let items = app.get_visible_items();
 
         // Initially only the group header is visible (collapsed state)
         assert_eq!(items.len(), 1);
         match &items[0] {
-            ConfigItem::Group(name) => assert_eq!(name, "G1"),
+            ConfigItem::Group(name, _ns) => assert_eq!(name, "G1"),
             _ => panic!("Expected Group G1"),
         }
     }
@@ -379,7 +511,7 @@ mod tests {
     #[test]
     fn test_expansion() {
         let config = create_test_config();
-        let mut app = App::new(config).unwrap();
+        let mut app = App::new(config, vec![]).unwrap();
 
         // Expand Expand group G1
         app.toggle_expansion();
@@ -398,7 +530,7 @@ mod tests {
         assert_eq!(items.len(), 3);
 
         match &items[1] {
-            ConfigItem::Environment(g, e) => {
+            ConfigItem::Environment(g, e, _ns) => {
                 assert_eq!(g, "G1");
                 assert_eq!(e, "E1");
             }
@@ -414,7 +546,7 @@ mod tests {
     #[test]
     fn test_search_filtering() {
         let config = create_test_config();
-        let mut app = App::new(config).unwrap();
+        let mut app = App::new(config, vec![]).unwrap();
 
         app.search_query = "S1".to_string();
         app.invalidate_cache();
@@ -441,5 +573,118 @@ mod tests {
             _ => false,
         });
         assert!(!has_s2, "Should NOT contain S2");
+    }
+
+    fn make_namespace_config() -> Config {
+        use crate::config::{NamespaceEntry, Server};
+        Config {
+            defaults: None,
+            includes: vec![],
+            groups: vec![
+                ConfigEntry::Group(crate::config::Group {
+                    name: "RootGroup".to_string(),
+                    user: None,
+                    ssh_key: None,
+                    mode: None,
+                    ssh_port: None,
+                    ssh_options: None,
+                    wallix: None,
+                    jump: None,
+                    probe_filesystems: None,
+                    environments: None,
+                    servers: Some(vec![Server {
+                        name: "root_srv".to_string(),
+                        host: "1.1.1.1".to_string(),
+                        user: None,
+                        ssh_key: None,
+                        ssh_port: None,
+                        ssh_options: None,
+                        mode: None,
+                        wallix: None,
+                        jump: None,
+                        probe_filesystems: None,
+                    }]),
+                }),
+                ConfigEntry::Namespace(NamespaceEntry {
+                    label: "CES".to_string(),
+                    source_path: "/fake/ces.yml".to_string(),
+                    defaults: None,
+                    entries: vec![ConfigEntry::Group(crate::config::Group {
+                        name: "CES_Group".to_string(),
+                        user: None,
+                        ssh_key: None,
+                        mode: None,
+                        ssh_port: None,
+                        ssh_options: None,
+                        wallix: None,
+                        jump: None,
+                        probe_filesystems: None,
+                        environments: None,
+                        servers: Some(vec![Server {
+                            name: "ces_srv".to_string(),
+                            host: "2.2.2.2".to_string(),
+                            user: None,
+                            ssh_key: None,
+                            ssh_port: None,
+                            ssh_options: None,
+                            mode: None,
+                            wallix: None,
+                            jump: None,
+                            probe_filesystems: None,
+                        }]),
+                    })],
+                }),
+            ],
+        }
+    }
+
+    #[test]
+    fn test_namespace_visibility_collapsed() {
+        let config = make_namespace_config();
+        let mut app = App::new(config, vec![]).unwrap();
+        let items = app.get_visible_items();
+
+        // Collapsed: RootGroup header + Namespace header only (2 items)
+        assert_eq!(items.len(), 2);
+        matches!(&items[0], ConfigItem::Group(name, ns) if name == "RootGroup" && ns.is_empty());
+        matches!(&items[1], ConfigItem::Namespace(label) if label == "CES");
+    }
+
+    #[test]
+    fn test_namespace_expansion() {
+        let config = make_namespace_config();
+        let mut app = App::new(config, vec![]).unwrap();
+
+        // Select the Namespace item (index 1) and expand it
+        app.select(1);
+        app.toggle_expansion();
+
+        let items = app.get_visible_items();
+
+        // After expanding CES: RootGroup, CES (ns header), CES_Group (group inside ns)
+        assert_eq!(items.len(), 3);
+        matches!(&items[2], ConfigItem::Group(name, ns) if name == "CES_Group" && ns == "CES");
+    }
+
+    #[test]
+    fn test_search_crosses_namespaces() {
+        let config = make_namespace_config();
+        let mut app = App::new(config, vec![]).unwrap();
+
+        app.search_query = "ces_srv".to_string();
+        app.invalidate_cache();
+        let items = app.get_visible_items();
+
+        let has_ces = items.iter().any(|i| match i {
+            ConfigItem::Server(s) => s.name == "ces_srv",
+            _ => false,
+        });
+        assert!(has_ces, "Search should find ces_srv in namespace CES");
+
+        let has_root = items.iter().any(|i| match i {
+            ConfigItem::Server(s) => s.name == "root_srv",
+            _ => false,
+        });
+        assert!(!has_root, "root_srv should be filtered out");
     }
 }

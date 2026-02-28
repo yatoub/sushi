@@ -1,4 +1,4 @@
-use std::{io, time::Duration};
+use std::{collections::HashSet, io, time::Duration};
 
 use clap::Parser;
 use crossterm::{
@@ -35,11 +35,11 @@ struct Cli {
 
     /// Connexion via jump host sans TUI : [user@]host[:port]
     #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "bastion"])]
-    rebond: Option<String>,
+    jump: Option<String>,
 
     /// Connexion via bastion sans TUI : [user@]host[:port]
     #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "rebond"])]
-    bastion: Option<String>,
+    wallix: Option<String>,
 
     /// Forcer un utilisateur SSH (remplace la config et le user@host)
     #[arg(short, long, value_name = "USER")]
@@ -126,7 +126,7 @@ fn build_adhoc_server(
         .unwrap_or_else(|| "~/.ssh/id_rsa".to_string());
     let ssh_options = d.ssh_options.clone().unwrap_or_default();
 
-    let jump_host = d.rebond.as_ref().map(|jumps| {
+    let jump_host = d.jump.as_ref().map(|jumps| {
         jumps
             .iter()
             .map(|j| {
@@ -137,15 +137,16 @@ fn build_adhoc_server(
             .collect::<Vec<_>>()
             .join(",")
     });
-    let bastion_host = d.bastion.as_ref().and_then(|b| b.host.clone());
-    let bastion_user = d.bastion.as_ref().and_then(|b| b.user.clone());
+    let bastion_host = d.wallix.as_ref().and_then(|b| b.host.clone());
+    let bastion_user = d.wallix.as_ref().and_then(|b| b.user.clone());
     let bastion_template = d
-        .bastion
+        .wallix
         .as_ref()
         .and_then(|b| b.template.clone())
         .unwrap_or_else(|| "{target_user}@%n:SSH:{bastion_user}".to_string());
 
     ResolvedServer {
+        namespace: String::new(),
         group_name: String::new(),
         env_name: String::new(),
         name: host.clone(),
@@ -183,22 +184,13 @@ fn main() -> io::Result<()> {
         return Err(e);
     }
 
-    let config_content = match std::fs::read_to_string(config_path) {
+    let (config, warnings) = match Config::load_merged(config_path, &mut HashSet::new()) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Failed to read config: {}", e);
-            return Err(e);
+            eprintln!("Failed to load config: {}", e);
+            return Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string()));
         }
     };
-
-    let mut config: Config = match serde_yaml::from_str(&config_content) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Failed to parse YAML config: {}", e);
-            return Err(io::Error::new(io::ErrorKind::InvalidData, e));
-        }
-    };
-    config.sort();
 
     // ── Connexion directe sans TUI ──────────────────────────────────────────
     let cli_mode_target: Option<(ConnectionMode, String)> = cli
@@ -206,12 +198,12 @@ fn main() -> io::Result<()> {
         .as_deref()
         .map(|t| (ConnectionMode::Direct, t.to_string()))
         .or_else(|| {
-            cli.rebond
+            cli.jump
                 .as_deref()
                 .map(|t| (ConnectionMode::Jump, t.to_string()))
         })
         .or_else(|| {
-            cli.bastion
+            cli.wallix
                 .as_deref()
                 .map(|t| (ConnectionMode::Bastion, t.to_string()))
         });
@@ -232,7 +224,7 @@ fn main() -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(config).map_err(io::Error::other)?;
+    let mut app = App::new(config, warnings).map_err(io::Error::other)?;
 
     let res = run_app(&mut terminal, &mut app);
 

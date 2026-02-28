@@ -1,6 +1,7 @@
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 /// Mode de connexion SSH. Remplace les chaînes magiques "direct"/"jump"/"bastion".
@@ -59,10 +60,59 @@ pub enum ConfigError {
     MissingField(String, String),
 }
 
+// ─── Multi-fichiers ───────────────────────────────────────────────────────────
+
+/// Entrée dans la section `includes` du YAML principal.
+#[derive(Debug, Deserialize, Clone)]
+pub struct IncludeEntry {
+    pub label: String,
+    pub path: String,
+}
+
+/// Namespace résolu depuis un fichier inclus — construit programmatiquement,
+/// jamais désérialisé depuis le YAML.
+#[derive(Debug, Clone)]
+pub struct NamespaceEntry {
+    pub label: String,
+    pub source_path: String,
+    /// Defaults locaux du sous-fichier (ne s'appliquent pas au fichier principal).
+    pub defaults: Option<Defaults>,
+    pub entries: Vec<ConfigEntry>,
+}
+
+// NamespaceEntry doit implémenter Deserialize pour que ConfigEntry puisse le faire
+// (derive macros s'appliquent à tout l'enum). Cette impl échoue toujours car les
+// namespaces ne proviennent jamais du YAML.
+impl<'de> serde::Deserialize<'de> for NamespaceEntry {
+    fn deserialize<D: serde::Deserializer<'de>>(_d: D) -> Result<Self, D::Error> {
+        Err(serde::de::Error::custom(
+            "NamespaceEntry cannot be deserialized from YAML",
+        ))
+    }
+}
+
+/// Avertissement non-bloquant émis lors du chargement multi-fichiers.
+#[derive(Debug, Clone)]
+pub enum IncludeWarning {
+    /// Fichier inclus introuvable ou illisible.
+    LoadError {
+        label: String,
+        path: String,
+        error: String,
+    },
+    /// Dépendance circulaire détectée.
+    Circular { label: String, path: String },
+    /// Un fichier inclus contient lui-même des `includes` (ignorés en v0.7).
+    NestedIgnored { label: String },
+}
+
 #[derive(Debug, Deserialize, Default)]
 pub struct Config {
     pub defaults: Option<Defaults>,
     pub groups: Vec<ConfigEntry>,
+    /// Fichiers supplémentaires à fusionner (ignoré dans les sous-fichiers).
+    #[serde(default)]
+    pub includes: Vec<IncludeEntry>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -70,6 +120,8 @@ pub struct Config {
 pub enum ConfigEntry {
     Server(Server),
     Group(Group),
+    /// Namespace issu d'un fichier inclus — jamais désérialisé directement depuis le YAML.
+    Namespace(NamespaceEntry),
 }
 
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Default)]
@@ -89,8 +141,8 @@ pub struct Defaults {
     pub mode: Option<ConnectionMode>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
-    pub bastion: Option<BastionConfig>,
-    pub rebond: Option<Vec<JumpConfig>>,
+    pub wallix: Option<BastionConfig>,
+    pub jump: Option<Vec<JumpConfig>>,
     /// Si `true`, ne passe pas `-F /dev/null` afin de respecter `~/.ssh/config`.
     /// Défaut : `false` (comportement historique).
     pub use_system_ssh_config: Option<bool>,
@@ -122,8 +174,8 @@ pub struct Group {
     pub mode: Option<ConnectionMode>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
-    pub bastion: Option<BastionConfig>,
-    pub rebond: Option<Vec<JumpConfig>>,
+    pub wallix: Option<BastionConfig>,
+    pub jump: Option<Vec<JumpConfig>>,
     pub environments: Option<Vec<Environment>>,
     pub servers: Option<Vec<Server>>,
     pub probe_filesystems: Option<Vec<String>>,
@@ -137,8 +189,8 @@ pub struct Environment {
     pub mode: Option<ConnectionMode>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
-    pub bastion: Option<BastionConfig>,
-    pub rebond: Option<Vec<JumpConfig>>,
+    pub wallix: Option<BastionConfig>,
+    pub jump: Option<Vec<JumpConfig>>,
     pub servers: Vec<Server>,
     pub probe_filesystems: Option<Vec<String>>,
 }
@@ -152,13 +204,16 @@ pub struct Server {
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub mode: Option<ConnectionMode>,
-    pub bastion: Option<BastionConfig>,
-    pub rebond: Option<Vec<JumpConfig>>,
+    pub wallix: Option<BastionConfig>,
+    pub jump: Option<Vec<JumpConfig>>,
     pub probe_filesystems: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ResolvedServer {
+    /// Label du namespace (fichier inclus) dont provient ce serveur.
+    /// Vide pour les serveurs du fichier principal.
+    pub namespace: String,
     pub group_name: String,
     pub env_name: String,
     pub name: String,
@@ -188,34 +243,46 @@ impl Config {
     }
 
     pub fn sort(&mut self) {
-        // Sort top-level entries (Groups or Servers)
+        // Sort top-level entries (Groups, Servers, Namespaces)
         self.groups.sort_by(|a, b| {
             let name_a = match a {
-                ConfigEntry::Group(g) => &g.name,
-                ConfigEntry::Server(s) => &s.name,
+                ConfigEntry::Group(g) => g.name.as_str(),
+                ConfigEntry::Server(s) => s.name.as_str(),
+                ConfigEntry::Namespace(ns) => ns.label.as_str(),
             };
             let name_b = match b {
-                ConfigEntry::Group(g) => &g.name,
-                ConfigEntry::Server(s) => &s.name,
+                ConfigEntry::Group(g) => g.name.as_str(),
+                ConfigEntry::Server(s) => s.name.as_str(),
+                ConfigEntry::Namespace(ns) => ns.label.as_str(),
             };
             name_a.cmp(name_b)
         });
 
         // Sort children
         for entry in &mut self.groups {
-            if let ConfigEntry::Group(group) = entry {
-                // Sort environments
-                if let Some(envs) = &mut group.environments {
-                    envs.sort_by(|a, b| a.name.cmp(&b.name));
-                    // Sort servers inside environments
-                    for env in envs {
-                        env.servers.sort_by(|a, b| a.name.cmp(&b.name));
+            match entry {
+                ConfigEntry::Group(group) => sort_group(group),
+                ConfigEntry::Namespace(ns) => {
+                    ns.entries.sort_by(|a, b| {
+                        let name_a = match a {
+                            ConfigEntry::Group(g) => g.name.as_str(),
+                            ConfigEntry::Server(s) => s.name.as_str(),
+                            ConfigEntry::Namespace(n) => n.label.as_str(),
+                        };
+                        let name_b = match b {
+                            ConfigEntry::Group(g) => g.name.as_str(),
+                            ConfigEntry::Server(s) => s.name.as_str(),
+                            ConfigEntry::Namespace(n) => n.label.as_str(),
+                        };
+                        name_a.cmp(name_b)
+                    });
+                    for sub_entry in &mut ns.entries {
+                        if let ConfigEntry::Group(group) = sub_entry {
+                            sort_group(group);
+                        }
                     }
                 }
-                // Sort direct servers in group
-                if let Some(servers) = &mut group.servers {
-                    servers.sort_by(|a, b| a.name.cmp(&b.name));
-                }
+                ConfigEntry::Server(_) => {}
             }
         }
     }
@@ -228,109 +295,236 @@ impl Config {
 
         for entry in &self.groups {
             match entry {
-                ConfigEntry::Group(group) => {
-                    // Merge defaults -> Group
-                    let g_user = group.user.as_deref().or(d.user.as_deref());
-                    let g_key = group.ssh_key.as_deref().or(d.ssh_key.as_deref());
-                    let g_mode = group.mode.or(d.mode);
-                    let g_port = group.ssh_port.or(d.ssh_port);
-                    let g_opts = if let Some(opts) = &group.ssh_options {
-                        Some(opts.clone())
-                    } else {
-                        d.ssh_options.clone()
-                    };
-                    let g_fs = extend_filesystems(
-                        d.probe_filesystems.as_ref(),
-                        group.probe_filesystems.as_ref(),
-                    );
-
-                    let g_bastion = merge_bastion(&d.bastion, &group.bastion);
-                    let g_jump = merge_jump(&d.rebond, &group.rebond);
-
-                    if let Some(envs) = &group.environments {
-                        for env in envs {
-                            // Merge Group -> Env
-                            let e_user = env.user.as_deref().or(g_user);
-                            let e_key = env.ssh_key.as_deref().or(g_key);
-                            let e_mode = env.mode.or(g_mode);
-                            let e_port = env.ssh_port.or(g_port);
-                            let e_opts = if let Some(opts) = &env.ssh_options {
-                                Some(opts.clone())
-                            } else {
-                                g_opts.clone()
-                            };
-                            let e_fs = extend_filesystems(
-                                g_fs.as_ref().map(|v| v as &Vec<String>),
-                                env.probe_filesystems.as_ref(),
-                            );
-
-                            let e_bastion = merge_bastion(&g_bastion, &env.bastion);
-                            let e_jump = merge_jump(&g_jump, &env.rebond);
-
-                            for server in &env.servers {
-                                let r = resolve_server(
-                                    server,
-                                    &group.name,
-                                    &env.name,
-                                    e_user,
-                                    e_key,
-                                    e_mode,
-                                    e_port,
-                                    e_opts.as_ref(),
-                                    &e_bastion,
-                                    &e_jump,
-                                    use_sys_cfg,
-                                    e_fs.clone(),
-                                )?;
-                                resolved.push(r);
-                            }
-                        }
-                    }
-
-                    if let Some(servers) = &group.servers {
-                        for server in servers {
-                            let r = resolve_server(
-                                server,
-                                &group.name,
-                                "",
-                                g_user,
-                                g_key,
-                                g_mode,
-                                g_port,
-                                g_opts.as_ref(),
-                                &g_bastion,
-                                &g_jump,
-                                use_sys_cfg,
-                                g_fs.clone(),
-                            )?;
-                            resolved.push(r);
-                        }
-                    }
+                ConfigEntry::Namespace(ns) => {
+                    // Les defaults du sous-fichier sont locaux au namespace.
+                    let ns_d = ns.defaults.clone().unwrap_or_default();
+                    let ns_use_sys_cfg = ns_d.use_system_ssh_config.unwrap_or(false);
+                    resolve_entries(&ns.entries, &ns_d, ns_use_sys_cfg, &ns.label, &mut resolved)?;
                 }
-                ConfigEntry::Server(server) => {
-                    // Top-level server
-                    // Use empty string for group/env to signify top-level
-                    let r = resolve_server(
-                        server,
-                        "",
-                        "",
-                        d.user.as_deref(),
-                        d.ssh_key.as_deref(),
-                        d.mode,
-                        d.ssh_port,
-                        d.ssh_options.as_ref(),
-                        &d.bastion,
-                        &d.rebond,
+                _ => {
+                    resolve_entries(
+                        std::slice::from_ref(entry),
+                        &d,
                         use_sys_cfg,
-                        d.probe_filesystems.clone(),
+                        "",
+                        &mut resolved,
                     )?;
-                    resolved.push(r);
                 }
             }
         }
 
         Ok(resolved)
     }
+
+    /// Charge le fichier principal et résout tous les `includes`.
+    ///
+    /// Retourne le `Config` fusionné et les éventuels avertissements non-bloquants
+    /// (fichier absent, dépendance circulaire, includes imbriqués ignorés).
+    ///
+    /// `loading_stack` sert à détecter les cycles ; passer `&mut HashSet::new()`
+    /// à l'appel de premier niveau.
+    pub fn load_merged<P: AsRef<Path>>(
+        path: P,
+        loading_stack: &mut HashSet<PathBuf>,
+    ) -> Result<(Self, Vec<IncludeWarning>), ConfigError> {
+        let path = path.as_ref();
+        let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+
+        let mut config = Self::load(path)?;
+        let mut warnings: Vec<IncludeWarning> = Vec::new();
+
+        if config.includes.is_empty() {
+            return Ok((config, warnings));
+        }
+
+        loading_stack.insert(canonical.clone());
+        let parent_dir = canonical
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .to_path_buf();
+        let includes = std::mem::take(&mut config.includes);
+
+        for entry in includes {
+            // Résolution du chemin (tilde + relatif)
+            let expanded = shellexpand::tilde(&entry.path).into_owned();
+            let raw = std::path::Path::new(&expanded);
+            let sub_path = if raw.is_absolute() {
+                raw.to_path_buf()
+            } else {
+                parent_dir.join(raw)
+            };
+
+            // Forme canonique pour la détection de cycle
+            let sub_canonical = match std::fs::canonicalize(&sub_path) {
+                Ok(p) => p,
+                Err(e) => {
+                    warnings.push(IncludeWarning::LoadError {
+                        label: entry.label.clone(),
+                        path: sub_path.display().to_string(),
+                        error: e.to_string(),
+                    });
+                    continue;
+                }
+            };
+
+            if loading_stack.contains(&sub_canonical) {
+                warnings.push(IncludeWarning::Circular {
+                    label: entry.label.clone(),
+                    path: sub_canonical.display().to_string(),
+                });
+                continue;
+            }
+
+            // Chargement du sous-fichier
+            let sub_config = match Self::load(&sub_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    warnings.push(IncludeWarning::LoadError {
+                        label: entry.label.clone(),
+                        path: sub_path.display().to_string(),
+                        error: e.to_string(),
+                    });
+                    continue;
+                }
+            };
+
+            // Includes imbriqués ignorés en v0.7
+            if !sub_config.includes.is_empty() {
+                warnings.push(IncludeWarning::NestedIgnored {
+                    label: entry.label.clone(),
+                });
+            }
+
+            config.groups.push(ConfigEntry::Namespace(NamespaceEntry {
+                label: entry.label,
+                source_path: sub_canonical.display().to_string(),
+                defaults: sub_config.defaults,
+                entries: sub_config.groups,
+            }));
+        }
+
+        loading_stack.remove(&canonical);
+        config.sort();
+
+        Ok((config, warnings))
+    }
+}
+
+/// Résout un slice d'entrées de configuration avec les defaults et le namespace donnés.
+fn resolve_entries(
+    entries: &[ConfigEntry],
+    d: &Defaults,
+    use_sys_cfg: bool,
+    namespace: &str,
+    resolved: &mut Vec<ResolvedServer>,
+) -> Result<(), ConfigError> {
+    for entry in entries {
+        match entry {
+            ConfigEntry::Group(group) => {
+                // Merge defaults -> Group
+                let g_user = group.user.as_deref().or(d.user.as_deref());
+                let g_key = group.ssh_key.as_deref().or(d.ssh_key.as_deref());
+                let g_mode = group.mode.or(d.mode);
+                let g_port = group.ssh_port.or(d.ssh_port);
+                let g_opts = if let Some(opts) = &group.ssh_options {
+                    Some(opts.clone())
+                } else {
+                    d.ssh_options.clone()
+                };
+                let g_fs = extend_filesystems(
+                    d.probe_filesystems.as_ref(),
+                    group.probe_filesystems.as_ref(),
+                );
+
+                let g_bastion = merge_bastion(&d.wallix, &group.wallix);
+                let g_jump = merge_jump(&d.jump, &group.jump);
+
+                if let Some(envs) = &group.environments {
+                    for env in envs {
+                        // Merge Group -> Env
+                        let e_user = env.user.as_deref().or(g_user);
+                        let e_key = env.ssh_key.as_deref().or(g_key);
+                        let e_mode = env.mode.or(g_mode);
+                        let e_port = env.ssh_port.or(g_port);
+                        let e_opts = if let Some(opts) = &env.ssh_options {
+                            Some(opts.clone())
+                        } else {
+                            g_opts.clone()
+                        };
+                        let e_fs = extend_filesystems(
+                            g_fs.as_ref().map(|v| v as &Vec<String>),
+                            env.probe_filesystems.as_ref(),
+                        );
+
+                        let e_bastion = merge_bastion(&g_bastion, &env.wallix);
+                        let e_jump = merge_jump(&g_jump, &env.jump);
+
+                        for server in &env.servers {
+                            let r = resolve_server(
+                                server,
+                                &group.name,
+                                &env.name,
+                                e_user,
+                                e_key,
+                                e_mode,
+                                e_port,
+                                e_opts.as_ref(),
+                                &e_bastion,
+                                &e_jump,
+                                use_sys_cfg,
+                                e_fs.clone(),
+                                namespace,
+                            )?;
+                            resolved.push(r);
+                        }
+                    }
+                }
+
+                if let Some(servers) = &group.servers {
+                    for server in servers {
+                        let r = resolve_server(
+                            server,
+                            &group.name,
+                            "",
+                            g_user,
+                            g_key,
+                            g_mode,
+                            g_port,
+                            g_opts.as_ref(),
+                            &g_bastion,
+                            &g_jump,
+                            use_sys_cfg,
+                            g_fs.clone(),
+                            namespace,
+                        )?;
+                        resolved.push(r);
+                    }
+                }
+            }
+            ConfigEntry::Server(server) => {
+                // Top-level server (root ou dans un namespace)
+                let r = resolve_server(
+                    server,
+                    "",
+                    "",
+                    d.user.as_deref(),
+                    d.ssh_key.as_deref(),
+                    d.mode,
+                    d.ssh_port,
+                    d.ssh_options.as_ref(),
+                    &d.wallix,
+                    &d.jump,
+                    use_sys_cfg,
+                    d.probe_filesystems.clone(),
+                    namespace,
+                )?;
+                resolved.push(r);
+            }
+            // Les namespaces imbriqués sont ignorés.
+            ConfigEntry::Namespace(_) => {}
+        }
+    }
+    Ok(())
 }
 
 fn merge_bastion(
@@ -382,6 +576,19 @@ fn extend_filesystems(
     }
 }
 
+/// Trie les environnements et serveurs d'un groupe.
+fn sort_group(group: &mut Group) {
+    if let Some(envs) = &mut group.environments {
+        envs.sort_by(|a, b| a.name.cmp(&b.name));
+        for env in envs.iter_mut() {
+            env.servers.sort_by(|a, b| a.name.cmp(&b.name));
+        }
+    }
+    if let Some(servers) = &mut group.servers {
+        servers.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn resolve_server(
     s: &Server,
@@ -396,6 +603,7 @@ fn resolve_server(
     def_jump: &Option<Vec<JumpConfig>>,
     use_system_ssh_config: bool,
     def_fs: Option<Vec<String>>,
+    namespace: &str,
 ) -> Result<ResolvedServer, ConfigError> {
     let user = s.user.as_deref().or(def_user).unwrap_or("root").to_string();
     let port = s.ssh_port.or(def_port).unwrap_or(22);
@@ -415,8 +623,8 @@ fn resolve_server(
     let probe_filesystems =
         extend_filesystems(def_fs.as_ref(), s.probe_filesystems.as_ref()).unwrap_or_default();
 
-    let final_bastion = merge_bastion(def_bastion, &s.bastion);
-    let final_jump = merge_jump(def_jump, &s.rebond);
+    let final_bastion = merge_bastion(def_bastion, &s.wallix);
+    let final_jump = merge_jump(def_jump, &s.jump);
 
     let mode = s.mode.or(def_mode).unwrap_or(ConnectionMode::Direct);
 
@@ -438,6 +646,7 @@ fn resolve_server(
     });
 
     Ok(ResolvedServer {
+        namespace: namespace.to_string(),
         group_name: group.to_string(),
         env_name: env.to_string(),
         name: s.name.clone(),
@@ -494,8 +703,8 @@ mod tests {
                     mode: None,
                     ssh_port: None,
                     ssh_options: None,
-                    bastion: None,
-                    rebond: None,
+                    wallix: None,
+                    jump: None,
                     environments: None,
                     servers: None,
                     probe_filesystems: None,
@@ -508,8 +717,8 @@ mod tests {
                     ssh_port: None,
                     ssh_options: None,
                     mode: None,
-                    bastion: None,
-                    rebond: None,
+                    wallix: None,
+                    jump: None,
                     probe_filesystems: None,
                 }),
                 ConfigEntry::Group(Group {
@@ -519,13 +728,14 @@ mod tests {
                     mode: None,
                     ssh_port: None,
                     ssh_options: None,
-                    bastion: None,
-                    rebond: None,
+                    wallix: None,
+                    jump: None,
                     environments: None,
                     servers: None,
                     probe_filesystems: None,
                 }),
             ],
+            includes: vec![],
         };
 
         config.sort();
@@ -560,8 +770,8 @@ mod tests {
                 mode: None,
                 ssh_port: None, // Inherits 2222
                 ssh_options: None,
-                bastion: None,
-                rebond: None,
+                wallix: None,
+                jump: None,
                 probe_filesystems: None,
                 environments: Some(vec![Environment {
                     name: "Env1".to_string(),
@@ -570,8 +780,8 @@ mod tests {
                     mode: None,
                     ssh_port: None, // Inherits 2222
                     ssh_options: None,
-                    bastion: None,
-                    rebond: None,
+                    wallix: None,
+                    jump: None,
                     probe_filesystems: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
@@ -581,13 +791,14 @@ mod tests {
                         ssh_port: Some(8080), // Override 2222
                         ssh_options: None,
                         mode: None,
-                        bastion: None,
-                        rebond: None,
+                        wallix: None,
+                        jump: None,
                         probe_filesystems: None,
                     }],
                 }]),
                 servers: None,
             })],
+            includes: vec![],
         };
 
         let resolved = config.resolve().unwrap();
@@ -612,8 +823,8 @@ mod tests {
                 mode: None,
                 ssh_port: None,
                 ssh_options: None,
-                bastion: None,
-                rebond: None,
+                wallix: None,
+                jump: None,
                 probe_filesystems: None, // hérite des defaults
                 environments: None,
                 servers: Some(vec![
@@ -625,8 +836,8 @@ mod tests {
                         ssh_port: None,
                         ssh_options: None,
                         mode: None,
-                        bastion: None,
-                        rebond: None,
+                        wallix: None,
+                        jump: None,
                         probe_filesystems: None, // hérite du groupe → defaults
                     },
                     Server {
@@ -637,12 +848,13 @@ mod tests {
                         ssh_port: None,
                         ssh_options: None,
                         mode: None,
-                        bastion: None,
-                        rebond: None,
+                        wallix: None,
+                        jump: None,
                         probe_filesystems: Some(vec!["/mnt/nas".to_string()]), // s'ajoute aux defaults
                     },
                 ]),
             })],
+            includes: vec![],
         };
 
         let resolved = config.resolve().unwrap();
@@ -679,8 +891,8 @@ mod tests {
                 mode: None,
                 ssh_port: None,
                 ssh_options: None,
-                bastion: None,
-                rebond: None,
+                wallix: None,
+                jump: None,
                 probe_filesystems: Some(vec!["/kafka_data".to_string()]), // s'ajoute
                 environments: None,
                 servers: Some(vec![Server {
@@ -691,11 +903,12 @@ mod tests {
                     ssh_port: None,
                     ssh_options: None,
                     mode: None,
-                    bastion: None,
-                    rebond: None,
+                    wallix: None,
+                    jump: None,
                     probe_filesystems: None,
                 }]),
             })],
+            includes: vec![],
         };
 
         let resolved = config.resolve().unwrap();
@@ -710,5 +923,236 @@ mod tests {
                 "/kafka_data".to_string()
             ]
         );
+    }
+
+    // ─── Tests includes / namespaces ─────────────────────────────────────────
+
+    fn write_temp_yaml(content: &str) -> tempfile::NamedTempFile {
+        use std::io::Write;
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+        f
+    }
+
+    #[test]
+    fn test_includes_basic() {
+        let sub_yaml = r#"
+defaults:
+  user: "sub_user"
+groups:
+  - name: NS_Group
+    servers:
+      - name: ns_srv
+        host: "192.168.1.1"
+"#;
+        let sub_file = write_temp_yaml(sub_yaml);
+
+        let main_yaml = format!(
+            r#"
+defaults:
+  user: "main_user"
+includes:
+  - label: "CES"
+    path: "{}"
+groups:
+  - name: Main_Group
+    servers:
+      - name: main_srv
+        host: "10.0.0.1"
+"#,
+            sub_file.path().to_string_lossy()
+        );
+        let main_file = write_temp_yaml(&main_yaml);
+
+        let (config, warnings) =
+            Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
+        assert!(warnings.is_empty(), "Expected no warnings: {:?}", warnings);
+
+        let resolved = config.resolve().unwrap();
+
+        // main_srv has empty namespace
+        let main_srv = resolved.iter().find(|s| s.name == "main_srv").unwrap();
+        assert_eq!(main_srv.namespace, "");
+        assert_eq!(main_srv.user, "main_user");
+
+        // ns_srv has namespace "CES" and uses sub-config defaults
+        let ns_srv = resolved.iter().find(|s| s.name == "ns_srv").unwrap();
+        assert_eq!(ns_srv.namespace, "CES");
+        assert_eq!(ns_srv.user, "sub_user");
+
+        // Config tree should contain a Namespace entry
+        let has_namespace = config.groups.iter().any(|e| {
+            if let ConfigEntry::Namespace(ns) = e {
+                ns.label == "CES"
+            } else {
+                false
+            }
+        });
+        assert!(has_namespace, "Expected Namespace(CES) in config.groups");
+    }
+
+    #[test]
+    fn test_includes_defaults_isolation() {
+        let sub_yaml = r#"
+defaults:
+  user: "sub_user"
+  ssh_port: 9999
+groups:
+  - name: Sub
+    servers:
+      - name: sub_srv
+        host: "1.2.3.4"
+"#;
+        let sub_file = write_temp_yaml(sub_yaml);
+
+        let main_yaml = format!(
+            r#"
+defaults:
+  user: "main_user"
+  ssh_port: 22
+includes:
+  - label: "SUB"
+    path: "{}"
+groups:
+  - name: Main
+    servers:
+      - name: main_srv
+        host: "5.6.7.8"
+"#,
+            sub_file.path().to_string_lossy()
+        );
+        let main_file = write_temp_yaml(&main_yaml);
+
+        let (config, warnings) =
+            Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
+        assert!(warnings.is_empty());
+
+        let resolved = config.resolve().unwrap();
+
+        let main_srv = resolved.iter().find(|s| s.name == "main_srv").unwrap();
+        // Main defaults apply to main_srv
+        assert_eq!(main_srv.user, "main_user");
+        assert_eq!(main_srv.port, 22);
+
+        let sub_srv = resolved.iter().find(|s| s.name == "sub_srv").unwrap();
+        // Sub defaults apply only to sub_srv, not leaked from main
+        assert_eq!(sub_srv.user, "sub_user");
+        assert_eq!(sub_srv.port, 9999);
+    }
+
+    #[test]
+    fn test_includes_missing_file() {
+        let main_yaml = r#"
+defaults:
+  user: "admin"
+includes:
+  - label: "MISSING"
+    path: "/tmp/sushi_nonexistent_test_file_xyz.yml"
+groups:
+  - name: Main
+    servers:
+      - name: ok_srv
+        host: "1.2.3.4"
+"#;
+        let main_file = write_temp_yaml(main_yaml);
+
+        let (config, warnings) =
+            Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
+
+        // Un avertissement LoadError doit être émis
+        assert_eq!(warnings.len(), 1);
+        if let IncludeWarning::LoadError { label, .. } = &warnings[0] {
+            assert_eq!(label, "MISSING");
+        } else {
+            panic!("Expected LoadError warning, got {:?}", warnings[0]);
+        }
+
+        // Les groupes du fichier principal sont toujours résolus
+        let resolved = config.resolve().unwrap();
+        assert!(resolved.iter().any(|s| s.name == "ok_srv"));
+    }
+
+    #[test]
+    fn test_includes_nested_ignored() {
+        // Fichier inclus qui contient lui-même un `includes:`
+        let leaf_yaml = r#"
+groups:
+  - name: Leaf
+    servers:
+      - name: leaf_srv
+        host: "9.9.9.9"
+"#;
+        let leaf_file = write_temp_yaml(leaf_yaml);
+
+        let sub_yaml = format!(
+            r#"
+includes:
+  - label: "LEAF"
+    path: "{}"
+groups:
+  - name: Sub
+    servers:
+      - name: sub_srv
+        host: "8.8.8.8"
+"#,
+            leaf_file.path().to_string_lossy()
+        );
+        let sub_file = write_temp_yaml(&sub_yaml);
+
+        let main_yaml = format!(
+            r#"
+includes:
+  - label: "SUB"
+    path: "{}"
+groups: []
+"#,
+            sub_file.path().to_string_lossy()
+        );
+        let main_file = write_temp_yaml(&main_yaml);
+
+        let (_config, warnings) =
+            Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
+
+        // L'include imbriqué LEAF doit produire un avertissement NestedIgnored
+        let nested_warn = warnings.iter().any(|w| {
+            if let IncludeWarning::NestedIgnored { label } = w {
+                label == "SUB"
+            } else {
+                false
+            }
+        });
+        assert!(nested_warn, "Expected NestedIgnored warning for SUB");
+    }
+
+    #[test]
+    fn test_namespace_server_has_namespace_field() {
+        let sub_yaml = r#"
+groups:
+  - name: NS_G
+    servers:
+      - name: ns_srv
+        host: "10.10.10.1"
+        user: "ns_user"
+"#;
+        let sub_file = write_temp_yaml(sub_yaml);
+
+        let main_yaml = format!(
+            r#"
+includes:
+  - label: "CRT"
+    path: "{}"
+groups: []
+"#,
+            sub_file.path().to_string_lossy()
+        );
+        let main_file = write_temp_yaml(&main_yaml);
+
+        let (config, _) =
+            Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
+        let resolved = config.resolve().unwrap();
+
+        let ns_srv = resolved.iter().find(|s| s.name == "ns_srv").unwrap();
+        assert_eq!(ns_srv.namespace, "CRT");
+        assert_eq!(ns_srv.group_name, "NS_G");
     }
 }

@@ -5,6 +5,7 @@
 ## ✨ Features
 
 - **Hierarchical Organization**: Structure your infrastructure with Groups, Environments, and Servers.
+- **Multi-file Configuration**: Split your config by team or perimeter with `includes:`. Each included file is shown as a collapsible **namespace** in the TUI. Missing or circular includes are non-fatal warnings.
 - **Connection Modes**:
   - **Direct**: Standard SSH connection.
   - **Jump/Rebond**: Connect via one or more jump hosts (`-J`). Supports multi-hop chains.
@@ -55,6 +56,34 @@ sudo cp target/release/sushi /usr/local/bin/
 Sushi looks for a configuration file at `~/.sushi.yml`.  
 A fully annotated example covering every feature is available at [`examples/full_config.yaml`](examples/full_config.yaml).
 
+### Multi-file configuration — `includes`
+
+Split a large config into one YAML file per team or perimeter and reference them from the main file:
+
+```yaml
+# ~/.sushi.yml
+includes:
+  - label: "DEV"
+    path: "~/.sushi_dev.yml"
+  - label: "QUALIF"
+    path: "~/.sushi_qualif.yml"
+
+defaults:
+  user: "admin"
+
+groups:
+  - name: "Local"
+    servers:
+      - name: "dev-vm"
+        host: "192.168.56.10"
+```
+
+- **`label`** — text shown as the namespace header (📦) in the TUI.
+- **`path`** — absolute or `~`-expanded path. Relative paths are resolved from the directory of the main file.
+- Each included file is a standard sushi YAML (`defaults`, `groups`…). Its `defaults` are **local** and do not leak into the main file.
+- Includes inside an included file are ignored with a non-fatal warning (nested includes not supported in v0.7).
+- If a file is missing or unreadable, the remaining includes still load normally — a warning overlay is shown at startup.
+
 ### Example `~/.sushi.yml`
 
 ```yaml
@@ -68,16 +97,16 @@ defaults:
     - "UserKnownHostsFile=/dev/null"
   # Set to true to honour ~/.ssh/config (ControlMaster, aliases, etc.)
   use_system_ssh_config: false
-  rebond:
+  jump:
     - host: "jump.example.com"
       user: "jump"
   # Multi-hop example:
-  # rebond:
+  # jump:
   #   - host: "jump1.example.com"
   #     user: "jump"
   #   - host: "jump2.example.com"
   #     user: "jump"
-  bastion:
+  wallix:
     host: "bastion.example.com"
     user: "bastion"
 
@@ -119,28 +148,33 @@ groups:
 
 > See [`examples/full_config.yaml`](examples/full_config.yaml) for a complete reference with all options and inline comments.
 >
-> **⚠️ Breaking change (v0.5.0)** — `rebond` is now a **list** of jump hosts,
+> **⚠️ Breaking change (v0.5.0)** — `jump` (formerly `rebond`) is now a **list** of jump hosts,
 > even for a single hop. If you used the old map syntax, wrap it in a list:
 
 ```yaml
 # Before (v0.4.x)
-rebond:
+jump:
   host: "jump.example.com"
   user: "jump"
 
 # After (v0.5.0+)
-rebond:
+jump:
   - host: "jump.example.com"
     user: "jump"
 ```
 
 ### Configuration Breakdown
 
+- **`includes`**: *(optional)* List of external YAML files to merge as namespaces.
+  - `label`: Display name shown as the top-level collapsible namespace (📦) in the tree.
+  - `path`: Path to the included file (absolute or `~`-expanded). Relative paths are resolved from the main file's directory.
+  - The included file uses the same YAML schema as the main file. Its `defaults` apply only to that file's servers.
+  - Circular dependencies and nested includes are detected and reported as non-blocking warnings at startup.
 - **`defaults`**: Global settings applied to all servers unless overridden.
-  - `mode`: Default connection mode (`direct`, `jump`, or `bastion`).
+  - `mode`: Default connection mode (`direct`, `jump`, or `wallix`).
   - `theme`: UI color theme — `latte`, `frappe`, `macchiato`, or `mocha` (default).
-  - `rebond`: Jump host chain — a **list** of `{ host, user }` entries. SSH receives `-J user1@host1,user2@host2`. Even a single hop must be written as a list item.
-  - `bastion`: Bastion configuration (required when using `bastion` mode).
+  - `jump`: Jump host chain — a **list** of `{ host, user }` entries. SSH receives `-J user1@host1,user2@host2`. Even a single hop must be written as a list item.
+  - `wallix`: Wallix/bastion configuration (required when using `bastion` mode).
   - `use_system_ssh_config`: Set to `true` to honour `~/.ssh/config` instead of passing `-F /dev/null`. Defaults to `false`.
   - `probe_filesystems`: List of extra mount points to inspect during the quick diagnostic (`d`). Uses **additive inheritance**: each level appends its paths to the parent list (unlike `user` or `ssh_key` which replace). If a path is not mounted on the target server a yellow `⚠` warning is shown instead of a progress bar.
 - **`groups`**: The top-level hierarchy. Can contain `environments` or direct `servers`.
@@ -162,10 +196,10 @@ rebond:
 | `q` | Quit application |
 | `Space` | Toggle expand/collapse group |
 | `Enter` | Connect to server / Toggle group |
-| `Tab` | Cycle connection mode (Direct/Rebond/Bastion) |
+| `Tab` | Cycle connection mode (Direct/Rebond/Wallix) |
 | `1` | Select **Direct** mode |
 | `2` | Select **Rebond** mode |
-| `3` | Select **Bastion** mode |
+| `3` | Select **Wallix** mode |
 | `Ctrl+U` | Clear search query (while in search mode) |
 | `d` | Run quick SSH diagnostic (kernel, CPU, load, RAM, disk) |
 | `y` | Copy SSH command to clipboard |
@@ -218,6 +252,7 @@ defaults:
 - **Red**: No search results, error overlay border
 - **Sky**: Active connection mode tab, jump / bastion host in detail pane
 - **Yellow**: Port number when different from 22
+- **Lavender**: Namespace headers (📦 included files)
 - **Mauve**: Group headers
 - **Surface2**: Selection background
 

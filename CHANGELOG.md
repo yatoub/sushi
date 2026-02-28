@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.7.0] — 2026-02-28
+
+### Added
+
+- **`includes` / namespaces**: new top-level `includes` key in the main config file. Each entry has a `label` (displayed as a collapsible `📦` namespace in the TUI) and a `path` (absolute or `~`-expanded; relative paths are resolved from the main file's directory). Included files use the same YAML schema and their `defaults` apply only to their own servers.
+- **Circular-dependency & nested-include detection**: startup warnings are emitted as non-blocking overlays when a cycle or unsupported nested include is detected.
+- **`jump` key** (config): replaces the former `rebond` key for expressing SSH jump-host chains. A **list** of `{ host, user }` entries, even for a single hop.
+- **`wallix` key** (config): replaces the former `bastion` key for Wallix/PAM bastion configuration.
+
+### Changed
+
+- Config field `rebond` renamed to `jump` at all hierarchy levels (`defaults`, group, environment, server). Old configs using `rebond:` must be migrated.
+- Config field `bastion` renamed to `wallix` at all hierarchy levels. Old configs using `bastion:` must be migrated.
+- Namespace entries rendered as top-level collapsible nodes (`📦`) in the server tree; their groups/environments/servers are indented beneath them as usual.
+
+### Quality
+
+- 55 tests (unit + integration) — all passing.
+
+---
+
 ## [0.6.0] — 2026-02-28
 
 ### Added

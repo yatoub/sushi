@@ -126,6 +126,7 @@ mod tests {
 
     fn base_server() -> ResolvedServer {
         ResolvedServer {
+            namespace: String::new(),
             group_name: "G".into(),
             env_name: "E".into(),
             name: "srv".into(),

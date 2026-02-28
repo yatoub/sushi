@@ -268,29 +268,56 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
 
     for item in visible_items.iter() {
         let content = match item {
-            ConfigItem::Group(name) => {
-                let id = format!("Group:{}", name);
+            ConfigItem::Namespace(label) => {
+                let id = format!("NS:{}", label);
+                let icon = if app.expanded_items.contains(&id) || !app.search_query.is_empty() {
+                    "📦"
+                } else {
+                    "📫"
+                };
+                Line::from(vec![Span::styled(
+                    format!("{} {}", icon, label),
+                    Style::default()
+                        .fg(app.theme.namespace_header)
+                        .add_modifier(Modifier::BOLD),
+                )])
+            }
+            ConfigItem::Group(name, ns) => {
+                let id = if ns.is_empty() {
+                    format!("Group:{}", name)
+                } else {
+                    format!("NS:{}:Group:{}", ns, name)
+                };
                 let icon = if app.expanded_items.contains(&id) || !app.search_query.is_empty() {
                     "📂"
                 } else {
                     "📁"
                 };
-                Line::from(vec![Span::styled(
-                    format!("{} {}", icon, name),
-                    Style::default()
-                        .fg(app.theme.group_header)
-                        .add_modifier(Modifier::BOLD),
-                )])
+                let indent = if ns.is_empty() { "" } else { "  " };
+                Line::from(vec![
+                    Span::raw(indent),
+                    Span::styled(
+                        format!("{} {}", icon, name),
+                        Style::default()
+                            .fg(app.theme.group_header)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                ])
             }
-            ConfigItem::Environment(g, name) => {
-                let id = format!("Env:{}:{}", g, name);
+            ConfigItem::Environment(g, name, ns) => {
+                let id = if ns.is_empty() {
+                    format!("Env:{}:{}", g, name)
+                } else {
+                    format!("NS:{}:Env:{}:{}", ns, g, name)
+                };
                 let icon = if app.expanded_items.contains(&id) || !app.search_query.is_empty() {
                     "🌩️"
                 } else {
                     "☁️"
                 };
+                let indent = if ns.is_empty() { "  " } else { "    " };
                 Line::from(vec![
-                    Span::raw("  "),
+                    Span::raw(indent),
                     Span::styled(
                         format!("{} {}", icon, name),
                         Style::default().fg(app.theme.env_header),
@@ -298,12 +325,17 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
                 ])
             }
             ConfigItem::Server(server) => {
-                let indent = if server.group_name.is_empty() {
-                    "" // Root level
-                } else if server.env_name.is_empty() {
-                    "  " // Under group
-                } else {
-                    "    " // Under env
+                let indent = match (
+                    server.namespace.is_empty(),
+                    server.group_name.is_empty(),
+                    server.env_name.is_empty(),
+                ) {
+                    (true, true, _) => "",             // racine
+                    (true, false, true) => "  ",       // groupe racine
+                    (true, false, false) => "    ",    // groupe + env racine
+                    (false, true, _) => "  ",          // namespace, pas de groupe
+                    (false, false, true) => "    ",    // namespace + groupe
+                    (false, false, false) => "      ", // namespace + groupe + env
                 };
                 Line::from(vec![
                     Span::raw(indent),
@@ -568,8 +600,16 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
 
                 lines
             }
-            ConfigItem::Group(name) => vec![Line::from(format!("Group: {}", name))],
-            ConfigItem::Environment(g, e) => {
+            ConfigItem::Namespace(label) => {
+                vec![Line::from(vec![Span::styled(
+                    format!("📦 Namespace : {}", label),
+                    Style::default()
+                        .fg(app.theme.namespace_header)
+                        .add_modifier(Modifier::BOLD),
+                )])]
+            }
+            ConfigItem::Group(name, _ns) => vec![Line::from(format!("Group: {}", name))],
+            ConfigItem::Environment(g, e, _ns) => {
                 vec![Line::from(format!("Environment: {} / {}", g, e))]
             }
         }

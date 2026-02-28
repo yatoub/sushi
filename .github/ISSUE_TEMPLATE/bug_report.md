@@ -36,7 +36,7 @@ If applicable, add screenshots to help explain your problem.
 **Desktop (please complete the following information):**
  - OS: [e.g. Linux (Ubuntu 22.04), macOS 14]
  - Terminal Emulator: [e.g. Alacritty, Kitty, iTerm2, WezTerm]
- - SSH version
+ - SSH version :
  - Sushi Version: [e.g. v0.1.0]
 
 **Additional context**

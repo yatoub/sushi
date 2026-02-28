@@ -30,15 +30,15 @@ struct Cli {
     config: Option<String>,
 
     /// Connexion directe sans TUI : [user@]host[:port]
-    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["rebond", "bastion"])]
+    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["jump", "wallix"])]
     direct: Option<String>,
 
     /// Connexion via jump host sans TUI : [user@]host[:port]
-    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "bastion"])]
+    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "wallix"])]
     jump: Option<String>,
 
     /// Connexion via bastion sans TUI : [user@]host[:port]
-    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "rebond"])]
+    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "jump"])]
     wallix: Option<String>,
 
     /// Forcer un utilisateur SSH (remplace la config et le user@host)

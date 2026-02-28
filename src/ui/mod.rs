@@ -10,6 +10,7 @@ use ratatui::{
 };
 
 use crate::app::{App, AppMode, ConfigItem};
+use crate::i18n::Strings;
 use crate::probe::ProbeState;
 use crate::ui::theme::Theme;
 
@@ -43,7 +44,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // Overlay erreur — rendu en dernier pour être au-dessus de tout
     if let AppMode::Error(msg) = &app.app_mode {
-        draw_error_overlay(f, msg.clone(), f.area(), app.theme);
+        draw_error_overlay(f, msg.clone(), f.area(), app.theme, app.lang);
     }
 }
 
@@ -55,7 +56,7 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
 }
 
 /// Panneau d'erreur centré, affiché par-dessus l'interface normale.
-fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect, theme: &Theme) {
+fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect, theme: &Theme, lang: &Strings) {
     // Calcule la hauteur selon le nombre de lignes du message
     let lines: Vec<&str> = msg.lines().collect();
     let inner_h = (lines.len() as u16).max(1);
@@ -70,7 +71,7 @@ fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect, theme: &Theme) {
     f.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title(" ⚠  Erreur ")
+        .title(lang.error_title)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.red))
@@ -92,8 +93,7 @@ fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect, theme: &Theme) {
     let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
     f.render_widget(paragraph, chunks[0]);
 
-    let hint = Paragraph::new("Appuyez sur Entrée ou Esc pour fermer")
-        .style(Style::default().fg(theme.subtext0));
+    let hint = Paragraph::new(lang.error_dismiss).style(Style::default().fg(theme.subtext0));
     f.render_widget(hint, chunks[1]);
 }
 
@@ -111,13 +111,13 @@ fn draw_connection_mode_area(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
-    let titles = vec!["Direct", "Rebond", "Bastion"];
+    let titles = vec![app.lang.tab_direct, app.lang.tab_jump, app.lang.tab_bastion];
     let tabs = Tabs::new(titles)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .title(" Mode de Connexion (Tab to switch) ")
+                .title(app.lang.tab_title)
                 .border_style(Style::default().fg(app.theme.border)),
         )
         .select(app.connection_mode.index())
@@ -133,7 +133,7 @@ fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_verbose_toggle(f: &mut Frame, app: &App, area: Rect) {
     let checkbox = if app.verbose_mode { "☑" } else { "☐" };
-    let text = format!("{} Verbose (-v)", checkbox);
+    let text = format!("{} {}", checkbox, app.lang.verbose_label);
 
     let style = if app.verbose_mode {
         Style::default()
@@ -147,7 +147,7 @@ fn draw_verbose_toggle(f: &mut Frame, app: &App, area: Rect) {
         Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(" Options (v to toggle) ")
+            .title(app.lang.verbose_title)
             .border_style(Style::default().fg(app.theme.border)),
     );
     f.render_widget(verbose, area);
@@ -164,33 +164,45 @@ fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
     let (search_text, title) = if app.is_searching {
         let cursor = "│";
         let text = if app.search_query.is_empty() {
-            format!("{}  (search by name or host, ESC to cancel)", cursor)
+            format!("{}  {}", cursor, app.lang.search_placeholder)
         } else {
             format!("{}{}", app.search_query, cursor)
         };
 
         let title_text = if app.search_query.is_empty() {
-            format!(" 🔍 Search by name/host ({} servers) ", total_servers)
+            app.lang
+                .search_title_active
+                .replacen("{}", &total_servers.to_string(), 1)
         } else if server_count == 0 {
-            format!(" 🔍 No results for '{}' ", app.search_query)
+            app.lang
+                .search_no_results
+                .replacen("{}", &app.search_query, 1)
         } else if server_count == total_servers {
-            format!(" 🔍 All {} servers match ", server_count)
+            app.lang
+                .search_all_match
+                .replacen("{}", &server_count.to_string(), 1)
         } else {
-            format!(" 🔍 {} / {} servers ", server_count, total_servers)
+            app.lang
+                .search_partial
+                .replacen("{}", &server_count.to_string(), 1)
+                .replacen("{}", &total_servers.to_string(), 1)
         };
 
         (text, title_text)
     } else {
         let text = if app.search_query.is_empty() {
-            "Press / to search...".to_string()
+            app.lang.search_idle_hint.to_string()
         } else {
             let title_text = if server_count == total_servers {
-                format!(" ✓ Showing all {} servers ", server_count)
+                app.lang
+                    .search_result_all
+                    .replacen("{}", &server_count.to_string(), 1)
             } else {
-                format!(
-                    " ✓ {} / {} servers match '{}' ",
-                    server_count, total_servers, app.search_query
-                )
+                app.lang
+                    .search_result_partial
+                    .replacen("{}", &server_count.to_string(), 1)
+                    .replacen("{}", &total_servers.to_string(), 1)
+                    .replacen("{}", &app.search_query, 1)
             };
             return draw_search_with_results(
                 f,
@@ -201,7 +213,7 @@ fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
                 app.theme,
             );
         };
-        (text, " Search (press /) ".to_string())
+        (text, app.lang.search_title_idle.to_string())
     };
 
     let border_color = if app.is_searching {
@@ -311,7 +323,7 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .title(" Servers ")
+                .title(app.lang.panel_servers)
                 .border_style(Style::default().fg(app.theme.border)),
         )
         .highlight_style(
@@ -329,7 +341,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(" Details ")
+        .title(app.lang.panel_details)
         .border_style(Style::default().fg(app.theme.border));
 
     let visible_items = app.get_visible_items();
@@ -348,7 +360,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                 let mut lines = vec![
                     Line::from(vec![
                         Span::styled(
-                            "Name:   ",
+                            app.lang.label_name,
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -357,7 +369,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]),
                     Line::from(vec![
                         Span::styled(
-                            "Host:   ",
+                            app.lang.label_host,
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -366,7 +378,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]),
                     Line::from(vec![
                         Span::styled(
-                            "Port:   ",
+                            app.lang.label_port,
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -375,7 +387,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]),
                     Line::from(vec![
                         Span::styled(
-                            "User:   ",
+                            app.lang.label_user,
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -384,7 +396,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]),
                     Line::from(vec![
                         Span::styled(
-                            "Mode:   ",
+                            app.lang.label_mode,
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -396,7 +408,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]),
                     Line::from(vec![
                         Span::styled(
-                            "Key:    ",
+                            app.lang.label_key,
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -409,7 +421,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                 if let Some(jump) = &server.jump_host {
                     lines.push(Line::from(vec![
                         Span::styled(
-                            "Jump:   ",
+                            app.lang.label_jump,
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -426,7 +438,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     };
                     lines.push(Line::from(vec![
                         Span::styled(
-                            "Bastion:",
+                            app.lang.label_bastion,
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -438,7 +450,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
 
                 if !server.ssh_options.is_empty() {
                     lines.push(Line::from(vec![Span::styled(
-                        "Options:",
+                        app.lang.label_options,
                         Style::default()
                             .add_modifier(Modifier::BOLD)
                             .fg(app.theme.fg),
@@ -456,7 +468,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                 match &app.probe_state {
                     ProbeState::Idle => {
                         lines.push(Line::from(vec![Span::styled(
-                            "  d — diagnostiquer",
+                            app.lang.probe_hint,
                             Style::default().fg(app.theme.subtext0),
                         )]));
                     }
@@ -473,7 +485,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                 Style::default().fg(app.theme.sapphire),
                             ),
                             Span::styled(
-                                "Diagnostic en cours…",
+                                app.lang.probe_running,
                                 Style::default().fg(app.theme.subtext0),
                             ),
                         ]));
@@ -481,58 +493,70 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ProbeState::Done(r) => {
                         let theme = app.theme;
                         lines.push(Line::from(vec![Span::styled(
-                            "─── System ─────────────────────",
+                            app.lang.probe_section,
                             Style::default().fg(theme.border),
                         )]));
                         lines.push(Line::from(vec![
                             Span::styled(
-                                "Kernel   ",
+                                app.lang.probe_kernel,
                                 Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
                             ),
                             Span::raw(r.kernel.clone()),
                         ]));
                         lines.push(Line::from(vec![
                             Span::styled(
-                                "CPU      ",
+                                app.lang.probe_cpu,
                                 Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
                             ),
                             Span::raw(r.cpu_model.clone()),
                         ]));
                         lines.push(Line::from(vec![
                             Span::styled(
-                                "Load     ",
+                                app.lang.probe_load,
                                 Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
                             ),
                             Span::raw(r.load.clone()),
                         ]));
-                        lines.push(probe_bar("RAM", r.ram_pct, r.ram_total_gb, theme));
-                        lines.push(probe_bar("Disk /", r.disk_pct, r.disk_total_gb, theme));
+                        lines.push(probe_bar(
+                            app.lang.probe_ram,
+                            r.ram_pct,
+                            r.ram_total_gb,
+                            theme,
+                        ));
+                        lines.push(probe_bar(
+                            app.lang.probe_disk,
+                            r.disk_pct,
+                            r.disk_total_gb,
+                            theme,
+                        ));
                         for fs_entry in &r.extra_fs {
                             match &fs_entry.usage {
                                 Some(usage) => {
-                                    let label = format!("Disk {}", fs_entry.mountpoint);
+                                    let label = app.lang.probe_disk_extra.replacen(
+                                        "{}",
+                                        &fs_entry.mountpoint,
+                                        1,
+                                    );
                                     lines.push(probe_bar(&label, usage.pct, usage.total_gb, theme));
                                 }
                                 None => {
-                                    lines.push(Line::from(vec![
-                                        Span::styled(
-                                            format!("⚠  {}", fs_entry.mountpoint),
-                                            Style::default()
-                                                .fg(theme.yellow)
-                                                .add_modifier(Modifier::BOLD),
+                                    lines.push(Line::from(vec![Span::styled(
+                                        app.lang.probe_fs_absent.replacen(
+                                            "{}",
+                                            &fs_entry.mountpoint,
+                                            1,
                                         ),
-                                        Span::styled(
-                                            " — non monté",
-                                            Style::default().fg(theme.subtext0),
-                                        ),
-                                    ]));
+                                        Style::default()
+                                            .fg(theme.yellow)
+                                            .add_modifier(Modifier::BOLD),
+                                    )]));
                                 }
                             }
                         }
                     }
                     ProbeState::Error(msg) => {
                         lines.push(Line::from(vec![Span::styled(
-                            "─── System ─────────────────────",
+                            app.lang.probe_section,
                             Style::default().fg(app.theme.border),
                         )]));
                         lines.push(Line::from(vec![
@@ -550,7 +574,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
             }
         }
     } else {
-        vec![Line::from("Select a server to view details.")]
+        vec![Line::from(app.lang.details_placeholder)]
     };
 
     let paragraph = Paragraph::new(text)
@@ -604,11 +628,11 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     }
 
     let text = if app.is_searching {
-        "Search Mode: Type to filter | ESC: Cancel | Ctrl+U: Clear | Enter: Apply"
+        app.lang.status_searching
     } else if !app.search_query.is_empty() {
-        "Navigate: ↑/↓ | Clear: ESC | New search: / | Verbose: v | Enter: Connect | q: Quit"
+        app.lang.status_search_active
     } else {
-        "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | Verbose: v | y: Copy cmd | d: Probe | q: Quit"
+        app.lang.status_normal
     };
     let paragraph =
         Paragraph::new(text).style(Style::default().bg(app.theme.selection_bg).fg(app.theme.fg));

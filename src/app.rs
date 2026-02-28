@@ -59,6 +59,9 @@ pub struct App {
     pub probe_state: ProbeState,
     /// Récepteur du thread de diagnostic (présent seulement quand Running).
     pub probe_rx: Option<std::sync::mpsc::Receiver<Result<ProbeResult, String>>>,
+
+    /// Jeu de chaînes localisées détecté au démarrage.
+    pub lang: &'static crate::i18n::Strings,
 }
 
 impl App {
@@ -90,6 +93,7 @@ impl App {
             clipboard: arboard::Clipboard::new().ok(),
             probe_state: ProbeState::Idle,
             probe_rx: None,
+            lang: crate::i18n::get_strings(crate::i18n::detect_lang()),
         };
 
         app.list_state.select(Some(0));
@@ -281,9 +285,12 @@ impl App {
     pub fn select(&mut self, index: usize) {
         let count = self.get_visible_items().len();
         if count > 0 && index < count {
+            let changed = self.selected_index != index;
             self.selected_index = index;
             self.list_state.select(Some(self.selected_index));
-            self.update_mode_from_selection();
+            if changed {
+                self.update_mode_from_selection();
+            }
         }
     }
 

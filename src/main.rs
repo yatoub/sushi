@@ -374,18 +374,24 @@ fn run_app(
                                             let cmd = format!("ssh {}", args.join(" "));
                                             match app.clipboard.as_mut().map(|cb| cb.set_text(&cmd))
                                             {
-                                                Some(Ok(_)) => {
-                                                    app.set_status_message(format!("Copied: {cmd}"))
-                                                }
-                                                Some(Err(e)) => app.set_status_message(format!(
-                                                    "Clipboard error: {e}"
-                                                )),
+                                                Some(Ok(_)) => app.set_status_message(
+                                                    app.lang.copied.replacen("{}", &cmd, 1),
+                                                ),
+                                                Some(Err(e)) => app.set_status_message(
+                                                    app.lang.clipboard_error.replacen(
+                                                        "{}",
+                                                        &e.to_string(),
+                                                        1,
+                                                    ),
+                                                ),
                                                 None => app.set_status_message(
-                                                    "Clipboard unavailable".to_string(),
+                                                    app.lang.clipboard_unavailable.to_string(),
                                                 ),
                                             }
                                         }
-                                        Err(e) => app.set_status_message(format!("SSH error: {e}")),
+                                        Err(e) => app.set_status_message(
+                                            app.lang.ssh_error.replacen("{}", &e.to_string(), 1),
+                                        ),
                                     }
                                 }
                             }
@@ -401,7 +407,7 @@ fn run_app(
                                     let mode = app.connection_mode;
                                     if mode == ConnectionMode::Bastion {
                                         app.set_status_message(
-                                            "Diagnostic non disponible en mode Bastion",
+                                            app.lang.probe_bastion_error.to_string(),
                                         );
                                     } else {
                                         let (tx, rx) = std::sync::mpsc::channel();

@@ -9,9 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.6.0] — 2026-02-28
+
 ### Added
 
+- **Internationalisation (i18n)**: all TUI strings (labels, titles, status bar, error messages, hints) are extracted into `src/i18n.rs`. Language is auto-detected at startup from `LC_ALL` → `LC_MESSAGES` → `LANG`. French (`fr*`) and English (default) are supported with no external dependencies.
 - **`probe_filesystems`**: new optional list key at every config level (`defaults`, group, environment, server). Extra mount points are probed during the quick diagnostic (`d`) and rendered as color-coded progress bars in the detail pane. If a path is not mounted on the target, a yellow `⚠ /path — not mounted` line is shown instead. Inheritance is **additive**: each level appends its paths to those of the parent (no deduplication across levels).
+- **i18n `fmt()` helper**: zero-dependency template substitution (`{}` placeholders) for dynamic status messages.
+
+### Changed
+
+- Bastion-mode tab label renamed to **Wallix** (reflects WAB/PAM bastion type).
+
+### Fixed
+
+- **Double-click connection mode override**: `App::select()` no longer resets `connection_mode` when the click targets the already-selected server, preserving manual Tab/1-3 overrides through to the connection.
+
+### Quality
+
+- 45 unit tests (8 new i18n tests: locale detection × 4, fmt × 3, FR≠EN smoke), 0 failures.
+- `cargo fmt` + `cargo clippy -D warnings` clean.
 
 ---
 
@@ -101,6 +120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - First working version: TUI SSH manager with YAML config file support.
 
+[0.6.0]: https://github.com/yatoub/sushi/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/yatoub/sushi/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/yatoub/sushi/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/yatoub/sushi/compare/v0.3.0...v0.4.0

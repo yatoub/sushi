@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.0] — 2026-03-01
+
+### Added
+
+- **Historique des connexions** (`last_seen`): l'horodatage de la dernière connexion à chaque serveur est persisté dans `~/.sushi_state.json`. Il s'affiche dans le panneau de détails (ex. : "il y a 2 h").
+- **Rechargement à chaud** (touche `r`): recharge la configuration depuis le disque sans quitter l'application. Un message temporaire confirme le succès ou l'erreur.
+- **Favoris** (touche `f`) : bascule le statut favori du serveur sélectionné. Les favoris apparaissent avec une icône ⭐ dans l'arbre.
+- **Vue favoris** (touche `F`) : basculer entre l'affichage de tous les serveurs et les favoris seuls.
+- **Tri par récent** (touche `H`) : mode liste plate triée par dernière connexion (le plus récent en premier).
+- **Commande ad-hoc** (touche `x`) : saisir une commande SSH non-interactive à exécuter sur le serveur sélectionné ; le résultat s'affiche dans le panneau de détails (20 premières lignes, code de sortie coloré).
+- **Validation YAML stricte** : les champs inconnus dans les fichiers de config déclenchent des avertissements `ValidationWarning` non-bloquants (collectés à chaque `load_merged`).
+- **Includes récursifs** (`merge_defaults`) : les sous-fichiers inclus peuvent eux-mêmes avoir des `includes`; le flag `merge_defaults: true` sur une entrée d'include fusionne les `defaults` du parent dans le sous-fichier.
+
+### Changed
+
+- `Config::load_merged` retourne maintenant un triplet `(Config, Vec<IncludeWarning>, Vec<ValidationWarning>)`.
+- `App::new` accepte deux arguments supplémentaires : `config_path: PathBuf` et `validation_warnings: Vec<ValidationWarning>`.
+- `IncludeWarning::NestedIgnored` supprimé — les includes imbriqués sont désormais traités récursivement.
+
+---
+
 ## [0.7.1] — 2026-02-28
 
 ### Fixed

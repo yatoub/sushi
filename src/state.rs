@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 
@@ -9,6 +9,16 @@ use serde::{Deserialize, Serialize};
 pub struct AppState {
     /// Clés des groupes/environnements actuellement développés ("Group:foo", "Env:foo:bar").
     pub expanded_items: HashSet<String>,
+    /// Horodatage Unix (secondes) de la dernière connexion SSH réussie, indexé
+    /// par clé de serveur (`[NS:{ns}:]Group:{g}[:Env:{e}]:Server:{name}`).
+    #[serde(default)]
+    pub last_seen: HashMap<String, u64>,
+    /// Clés des serveurs marqués favoris.
+    #[serde(default)]
+    pub favorites: HashSet<String>,
+    /// Si `true`, l'arbre est trié par connexion la plus récente (vue plate).
+    #[serde(default)]
+    pub sort_by_recent: bool,
 }
 
 fn state_path() -> PathBuf {

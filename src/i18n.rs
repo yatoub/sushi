@@ -112,6 +112,38 @@ pub struct Strings {
     pub clipboard_unavailable: &'static str,
     /// `{}` = description de l'erreur SSH.
     pub ssh_error: &'static str,
+
+    // ── Historique des connexions ────────────────────────────────────────────
+    pub last_seen_label: &'static str,
+    pub last_seen_never: &'static str,
+    /// `{}` = durée formatée (ex. "3 jours")
+    pub last_seen_ago: &'static str,
+    pub last_seen_just_now: &'static str,
+
+    // ── Rechargement à chaud ─────────────────────────────────────────────────
+    /// `{}` = nombre de serveurs
+    pub config_reloaded: &'static str,
+    pub config_reload_error: &'static str,
+
+    // ── Favoris ──────────────────────────────────────────────────────────────
+    pub favorites_title: &'static str,
+    pub favorite_added: &'static str,
+    pub favorite_removed: &'static str,
+
+    // ── Sort par récence ─────────────────────────────────────────────────────
+    pub sort_recent_on: &'static str,
+    pub sort_recent_off: &'static str,
+
+    // ── Commande ad-hoc ──────────────────────────────────────────────────────
+    pub cmd_prompt: &'static str,
+    pub cmd_running: &'static str,
+    /// `{}` = exit code
+    pub cmd_exit_err: &'static str,
+
+    // ── Validation YAML ──────────────────────────────────────────────────────
+    pub validation_title: &'static str,
+    /// `{}` = fichier, `{}` = contexte, `{}` = champ
+    pub validation_unknown_field: &'static str,
 }
 
 // ─── Français ─────────────────────────────────────────────────────────────────
@@ -164,7 +196,7 @@ pub static STRINGS_FR: Strings = Strings {
     probe_disk_extra: "Disk {}",
     probe_fs_absent: "⚠  {} — non monté",
 
-    status_normal: "Navigation : ↑/↓ | Ouvrir : Espace/Entrée | Recherche : / | Mode : Tab/1-3 | Verbose : v | y : Copier cmd | d : Probe | q : Quitter",
+    status_normal: "Navigation : ↑/↓ | Ouvrir : Espace/Entrée | Recherche : / | Mode : Tab/1-3 | v : Verbose | y : Copier | d : Probe | f : Favori | F : Vue favs | r : Recharger | x : Cmd | H : Tri | q : Quitter",
     status_searching: "Recherche : Tapez pour filtrer… | Échap : Annuler | Ctrl+U : Effacer | Entrée : Valider",
     status_search_active: "Navigation : ↑/↓ | Effacer : Échap | Nouvelle recherche : / | Verbose : v | Entrée : Connecter | q : Quitter",
 
@@ -176,6 +208,28 @@ pub static STRINGS_FR: Strings = Strings {
     clipboard_error: "Erreur presse-papiers : {}",
     clipboard_unavailable: "Presse-papiers indisponible",
     ssh_error: "Erreur SSH : {}",
+
+    last_seen_label: "Dern. conn.: ",
+    last_seen_never: "—",
+    last_seen_ago: "il y a {}",
+    last_seen_just_now: "à l'instant",
+
+    config_reloaded: "Config rechargée ({} serveurs)",
+    config_reload_error: "Erreur rechargement config",
+
+    favorites_title: " ⭐ Favoris ",
+    favorite_added: "⭐ Ajouté aux favoris",
+    favorite_removed: "Favori retiré",
+
+    sort_recent_on: "Tri : récent  [H]",
+    sort_recent_off: "Tri : alpha   [H]",
+
+    cmd_prompt: "Commande : ",
+    cmd_running: "Exécution…",
+    cmd_exit_err: "Erreur (exit {})",
+
+    validation_title: " ⚠  Avertissements de configuration ",
+    validation_unknown_field: "{} ({}): champ inconnu « {} »",
 };
 
 // ─── Anglais ──────────────────────────────────────────────────────────────────
@@ -228,7 +282,7 @@ pub static STRINGS_EN: Strings = Strings {
     probe_disk_extra: "Disk {}",
     probe_fs_absent: "⚠  {} — not mounted",
 
-    status_normal: "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | Verbose: v | y: Copy cmd | d: Probe | q: Quit",
+    status_normal: "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | v: Verbose | y: Copy | d: Probe | f: Fav | F: Favs | r: Reload | x: Cmd | H: Sort | q: Quit",
     status_searching: "Search Mode: Type to filter | ESC: Cancel | Ctrl+U: Clear | Enter: Apply",
     status_search_active: "Navigate: ↑/↓ | Clear: ESC | New search: / | Verbose: v | Enter: Connect | q: Quit",
 
@@ -240,6 +294,28 @@ pub static STRINGS_EN: Strings = Strings {
     clipboard_error: "Clipboard error: {}",
     clipboard_unavailable: "Clipboard unavailable",
     ssh_error: "SSH error: {}",
+
+    last_seen_label: "Last conn.:  ",
+    last_seen_never: "—",
+    last_seen_ago: "{} ago",
+    last_seen_just_now: "just now",
+
+    config_reloaded: "Config reloaded ({} servers)",
+    config_reload_error: "Config reload error",
+
+    favorites_title: " ⭐ Favorites ",
+    favorite_added: "⭐ Added to favorites",
+    favorite_removed: "Removed from favorites",
+
+    sort_recent_on: "Sort: recent [H]",
+    sort_recent_off: "Sort: alpha  [H]",
+
+    cmd_prompt: "Command: ",
+    cmd_running: "Running…",
+    cmd_exit_err: "Error (exit {})",
+
+    validation_title: " ⚠  Configuration warnings ",
+    validation_unknown_field: "{} ({}): unknown field \"{}\"",
 };
 
 // ─── API publique ─────────────────────────────────────────────────────────────

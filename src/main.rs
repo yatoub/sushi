@@ -11,7 +11,7 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
-use sushi::app::{App, AppMode, ConfigItem};
+use sushi::app::{App, AppMode, CmdState, ConfigItem};
 use sushi::config::{Config, ConnectionMode, ResolvedServer};
 use sushi::handlers::{get_layout, handle_mouse_event, is_in_rect};
 use sushi::probe::ProbeState;
@@ -184,13 +184,14 @@ fn main() -> io::Result<()> {
         return Err(e);
     }
 
-    let (config, warnings) = match Config::load_merged(config_path, &mut HashSet::new()) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("Failed to load config: {}", e);
-            return Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string()));
-        }
-    };
+    let (config, warnings, val_warnings) =
+        match Config::load_merged(config_path, &mut HashSet::new()) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Failed to load config: {}", e);
+                return Err(io::Error::new(io::ErrorKind::InvalidData, e.to_string()));
+            }
+        };
 
     // ── Connexion directe sans TUI ──────────────────────────────────────────
     let cli_mode_target: Option<(ConnectionMode, String)> = cli
@@ -224,7 +225,8 @@ fn main() -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(config, warnings).map_err(io::Error::other)?;
+    let mut app = App::new(config, warnings, config_path.to_path_buf(), val_warnings)
+        .map_err(io::Error::other)?;
 
     let res = run_app(&mut terminal, &mut app);
 
@@ -292,6 +294,9 @@ fn run_app(
             app.probe_rx = None;
         }
 
+        // Lit le résultat de la commande ad-hoc si un thread tourne
+        app.poll_cmd();
+
         if event::poll(Duration::from_millis(250))? {
             match event::read()? {
                 Event::Key(key) => {
@@ -299,6 +304,35 @@ fn run_app(
                         // En mode erreur : n'importe quelle touche ferme le panneau
                         match key.code {
                             KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => app.clear_error(),
+                            _ => {}
+                        }
+                    } else if matches!(app.cmd_state, CmdState::Prompting(_)) {
+                        // Mode saisie commande ad-hoc
+                        match key.code {
+                            KeyCode::Esc => {
+                                app.reset_cmd();
+                            }
+                            KeyCode::Enter => {
+                                if let CmdState::Prompting(buf) = app.cmd_state.clone() {
+                                    if !buf.trim().is_empty() {
+                                        if let Some(server) = app.selected_server() {
+                                            app.start_cmd(&server, buf.trim().to_string());
+                                        }
+                                    } else {
+                                        app.reset_cmd();
+                                    }
+                                }
+                            }
+                            KeyCode::Char(c) => {
+                                if let CmdState::Prompting(ref mut buf) = app.cmd_state {
+                                    buf.push(c);
+                                }
+                            }
+                            KeyCode::Backspace => {
+                                if let CmdState::Prompting(ref mut buf) = app.cmd_state {
+                                    buf.pop();
+                                }
+                            }
                             _ => {}
                         }
                     } else if app.is_searching {
@@ -390,6 +424,48 @@ fn run_app(
                             KeyCode::Char('/') => {
                                 app.is_searching = true;
                             }
+                            KeyCode::Char('r') => match app.reload() {
+                                Ok(()) => {}
+                                Err(e) => app.set_status_message(
+                                    app.lang
+                                        .config_reload_error
+                                        .replacen("{}", &e.to_string(), 1),
+                                ),
+                            },
+                            KeyCode::Char('f') => {
+                                app.toggle_favorite();
+                            }
+                            KeyCode::Char('F') => {
+                                app.toggle_favorites_view();
+                            }
+                            KeyCode::Char('H') => {
+                                app.sort_by_recent = !app.sort_by_recent;
+                                app.items_dirty = true;
+                                let msg = if app.sort_by_recent {
+                                    app.lang.sort_recent_on
+                                } else {
+                                    app.lang.sort_recent_off
+                                };
+                                app.set_status_message(msg);
+                            }
+                            KeyCode::Char('x') => {
+                                // Lance la saisie de commande ad-hoc
+                                let items = app.get_visible_items();
+                                if matches!(
+                                    items.get(app.selected_index),
+                                    Some(ConfigItem::Server(_))
+                                ) {
+                                    app.cmd_state = CmdState::Prompting(String::new());
+                                }
+                            }
+                            KeyCode::Esc
+                                if matches!(
+                                    app.cmd_state,
+                                    CmdState::Done { .. } | CmdState::Error(_)
+                                ) =>
+                            {
+                                app.reset_cmd();
+                            }
                             KeyCode::Char('d') => {
                                 let items = app.get_visible_items();
                                 if let Some(ConfigItem::Server(server)) =
@@ -435,6 +511,7 @@ fn run_app(
                                 };
                                 match action {
                                     Some(Ok(server)) => {
+                                        app.record_connection(&server);
                                         return Ok(AppResult::Connect(
                                             server,
                                             app.connection_mode,
@@ -478,6 +555,7 @@ fn run_app(
                                 };
                                 match action {
                                     Some(Ok(server)) => {
+                                        app.record_connection(&server);
                                         return Ok(AppResult::Connect(
                                             server,
                                             app.connection_mode,

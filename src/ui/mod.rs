@@ -9,7 +9,7 @@ use ratatui::{
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Tabs, Wrap},
 };
 
-use crate::app::{App, AppMode, ConfigItem};
+use crate::app::{App, AppMode, CmdState, ConfigItem};
 use crate::i18n::Strings;
 use crate::probe::ProbeState;
 use crate::ui::theme::Theme;
@@ -337,12 +337,19 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
                     (false, false, true) => "    ",    // namespace + groupe
                     (false, false, false) => "      ", // namespace + groupe + env
                 };
+                let server_key = crate::app::App::server_key(server);
+                let is_fav = app.favorites.contains(&server_key);
+                let icon = if is_fav { "⭐" } else { "🖥️" };
+                let name_style = if is_fav {
+                    Style::default()
+                        .fg(app.theme.yellow)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(app.theme.server_item)
+                };
                 Line::from(vec![
                     Span::raw(indent),
-                    Span::styled(
-                        format!("🖥️ {}", server.name),
-                        Style::default().fg(app.theme.server_item),
-                    ),
+                    Span::styled(format!("{} {}", icon, server.name), name_style),
                 ])
             }
         };
@@ -355,7 +362,11 @@ fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .title(app.lang.panel_servers)
+                .title(if app.favorites_only {
+                    app.lang.favorites_title
+                } else {
+                    app.lang.panel_servers
+                })
                 .border_style(Style::default().fg(app.theme.border)),
         )
         .highlight_style(
@@ -489,27 +500,59 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     )]));
                     for option in &server.ssh_options {
                         lines.push(Line::from(vec![
-                            Span::raw("  • "),
+                            Span::raw("  \u{2022} "),
                             Span::styled(option, Style::default().fg(app.theme.subtext0)),
                         ]));
                     }
                 }
 
-                // ── Bloc diagnostic (état probe) ─────────────────────────────────
-                lines.push(Line::from(""));
-                match &app.probe_state {
-                    ProbeState::Idle => {
-                        lines.push(Line::from(vec![Span::styled(
-                            app.lang.probe_hint,
-                            Style::default().fg(app.theme.subtext0),
-                        )]));
+                // ── Dernière connexion ───────────────────────────────────────────
+                let last_seen_str = if let Some(ts) = app.last_seen_for(server) {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    let elapsed = now.saturating_sub(ts);
+                    if elapsed < 60 {
+                        app.lang.last_seen_just_now.to_string()
+                    } else {
+                        let minutes = elapsed / 60;
+                        let hours = minutes / 60;
+                        let days = hours / 24;
+                        let ago_str = if days >= 1 {
+                            format!("{} j", days)
+                        } else if hours >= 1 {
+                            format!("{} h", hours)
+                        } else {
+                            format!("{} min", minutes)
+                        };
+                        app.lang.last_seen_ago.replacen("{}", &ago_str, 1)
                     }
-                    ProbeState::Running => {
+                } else {
+                    app.lang.last_seen_never.to_string()
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        app.lang.last_seen_label,
+                        Style::default()
+                            .add_modifier(Modifier::BOLD)
+                            .fg(app.theme.fg),
+                    ),
+                    Span::styled(last_seen_str, Style::default().fg(app.theme.subtext0)),
+                ]));
+
+                // ── Bloc commande ad-hoc (si actif) ou diagnostic SSH ─────────────
+                lines.push(Line::from(""));
+                match &app.cmd_state {
+                    CmdState::Running(cmd) => {
                         let ms = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .map(|d| d.subsec_millis())
                             .unwrap_or(0);
-                        let frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+                        let frames = [
+                            '\u{280b}', '\u{2819}', '\u{2839}', '\u{2838}', '\u{283c}', '\u{2834}',
+                            '\u{2826}', '\u{2827}', '\u{2807}', '\u{280f}',
+                        ];
                         let spinner = frames[(ms / 100) as usize % frames.len()];
                         lines.push(Line::from(vec![
                             Span::styled(
@@ -517,85 +560,153 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                 Style::default().fg(app.theme.sapphire),
                             ),
                             Span::styled(
-                                app.lang.probe_running,
+                                app.lang.cmd_running.replacen("{}", cmd, 1),
                                 Style::default().fg(app.theme.subtext0),
                             ),
                         ]));
                     }
-                    ProbeState::Done(r) => {
-                        let theme = app.theme;
-                        lines.push(Line::from(vec![Span::styled(
-                            app.lang.probe_section,
-                            Style::default().fg(theme.border),
-                        )]));
+                    CmdState::Done {
+                        cmd,
+                        output,
+                        exit_ok,
+                    } => {
+                        let status_icon = if *exit_ok { "✔" } else { "✗" };
+                        let status_color = if *exit_ok {
+                            app.theme.green
+                        } else {
+                            app.theme.red
+                        };
                         lines.push(Line::from(vec![
                             Span::styled(
-                                app.lang.probe_kernel,
-                                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                format!("{} ", status_icon),
+                                Style::default().fg(status_color),
                             ),
-                            Span::raw(r.kernel.clone()),
-                        ]));
-                        lines.push(Line::from(vec![
                             Span::styled(
-                                app.lang.probe_cpu,
-                                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                format!("$ {}", cmd),
+                                Style::default().fg(app.theme.sapphire),
                             ),
-                            Span::raw(r.cpu_model.clone()),
                         ]));
-                        lines.push(Line::from(vec![
-                            Span::styled(
-                                app.lang.probe_load,
-                                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
-                            ),
-                            Span::raw(r.load.clone()),
-                        ]));
-                        lines.push(probe_bar(
-                            app.lang.probe_ram,
-                            r.ram_pct,
-                            r.ram_total_gb,
-                            theme,
-                        ));
-                        lines.push(probe_bar(
-                            app.lang.probe_disk,
-                            r.disk_pct,
-                            r.disk_total_gb,
-                            theme,
-                        ));
-                        for fs_entry in &r.extra_fs {
-                            match &fs_entry.usage {
-                                Some(usage) => {
-                                    let label = app.lang.probe_disk_extra.replacen(
-                                        "{}",
-                                        &fs_entry.mountpoint,
-                                        1,
-                                    );
-                                    lines.push(probe_bar(&label, usage.pct, usage.total_gb, theme));
-                                }
-                                None => {
-                                    lines.push(Line::from(vec![Span::styled(
-                                        app.lang.probe_fs_absent.replacen(
-                                            "{}",
-                                            &fs_entry.mountpoint,
-                                            1,
-                                        ),
-                                        Style::default()
-                                            .fg(theme.yellow)
-                                            .add_modifier(Modifier::BOLD),
-                                    )]));
-                                }
-                            }
+                        for line in output.lines().take(20) {
+                            lines.push(Line::from(vec![Span::styled(
+                                format!("  {}", line),
+                                Style::default().fg(app.theme.fg),
+                            )]));
                         }
                     }
-                    ProbeState::Error(msg) => {
-                        lines.push(Line::from(vec![Span::styled(
-                            app.lang.probe_section,
-                            Style::default().fg(app.theme.border),
-                        )]));
+                    CmdState::Error(e) => {
                         lines.push(Line::from(vec![
-                            Span::styled("✗  ", Style::default().fg(app.theme.red)),
-                            Span::raw(msg.clone()),
+                            Span::styled("✗ ", Style::default().fg(app.theme.red)),
+                            Span::raw(e.as_str()),
                         ]));
                     }
+                    _ => {
+                        // Pas de commande : on affiche le probe SSH habituel
+                        match &app.probe_state {
+                            ProbeState::Idle => {
+                                lines.push(Line::from(vec![Span::styled(
+                                    app.lang.probe_hint,
+                                    Style::default().fg(app.theme.subtext0),
+                                )]));
+                            }
+                            ProbeState::Running => {
+                                let ms = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.subsec_millis())
+                                    .unwrap_or(0);
+                                let frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+                                let spinner = frames[(ms / 100) as usize % frames.len()];
+                                lines.push(Line::from(vec![
+                                    Span::styled(
+                                        format!("  {} ", spinner),
+                                        Style::default().fg(app.theme.sapphire),
+                                    ),
+                                    Span::styled(
+                                        app.lang.probe_running,
+                                        Style::default().fg(app.theme.subtext0),
+                                    ),
+                                ]));
+                            }
+                            ProbeState::Done(r) => {
+                                let theme = app.theme;
+                                lines.push(Line::from(vec![Span::styled(
+                                    app.lang.probe_section,
+                                    Style::default().fg(theme.border),
+                                )]));
+                                lines.push(Line::from(vec![
+                                    Span::styled(
+                                        app.lang.probe_kernel,
+                                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                    ),
+                                    Span::raw(r.kernel.clone()),
+                                ]));
+                                lines.push(Line::from(vec![
+                                    Span::styled(
+                                        app.lang.probe_cpu,
+                                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                    ),
+                                    Span::raw(r.cpu_model.clone()),
+                                ]));
+                                lines.push(Line::from(vec![
+                                    Span::styled(
+                                        app.lang.probe_load,
+                                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                    ),
+                                    Span::raw(r.load.clone()),
+                                ]));
+                                lines.push(probe_bar(
+                                    app.lang.probe_ram,
+                                    r.ram_pct,
+                                    r.ram_total_gb,
+                                    theme,
+                                ));
+                                lines.push(probe_bar(
+                                    app.lang.probe_disk,
+                                    r.disk_pct,
+                                    r.disk_total_gb,
+                                    theme,
+                                ));
+                                for fs_entry in &r.extra_fs {
+                                    match &fs_entry.usage {
+                                        Some(usage) => {
+                                            let label = app.lang.probe_disk_extra.replacen(
+                                                "{}",
+                                                &fs_entry.mountpoint,
+                                                1,
+                                            );
+                                            lines.push(probe_bar(
+                                                &label,
+                                                usage.pct,
+                                                usage.total_gb,
+                                                theme,
+                                            ));
+                                        }
+                                        None => {
+                                            lines.push(Line::from(vec![Span::styled(
+                                                app.lang.probe_fs_absent.replacen(
+                                                    "{}",
+                                                    &fs_entry.mountpoint,
+                                                    1,
+                                                ),
+                                                Style::default()
+                                                    .fg(theme.yellow)
+                                                    .add_modifier(Modifier::BOLD),
+                                            )]));
+                                        }
+                                    }
+                                }
+                            }
+                            ProbeState::Error(msg) => {
+                                lines.push(Line::from(vec![Span::styled(
+                                    app.lang.probe_section,
+                                    Style::default().fg(app.theme.border),
+                                )]));
+                                lines.push(Line::from(vec![
+                                    Span::styled("\u{2717}  ", Style::default().fg(app.theme.red)),
+                                    Span::raw(msg.clone()),
+                                ]));
+                            }
+                        }
+                    } // fin du bloc _ => match &probe_state
                 }
 
                 lines
@@ -656,6 +767,15 @@ fn probe_bar(label: &str, pct: u8, total_gb: f32, theme: &Theme) -> Line<'static
 }
 
 fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
+    // Mode saisie de commande ad-hoc
+    if let CmdState::Prompting(buf) = &app.cmd_state {
+        let prompt = format!("{} {}\u{2588}", app.lang.cmd_prompt, buf);
+        let paragraph =
+            Paragraph::new(prompt).style(Style::default().bg(app.theme.bg).fg(app.theme.yellow));
+        f.render_widget(paragraph, area);
+        return;
+    }
+
     // Affiche le message temporaire (clipboard, erreur…) si présent
     if let Some((msg, _)) = &app.status_message {
         let paragraph = Paragraph::new(msg.as_str()).style(

@@ -1,11 +1,14 @@
 use crate::config::{
     Config, ConfigEntry, ConfigError, ConnectionMode, IncludeWarning, ResolvedServer, ThemeVariant,
+    ValidationWarning,
 };
 use crate::probe::{ProbeResult, ProbeState};
 use crate::state;
 use crate::ui::theme::{Theme, get_theme};
 use ratatui::widgets::ListState;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::mpsc;
 use std::time::Instant;
 
 /// Mode courant de l'application.
@@ -14,6 +17,25 @@ pub enum AppMode {
     #[default]
     Normal,
     /// Affiche un panneau d'erreur bloquant jusqu'à la confirmation.
+    Error(String),
+}
+
+/// État d'une commande SSH ad-hoc (touche `x`).
+#[derive(Debug, Clone, Default)]
+pub enum CmdState {
+    #[default]
+    Idle,
+    /// L'utilisateur saisit la commande (buffer).
+    Prompting(String),
+    /// La commande est en cours d'exécution.
+    Running(String),
+    /// La commande s'est terminée avec son output et code de sortie.
+    Done {
+        cmd: String,
+        output: String,
+        exit_ok: bool,
+    },
+    /// Erreur de lancement.
     Error(String),
 }
 
@@ -53,7 +75,7 @@ pub struct App {
 
     /// Cache de la liste visible — recalculé seulement quand `items_dirty` est vrai.
     cached_items: Vec<ConfigItem>,
-    items_dirty: bool,
+    pub items_dirty: bool,
 
     /// Avertissements non-bloquants collectés lors du chargement des includes.
     pub warnings: Vec<IncludeWarning>,
@@ -65,14 +87,43 @@ pub struct App {
     /// État du diagnostic SSH lancé avec `d`.
     pub probe_state: ProbeState,
     /// Récepteur du thread de diagnostic (présent seulement quand Running).
-    pub probe_rx: Option<std::sync::mpsc::Receiver<Result<ProbeResult, String>>>,
+    pub probe_rx: Option<mpsc::Receiver<Result<ProbeResult, String>>>,
 
     /// Jeu de chaînes localisées détecté au démarrage.
     pub lang: &'static crate::i18n::Strings,
+
+    /// Chemin du fichier de configuration principal (pour le rechargement).
+    pub config_path: PathBuf,
+
+    /// Si true, seuls les favoris sont affichés dans la liste.
+    pub favorites_only: bool,
+
+    /// Si true, la liste est triée par dernière connexion (mode plat).
+    pub sort_by_recent: bool,
+
+    /// Timestamps UNIX de dernière connexion, indexés par clé de serveur.
+    pub last_seen: HashMap<String, u64>,
+
+    /// Ensemble des clés de serveurs marqués comme favoris.
+    pub favorites: HashSet<String>,
+
+    /// État de la commande ad-hoc en cours (touche `x`).
+    pub cmd_state: CmdState,
+
+    /// Récepteur du thread de commande ad-hoc.
+    pub cmd_rx: Option<mpsc::Receiver<(String, bool)>>,
+
+    /// Avertissements de validation YAML (champs inconnus).
+    pub validation_warnings: Vec<ValidationWarning>,
 }
 
 impl App {
-    pub fn new(config: Config, warnings: Vec<IncludeWarning>) -> Result<Self, ConfigError> {
+    pub fn new(
+        config: Config,
+        warnings: Vec<IncludeWarning>,
+        config_path: PathBuf,
+        validation_warnings: Vec<ValidationWarning>,
+    ) -> Result<Self, ConfigError> {
         let resolved = config.resolve()?;
 
         // Résout le thème avant de déplacer config dans le struct
@@ -102,6 +153,14 @@ impl App {
             probe_rx: None,
             lang: crate::i18n::get_strings(crate::i18n::detect_lang()),
             warnings,
+            config_path,
+            favorites_only: false,
+            sort_by_recent: false,
+            last_seen: HashMap::new(),
+            favorites: HashSet::new(),
+            cmd_state: CmdState::Idle,
+            cmd_rx: None,
+            validation_warnings,
         };
 
         app.list_state.select(Some(0));
@@ -109,6 +168,9 @@ impl App {
         // Restaure l'état d'expansion persistant
         let saved = state::load_state();
         app.expanded_items = saved.expanded_items;
+        app.last_seen = saved.last_seen;
+        app.favorites = saved.favorites;
+        app.sort_by_recent = saved.sort_by_recent;
         app.items_dirty = true;
 
         app.update_mode_from_selection();
@@ -130,9 +192,6 @@ impl App {
                         .include_warn_circular
                         .replacen("{}", label, 1)
                         .replacen("{}", path, 1),
-                    crate::config::IncludeWarning::NestedIgnored { label } => {
-                        app.lang.include_warn_nested.replacen("{}", label, 1)
-                    }
                 })
                 .collect();
             app.app_mode = AppMode::Error(lines.join("\n"));
@@ -145,6 +204,9 @@ impl App {
     pub fn to_app_state(&self) -> crate::state::AppState {
         crate::state::AppState {
             expanded_items: self.expanded_items.clone(),
+            last_seen: self.last_seen.clone(),
+            favorites: self.favorites.clone(),
+            sort_by_recent: self.sort_by_recent,
         }
     }
 
@@ -208,12 +270,23 @@ impl App {
     }
 
     fn build_visible_items(&self) -> Vec<ConfigItem> {
+        // Mode "tri par récent" : liste plate de tous les serveurs triés par last_seen
+        if self.sort_by_recent {
+            return self.build_recent_items();
+        }
+
         let mut items = Vec::new();
         let searching = !self.search_query.is_empty();
 
         for entry in &self.config.groups {
             match entry {
                 ConfigEntry::Namespace(ns) => {
+                    // En mode favorites_only, on n'affiche le namespace que s'il a des favoris
+                    if self.favorites_only
+                        && !self.namespace_has_visible_servers(&ns.entries, &ns.label)
+                    {
+                        continue;
+                    }
                     items.push(ConfigItem::Namespace(ns.label.clone()));
                     let ns_id = format!("NS:{}", ns.label);
                     let ns_expanded = self.expanded_items.contains(&ns_id) || searching;
@@ -231,10 +304,18 @@ impl App {
                             && rs.env_name.is_empty()
                             && rs.namespace.is_empty()
                     }) {
+                        if self.favorites_only
+                            && !self.favorites.contains(&Self::server_key(resolved))
+                        {
+                            continue;
+                        }
                         items.push(ConfigItem::Server(Box::new(resolved.clone())));
                     }
                 }
                 ConfigEntry::Group(group) => {
+                    if self.favorites_only && !self.group_has_visible_servers(group, "") {
+                        continue;
+                    }
                     items.push(ConfigItem::Group(group.name.clone(), String::new()));
                     let group_id = format!("Group:{}", group.name);
                     let group_expanded = self.expanded_items.contains(&group_id) || searching;
@@ -246,6 +327,104 @@ impl App {
             }
         }
         items
+    }
+
+    /// Construit une liste plate triée par dernière connexion (mode H actif).
+    fn build_recent_items(&self) -> Vec<ConfigItem> {
+        let mut servers: Vec<ConfigItem> = self
+            .resolved_servers
+            .iter()
+            .filter(|rs| {
+                if self.favorites_only && !self.favorites.contains(&Self::server_key(rs)) {
+                    return false;
+                }
+                if !self.search_query.is_empty() && !self.matches_search(&rs.name, &rs.host) {
+                    return false;
+                }
+                true
+            })
+            .cloned()
+            .map(|s| ConfigItem::Server(Box::new(s)))
+            .collect();
+
+        servers.sort_by(|a, b| {
+            let ts_a = if let ConfigItem::Server(s) = a {
+                self.last_seen
+                    .get(&Self::server_key(s))
+                    .copied()
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            let ts_b = if let ConfigItem::Server(s) = b {
+                self.last_seen
+                    .get(&Self::server_key(s))
+                    .copied()
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            ts_b.cmp(&ts_a) // décroissant : le plus récent en premier
+        });
+        servers
+    }
+
+    /// Indique si un namespace contient des serveurs favoris visibles.
+    fn namespace_has_visible_servers(&self, entries: &[ConfigEntry], ns: &str) -> bool {
+        for entry in entries {
+            match entry {
+                ConfigEntry::Group(g) => {
+                    if self.group_has_visible_servers(g, ns) {
+                        return true;
+                    }
+                }
+                ConfigEntry::Server(s) => {
+                    if let Some(resolved) = self
+                        .resolved_servers
+                        .iter()
+                        .find(|rs| rs.name == s.name && rs.namespace == ns)
+                        && self.favorites.contains(&Self::server_key(resolved))
+                    {
+                        return true;
+                    }
+                }
+                ConfigEntry::Namespace(_) => {}
+            }
+        }
+        false
+    }
+
+    /// Indique si un groupe contient des serveurs favoris visibles.
+    fn group_has_visible_servers(&self, group: &crate::config::Group, ns: &str) -> bool {
+        if let Some(envs) = &group.environments {
+            for env in envs {
+                for s in &env.servers {
+                    if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
+                        rs.name == s.name
+                            && rs.group_name == group.name
+                            && rs.env_name == env.name
+                            && rs.namespace == ns
+                    }) && self.favorites.contains(&Self::server_key(resolved))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        if let Some(servers) = &group.servers {
+            for s in servers {
+                if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
+                    rs.name == s.name
+                        && rs.group_name == group.name
+                        && rs.env_name.is_empty()
+                        && rs.namespace == ns
+                }) && self.favorites.contains(&Self::server_key(resolved))
+                {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Itère les entrées d'un namespace et les pousse dans `items`.
@@ -291,6 +470,21 @@ impl App {
 
         if let Some(envs) = &group.environments {
             for env in envs {
+                // En mode favoris, ignorer l'env s'il n'a aucun favori visible
+                if self.favorites_only {
+                    let has_fav = env.servers.iter().any(|s| {
+                        self.resolved_servers.iter().any(|rs| {
+                            rs.name == s.name
+                                && rs.env_name == env.name
+                                && rs.group_name == group.name
+                                && rs.namespace.is_empty()
+                                && self.favorites.contains(&Self::server_key(rs))
+                        })
+                    });
+                    if !has_fav {
+                        continue;
+                    }
+                }
                 items.push(ConfigItem::Environment(
                     group.name.clone(),
                     env.name.clone(),
@@ -309,6 +503,11 @@ impl App {
                                 && rs.group_name == group.name
                                 && rs.namespace.is_empty()
                         }) {
+                            if self.favorites_only
+                                && !self.favorites.contains(&Self::server_key(resolved))
+                            {
+                                continue;
+                            }
                             items.push(ConfigItem::Server(Box::new(resolved.clone())));
                         }
                     }
@@ -327,6 +526,10 @@ impl App {
                         && rs.group_name == group.name
                         && rs.namespace.is_empty()
                 }) {
+                    if self.favorites_only && !self.favorites.contains(&Self::server_key(resolved))
+                    {
+                        continue;
+                    }
                     items.push(ConfigItem::Server(Box::new(resolved.clone())));
                 }
             }
@@ -344,6 +547,20 @@ impl App {
 
         if let Some(envs) = &group.environments {
             for env in envs {
+                if self.favorites_only {
+                    let has_fav = env.servers.iter().any(|s| {
+                        self.resolved_servers.iter().any(|rs| {
+                            rs.name == s.name
+                                && rs.env_name == env.name
+                                && rs.group_name == group.name
+                                && rs.namespace == ns
+                                && self.favorites.contains(&Self::server_key(rs))
+                        })
+                    });
+                    if !has_fav {
+                        continue;
+                    }
+                }
                 items.push(ConfigItem::Environment(
                     group.name.clone(),
                     env.name.clone(),
@@ -362,6 +579,11 @@ impl App {
                                 && rs.group_name == group.name
                                 && rs.namespace == ns
                         }) {
+                            if self.favorites_only
+                                && !self.favorites.contains(&Self::server_key(resolved))
+                            {
+                                continue;
+                            }
                             items.push(ConfigItem::Server(Box::new(resolved.clone())));
                         }
                     }
@@ -380,6 +602,10 @@ impl App {
                         && rs.group_name == group.name
                         && rs.namespace == ns
                 }) {
+                    if self.favorites_only && !self.favorites.contains(&Self::server_key(resolved))
+                    {
+                        continue;
+                    }
                     items.push(ConfigItem::Server(Box::new(resolved.clone())));
                 }
             }
@@ -433,6 +659,204 @@ impl App {
         // Réinitialise le diagnostic quand on change de serveur
         self.probe_state = ProbeState::Idle;
         self.probe_rx = None;
+    }
+
+    // ─── Identité des serveurs ─────────────────────────────────────────────────
+
+    /// Calcule la clé unique d'un serveur (stable, indépendante de l'ordre de config).
+    pub fn server_key(server: &ResolvedServer) -> String {
+        let mut key = String::new();
+        if !server.namespace.is_empty() {
+            key.push_str("NS:");
+            key.push_str(&server.namespace);
+            key.push(':');
+        }
+        if !server.group_name.is_empty() {
+            key.push_str("Group:");
+            key.push_str(&server.group_name);
+            key.push(':');
+        }
+        if !server.env_name.is_empty() {
+            key.push_str("Env:");
+            key.push_str(&server.env_name);
+            key.push(':');
+        }
+        key.push_str("Server:");
+        key.push_str(&server.name);
+        key
+    }
+
+    /// Retourne le serveur actuellement sélectionné (s'il y en a un).
+    pub fn selected_server(&mut self) -> Option<ResolvedServer> {
+        let items = self.get_visible_items();
+        if let Some(ConfigItem::Server(s)) = items.get(self.selected_index) {
+            Some(*s.clone())
+        } else {
+            None
+        }
+    }
+
+    // ─── Favoris ──────────────────────────────────────────────────────────────
+
+    /// Indique si le serveur sélectionné est un favori.
+    pub fn is_selected_favorite(&mut self) -> bool {
+        if let Some(s) = self.selected_server() {
+            self.favorites.contains(&Self::server_key(&s))
+        } else {
+            false
+        }
+    }
+
+    /// Bascule le statut favori du serveur sélectionné.
+    pub fn toggle_favorite(&mut self) {
+        if let Some(server) = self.selected_server() {
+            let key = Self::server_key(&server);
+            if self.favorites.contains(&key) {
+                self.favorites.remove(&key);
+                self.set_status_message(self.lang.favorite_removed.replacen("{}", &server.name, 1));
+            } else {
+                self.favorites.insert(key);
+                self.set_status_message(self.lang.favorite_added.replacen("{}", &server.name, 1));
+            }
+        }
+    }
+
+    /// Bascule le mode "afficher seulement les favoris".
+    pub fn toggle_favorites_view(&mut self) {
+        self.favorites_only = !self.favorites_only;
+        self.items_dirty = true;
+        self.selected_index = 0;
+        self.list_state.select(Some(0));
+        let msg = if self.favorites_only {
+            self.lang.favorites_title
+        } else {
+            self.lang.status_normal
+        };
+        self.set_status_message(msg);
+    }
+
+    // ─── Historique / last_seen ────────────────────────────────────────────────
+
+    /// Enregistre une connexion pour le serveur sélectionné (timestamp UNIX).
+    pub fn record_connection(&mut self, server: &ResolvedServer) {
+        let key = Self::server_key(server);
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        self.last_seen.insert(key, ts);
+    }
+
+    /// Retourne le timestamp UNIX de dernière connexion pour un serveur.
+    pub fn last_seen_for(&self, server: &ResolvedServer) -> Option<u64> {
+        self.last_seen.get(&Self::server_key(server)).copied()
+    }
+
+    // ─── Rechargement à chaud ─────────────────────────────────────────────────
+
+    /// Recharge la configuration depuis le disque sans quitter.
+    pub fn reload(&mut self) -> Result<(), ConfigError> {
+        let mut stack = std::collections::HashSet::new();
+        let (new_config, new_warnings, new_val_warnings) =
+            Config::load_merged(&self.config_path, &mut stack)?;
+        let resolved = new_config.resolve()?;
+
+        // Conserve l'expansion / la sélection actuelles
+        let old_expanded = self.expanded_items.clone();
+        let old_idx = self.selected_index;
+
+        self.config = new_config;
+        self.resolved_servers = resolved;
+        self.warnings = new_warnings;
+        self.validation_warnings = new_val_warnings;
+        self.expanded_items = old_expanded;
+        self.items_dirty = true;
+        self.selected_index = old_idx;
+        self.list_state.select(Some(old_idx));
+
+        self.set_status_message(self.lang.config_reloaded);
+        Ok(())
+    }
+
+    // ─── Commande ad-hoc ──────────────────────────────────────────────────────
+
+    /// Lance une commande SSH non-interactive dans un thread dédié.
+    /// Stocke le résultat via `cmd_rx`.
+    pub fn start_cmd(&mut self, server: &ResolvedServer, cmd: String) {
+        let host = server.host.clone();
+        let user = server.user.clone();
+        let port = server.port;
+        let key = server.ssh_key.clone();
+        let cmd_clone = cmd.clone();
+
+        let (tx, rx) = mpsc::channel();
+        self.cmd_state = CmdState::Running(cmd.clone());
+        self.cmd_rx = Some(rx);
+
+        std::thread::spawn(move || {
+            let mut args = vec![
+                "-o".to_string(),
+                "BatchMode=yes".to_string(),
+                "-o".to_string(),
+                "ConnectTimeout=10".to_string(),
+                "-p".to_string(),
+                port.to_string(),
+            ];
+            if !key.is_empty() {
+                let expanded = shellexpand::tilde(&key).to_string();
+                args.push("-i".to_string());
+                args.push(expanded);
+            }
+            args.push(format!("{}@{}", user, host));
+            args.push(cmd_clone.clone());
+
+            let result = std::process::Command::new("ssh").args(&args).output();
+
+            match result {
+                Ok(out) => {
+                    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+                    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+                    let combined = if stderr.is_empty() {
+                        stdout
+                    } else if stdout.is_empty() {
+                        stderr
+                    } else {
+                        format!("{}\n---\n{}", stdout, stderr)
+                    };
+                    let _ = tx.send((combined, out.status.success()));
+                }
+                Err(e) => {
+                    let _ = tx.send((e.to_string(), false));
+                }
+            }
+        });
+    }
+
+    /// Vérifie si le thread de commande a produit un résultat et met à jour `cmd_state`.
+    pub fn poll_cmd(&mut self) {
+        let done = if let Some(rx) = &self.cmd_rx {
+            rx.try_recv().ok()
+        } else {
+            None
+        };
+        if let Some((output, exit_ok)) = done {
+            let cmd = match &self.cmd_state {
+                CmdState::Running(c) => c.clone(),
+                _ => String::new(),
+            };
+            self.cmd_state = CmdState::Done {
+                cmd,
+                output,
+                exit_ok,
+            };
+            self.cmd_rx = None;
+        }
+    }
+
+    /// Réinitialise l'état de la commande ad-hoc.
+    pub fn reset_cmd(&mut self) {
+        self.cmd_state = CmdState::Idle;
+        self.cmd_rx = None;
     }
 }
 
@@ -497,7 +921,7 @@ mod tests {
     #[test]
     fn test_initial_visibility() {
         let config = create_test_config();
-        let mut app = App::new(config, vec![]).unwrap();
+        let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
         let items = app.get_visible_items();
 
         // Initially only the group header is visible (collapsed state)
@@ -511,7 +935,7 @@ mod tests {
     #[test]
     fn test_expansion() {
         let config = create_test_config();
-        let mut app = App::new(config, vec![]).unwrap();
+        let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
 
         // Expand Expand group G1
         app.toggle_expansion();
@@ -546,7 +970,7 @@ mod tests {
     #[test]
     fn test_search_filtering() {
         let config = create_test_config();
-        let mut app = App::new(config, vec![]).unwrap();
+        let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
 
         app.search_query = "S1".to_string();
         app.invalidate_cache();
@@ -641,7 +1065,7 @@ mod tests {
     #[test]
     fn test_namespace_visibility_collapsed() {
         let config = make_namespace_config();
-        let mut app = App::new(config, vec![]).unwrap();
+        let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
         let items = app.get_visible_items();
 
         // Collapsed: RootGroup header + Namespace header only (2 items)
@@ -653,7 +1077,7 @@ mod tests {
     #[test]
     fn test_namespace_expansion() {
         let config = make_namespace_config();
-        let mut app = App::new(config, vec![]).unwrap();
+        let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
 
         // Select the Namespace item (index 1) and expand it
         app.select(1);
@@ -669,7 +1093,7 @@ mod tests {
     #[test]
     fn test_search_crosses_namespaces() {
         let config = make_namespace_config();
-        let mut app = App::new(config, vec![]).unwrap();
+        let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
 
         app.search_query = "ces_srv".to_string();
         app.invalidate_cache();

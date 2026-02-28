@@ -5,7 +5,7 @@
 ## ✨ Features
 
 - **Hierarchical Organization**: Structure your infrastructure with Groups, Environments, and Servers.
-- **Multi-file Configuration**: Split your config by team or perimeter with `includes:`. Each included file is shown as a collapsible **namespace** in the TUI. Missing or circular includes are non-fatal warnings.
+- **Multi-file Configuration**: Split your config by team or perimeter with `includes:`. Each included file is shown as a collapsible **namespace** in the TUI. Nested includes are resolved recursively. Missing or circular includes are non-fatal warnings.
 - **Connection Modes**:
   - **Direct**: Standard SSH connection.
   - **Jump/Rebond**: Connect via one or more jump hosts (`-J`). Supports multi-hop chains.
@@ -28,10 +28,16 @@
   - **Mouse Support**: Click to select, double-click to connect.
   - **Configurable Theme**: Choose from four Catppuccin flavors — `latte`, `frappe`, `macchiato`, or `mocha` (default) via `defaults.theme` in your config.
   - **Verbose Mode**: Toggle SSH verbose output with `v`.
-  - **Rich Detail Pane**: Shows port (highlighted when non-standard), connection mode, jump host, bastion host, and SSH options.
+  - **Rich Detail Pane**: Shows port (highlighted when non-standard), connection mode, jump host, bastion host, SSH options, and last connection timestamp.
   - **Quick Diagnostic** (`d`): Press `d` on any server to run a non-blocking SSH probe. The detail pane displays a **System** block with kernel, CPU model, load average, and color-coded RAM/Disk progress bars (green < 60%, yellow 60–85%, red > 85%). Additional mount points configured via `probe_filesystems` are also shown: each extra path gets its own bar, or a yellow `⚠ /path — not mounted` warning if absent. An animated spinner shows while the probe is running. Press `d` again to refresh; changing server resets it.
+  - **Ad-hoc Command** (`x`): Run any non-interactive SSH command on the selected server directly from the TUI. The output (up to 20 lines) is displayed in the detail pane with a colored exit status indicator.
   - **Clipboard**: Copy the SSH command for any server with `y` (requires a running clipboard manager on Linux).
-- **State Persistence**: Expanded groups are saved to `~/.sushi_state.json` and restored on next launch.
+  - **Hot Reload** (`r`): Reload all configuration files (main + includes) without restarting. The tree updates in place and the current expansion state is preserved.
+  - **Favorites** (`f` / `F`): Mark any server as a favorite (⭐). Press `F` to toggle the favorites-only view — the tree filters all groups, environments, and namespaces accordingly.
+  - **Recent Sort** (`H`): Switch between alphabetical order and a flat list sorted by most-recently-used server.
+- **Connection History**: The last connection timestamp for each server is stored in `~/.sushi_state.json` and displayed in the detail pane (e.g., "il y a 2 h" / "2 h ago").
+- **YAML Validation**: Unknown fields in any config file are detected and reported as non-blocking `ValidationWarning` entries at startup.
+- **State Persistence**: Expanded groups, favorites, last-seen timestamps, and sort mode are saved to `~/.sushi_state.json` and restored on next launch.
 - **In-TUI Error Screen**: Connection errors are displayed as an overlay instead of crashing — press `Enter`/`Esc`/`q` to dismiss.
 - **Smart Sorting**: Automatically sorts groups and servers alphabetically.
 
@@ -67,6 +73,7 @@ includes:
     path: "~/.sushi_dev.yml"
   - label: "QUALIF"
     path: "~/.sushi_qualif.yml"
+    merge_defaults: true   # propagate main-file defaults into this sub-file
 
 defaults:
   user: "admin"
@@ -80,8 +87,9 @@ groups:
 
 - **`label`** — text shown as the namespace header (📦) in the TUI.
 - **`path`** — absolute or `~`-expanded path. Relative paths are resolved from the directory of the main file.
-- Each included file is a standard sushi YAML (`defaults`, `groups`…). Its `defaults` are **local** and do not leak into the main file.
-- Includes inside an included file are ignored with a non-fatal warning (nested includes not supported in v0.7).
+- **`merge_defaults`** *(optional, default: `false`)* — when `true`, the main file's `defaults` are merged as a base layer for the included file's servers (still lower priority than the sub-file's own defaults and any group/env/server-level overrides).
+- Each included file is a standard sushi YAML (`defaults`, `groups`…). Its `defaults` are **local** unless `merge_defaults: true` is set.
+- Includes inside an included file are resolved **recursively**. Circular dependencies are detected and reported as non-blocking warnings.
 - If a file is missing or unreadable, the remaining includes still load normally — a warning overlay is shown at startup.
 
 ### Example `~/.sushi.yml`
@@ -168,8 +176,10 @@ jump:
 - **`includes`**: *(optional)* List of external YAML files to merge as namespaces.
   - `label`: Display name shown as the top-level collapsible namespace (📦) in the tree.
   - `path`: Path to the included file (absolute or `~`-expanded). Relative paths are resolved from the main file's directory.
-  - The included file uses the same YAML schema as the main file. Its `defaults` apply only to that file's servers.
-  - Circular dependencies and nested includes are detected and reported as non-blocking warnings at startup.
+  - `merge_defaults` *(optional)*: when `true`, the main file's `defaults` are applied as a base layer for the sub-file's servers.
+  - The included file uses the same YAML schema as the main file. Its `defaults` apply only to that file's servers (unless `merge_defaults` is enabled). Nested includes are resolved recursively.
+  - Circular dependencies are detected and reported as non-blocking warnings at startup.
+  - Unknown YAML fields in any config file generate non-blocking `ValidationWarning` entries.
 - **`defaults`**: Global settings applied to all servers unless overridden.
   - `mode`: Default connection mode (`direct`, `jump`, or `wallix`).
   - `theme`: UI color theme — `latte`, `frappe`, `macchiato`, or `mocha` (default).
@@ -203,7 +213,12 @@ jump:
 | `Ctrl+U` | Clear search query (while in search mode) |
 | `d` | Run quick SSH diagnostic (kernel, CPU, load, RAM, disk) |
 | `y` | Copy SSH command to clipboard |
-| `Esc` | Cancel search / dismiss error overlay |
+| `r` | Hot-reload configuration files |
+| `f` | Toggle favorite on selected server |
+| `F` | Toggle favorites-only view |
+| `H` | Toggle recent-sort (flat list sorted by last connection) |
+| `x` | Run ad-hoc SSH command on selected server |
+| `Esc` | Cancel search / close ad-hoc prompt / dismiss error overlay |
 
 ### Mouse Support
 
@@ -261,7 +276,7 @@ defaults:
 - **Search Bar**: Dynamic title showing result count ("🔍 45 / 387 servers")
 - **Connection Modes**: Tab interface with visual highlight
 - **Verbose Toggle**: Checkbox indicator (☐/☑) with color feedback
-- **Detail Pane**: Port, mode, identity file, jump/bastion host, SSH options, and **System** block (kernel, CPU, load, RAM/Disk bars, plus extra mount points) after running `d`
+  - **Detail Pane**: Port, mode, identity file, jump/bastion host, SSH options, last connection time, **ad-hoc command output** (when active), and **System** block (kernel, CPU, load, RAM/Disk bars, plus extra mount points) after running `d`
 - **Error Overlay**: Centered popup for connection errors — press `Enter` to dismiss
 
 ## 🤝 Contributing

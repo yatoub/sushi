@@ -67,6 +67,10 @@ pub enum ConfigError {
 pub struct IncludeEntry {
     pub label: String,
     pub path: String,
+    /// Si `true`, les `defaults` du fichier principal sont fusionnés comme
+    /// couche de base pour les serveurs du sous-fichier. Défaut : `false`.
+    #[serde(default)]
+    pub merge_defaults: bool,
 }
 
 /// Namespace résolu depuis un fichier inclus — construit programmatiquement,
@@ -102,8 +106,27 @@ pub enum IncludeWarning {
     },
     /// Dépendance circulaire détectée.
     Circular { label: String, path: String },
-    /// Un fichier inclus contient lui-même des `includes` (ignorés en v0.7).
-    NestedIgnored { label: String },
+}
+
+/// Avertissement émis lors de la validation YAML — champ inconnu ou inattendu.
+#[derive(Debug, Clone)]
+pub struct ValidationWarning {
+    /// Chemin du fichier YAML analysé.
+    pub file: String,
+    /// Contexte dans la structure YAML (ex. `"defaults"`, `"groups[0].servers[2]"`).
+    pub context: String,
+    /// Nom du champ inconnu.
+    pub field: String,
+}
+
+impl fmt::Display for ValidationWarning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} ({}): champ inconnu \u{00ab} {} \u{00bb}",
+            self.file, self.context, self.field
+        )
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -242,6 +265,13 @@ impl Config {
         Ok(config)
     }
 
+    /// Alias pratique pour les tests et cas où seul le `Config` est nécessaire.
+    /// Utiliser `load_merged` en production pour obtenir les avertissements de validation.
+    #[cfg(test)]
+    pub fn load_simple<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
+        Self::load(path)
+    }
+
     pub fn sort(&mut self) {
         // Sort top-level entries (Groups, Servers, Namespaces)
         self.groups.sort_by(|a, b| {
@@ -316,25 +346,31 @@ impl Config {
         Ok(resolved)
     }
 
-    /// Charge le fichier principal et résout tous les `includes`.
+    /// Charge le fichier principal et résout tous les `includes` récursivement.
     ///
-    /// Retourne le `Config` fusionné et les éventuels avertissements non-bloquants
-    /// (fichier absent, dépendance circulaire, includes imbriqués ignorés).
+    /// Retourne le `Config` fusionné, les avertissements d'includes non-bloquants
+    /// et les avertissements de validation YAML (champs inconnus).
     ///
     /// `loading_stack` sert à détecter les cycles ; passer `&mut HashSet::new()`
     /// à l'appel de premier niveau.
     pub fn load_merged<P: AsRef<Path>>(
         path: P,
         loading_stack: &mut HashSet<PathBuf>,
-    ) -> Result<(Self, Vec<IncludeWarning>), ConfigError> {
+    ) -> Result<(Self, Vec<IncludeWarning>, Vec<ValidationWarning>), ConfigError> {
         let path = path.as_ref();
         let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
 
-        let mut config = Self::load(path)?;
-        let mut warnings: Vec<IncludeWarning> = Vec::new();
+        // Lecture du contenu pour la validation ET le parsing.
+        let content = std::fs::read_to_string(path)?;
+        let mut config: Config = serde_yaml::from_str(&content)?;
+        config.sort();
+
+        let mut inc_warnings: Vec<IncludeWarning> = Vec::new();
+        let mut val_warnings: Vec<ValidationWarning> =
+            validate_yaml(&content, &canonical.display().to_string());
 
         if config.includes.is_empty() {
-            return Ok((config, warnings));
+            return Ok((config, inc_warnings, val_warnings));
         }
 
         loading_stack.insert(canonical.clone());
@@ -343,6 +379,7 @@ impl Config {
             .unwrap_or(std::path::Path::new("."))
             .to_path_buf();
         let includes = std::mem::take(&mut config.includes);
+        let main_defaults = config.defaults.clone().unwrap_or_default();
 
         for entry in includes {
             // Résolution du chemin (tilde + relatif)
@@ -358,7 +395,7 @@ impl Config {
             let sub_canonical = match std::fs::canonicalize(&sub_path) {
                 Ok(p) => p,
                 Err(e) => {
-                    warnings.push(IncludeWarning::LoadError {
+                    inc_warnings.push(IncludeWarning::LoadError {
                         label: entry.label.clone(),
                         path: sub_path.display().to_string(),
                         error: e.to_string(),
@@ -368,45 +405,68 @@ impl Config {
             };
 
             if loading_stack.contains(&sub_canonical) {
-                warnings.push(IncludeWarning::Circular {
+                inc_warnings.push(IncludeWarning::Circular {
                     label: entry.label.clone(),
                     path: sub_canonical.display().to_string(),
                 });
                 continue;
             }
 
-            // Chargement du sous-fichier
-            let sub_config = match Self::load(&sub_path) {
-                Ok(c) => c,
-                Err(e) => {
-                    warnings.push(IncludeWarning::LoadError {
-                        label: entry.label.clone(),
-                        path: sub_path.display().to_string(),
-                        error: e.to_string(),
-                    });
-                    continue;
-                }
-            };
+            // Chargement récursif du sous-fichier
+            let (mut sub_config, mut sub_inc, sub_val) =
+                match Self::load_merged(&sub_path, loading_stack) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        inc_warnings.push(IncludeWarning::LoadError {
+                            label: entry.label.clone(),
+                            path: sub_path.display().to_string(),
+                            error: e.to_string(),
+                        });
+                        continue;
+                    }
+                };
+            inc_warnings.append(&mut sub_inc);
+            val_warnings.extend(sub_val);
 
-            // Includes imbriqués ignorés en v0.7
-            if !sub_config.includes.is_empty() {
-                warnings.push(IncludeWarning::NestedIgnored {
-                    label: entry.label.clone(),
-                });
+            // Fusion optionnelle des defaults du fichier principal
+            if entry.merge_defaults {
+                let sub_d = sub_config.defaults.unwrap_or_default();
+                sub_config.defaults = Some(merge_default_structs(&main_defaults, &sub_d));
             }
 
+            // Partition : entrées directes vs namespaces imbriqués (issus d'includes récursifs)
+            let mut direct_entries = Vec::new();
+            let mut nested_namespaces: Vec<NamespaceEntry> = Vec::new();
+            for sub_entry in sub_config.groups {
+                match sub_entry {
+                    ConfigEntry::Namespace(ns) => nested_namespaces.push(ns),
+                    other => direct_entries.push(other),
+                }
+            }
+
+            // Namespace principal avec les entrées directes
             config.groups.push(ConfigEntry::Namespace(NamespaceEntry {
-                label: entry.label,
+                label: entry.label.clone(),
                 source_path: sub_canonical.display().to_string(),
                 defaults: sub_config.defaults,
-                entries: sub_config.groups,
+                entries: direct_entries,
             }));
+
+            // Namespaces imbriqués aplatis avec label préfixé "parent / enfant"
+            for nested in nested_namespaces {
+                config.groups.push(ConfigEntry::Namespace(NamespaceEntry {
+                    label: format!("{} / {}", entry.label, nested.label),
+                    source_path: nested.source_path,
+                    defaults: nested.defaults,
+                    entries: nested.entries,
+                }));
+            }
         }
 
         loading_stack.remove(&canonical);
         config.sort();
 
-        Ok((config, warnings))
+        Ok((config, inc_warnings, val_warnings))
     }
 }
 
@@ -520,7 +580,8 @@ fn resolve_entries(
                 )?;
                 resolved.push(r);
             }
-            // Les namespaces imbriqués sont ignorés.
+            // Les namespaces imbriqués dans ns.entries ne sont jamais générés
+            // après aplatissement dans load_merged — ce bras ne devrait pas être atteint.
             ConfigEntry::Namespace(_) => {}
         }
     }
@@ -572,6 +633,220 @@ fn extend_filesystems(
                 }
             }
             Some(merged)
+        }
+    }
+}
+
+/// Fusionne deux `Defaults` : `overrides` prime sur `base` pour chaque champ `Option`.
+/// Utilisé par `load_merged` quand `merge_defaults: true` est activé sur un include.
+fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
+    Defaults {
+        user: overrides.user.clone().or_else(|| base.user.clone()),
+        ssh_key: overrides.ssh_key.clone().or_else(|| base.ssh_key.clone()),
+        mode: overrides.mode.or(base.mode),
+        ssh_port: overrides.ssh_port.or(base.ssh_port),
+        ssh_options: overrides
+            .ssh_options
+            .clone()
+            .or_else(|| base.ssh_options.clone()),
+        wallix: overrides.wallix.clone().or_else(|| base.wallix.clone()),
+        jump: overrides.jump.clone().or_else(|| base.jump.clone()),
+        use_system_ssh_config: overrides
+            .use_system_ssh_config
+            .or(base.use_system_ssh_config),
+        theme: overrides.theme.or(base.theme),
+        probe_filesystems: overrides
+            .probe_filesystems
+            .clone()
+            .or_else(|| base.probe_filesystems.clone()),
+    }
+}
+
+// ─── Validation YAML ─────────────────────────────────────────────────────────
+
+/// Analyse `content` (YAML texte) et retourne les avertissements pour tout champ
+/// dont le nom ne figure pas dans la liste des clés connues du schéma sushi.
+pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
+    let value: serde_yaml::Value = match serde_yaml::from_str(content) {
+        Ok(v) => v,
+        Err(_) => return vec![], // l'erreur de parsing est déjà remontée par serde
+    };
+
+    let mut warnings = Vec::new();
+
+    if let serde_yaml::Value::Mapping(root) = &value {
+        yaml_check_keys(
+            root,
+            &["defaults", "groups", "includes"],
+            file_path,
+            "root",
+            &mut warnings,
+        );
+
+        if let Some(serde_yaml::Value::Mapping(m)) = root.get("defaults") {
+            yaml_check_keys(
+                m,
+                &[
+                    "user",
+                    "ssh_key",
+                    "mode",
+                    "ssh_port",
+                    "ssh_options",
+                    "wallix",
+                    "jump",
+                    "use_system_ssh_config",
+                    "theme",
+                    "probe_filesystems",
+                ],
+                file_path,
+                "defaults",
+                &mut warnings,
+            );
+        }
+
+        if let Some(serde_yaml::Value::Sequence(incs)) = root.get("includes") {
+            for (i, inc) in incs.iter().enumerate() {
+                if let serde_yaml::Value::Mapping(m) = inc {
+                    yaml_check_keys(
+                        m,
+                        &["label", "path", "merge_defaults"],
+                        file_path,
+                        &format!("includes[{i}]"),
+                        &mut warnings,
+                    );
+                }
+            }
+        }
+
+        if let Some(serde_yaml::Value::Sequence(groups)) = root.get("groups") {
+            for (i, g) in groups.iter().enumerate() {
+                yaml_validate_entry(g, file_path, &format!("groups[{i}]"), &mut warnings);
+            }
+        }
+    }
+
+    warnings
+}
+
+fn yaml_validate_entry(
+    val: &serde_yaml::Value,
+    file: &str,
+    ctx: &str,
+    warnings: &mut Vec<ValidationWarning>,
+) {
+    let serde_yaml::Value::Mapping(m) = val else {
+        return;
+    };
+    let has_host = m.contains_key(serde_yaml::Value::String("host".into()));
+    let has_envs = m.contains_key(serde_yaml::Value::String("environments".into()));
+
+    if has_host && !has_envs {
+        // Serveur
+        yaml_check_keys(
+            m,
+            &[
+                "name",
+                "host",
+                "user",
+                "ssh_key",
+                "ssh_port",
+                "ssh_options",
+                "mode",
+                "wallix",
+                "jump",
+                "probe_filesystems",
+            ],
+            file,
+            ctx,
+            warnings,
+        );
+    } else {
+        // Groupe
+        yaml_check_keys(
+            m,
+            &[
+                "name",
+                "user",
+                "ssh_key",
+                "mode",
+                "ssh_port",
+                "ssh_options",
+                "wallix",
+                "jump",
+                "environments",
+                "servers",
+                "probe_filesystems",
+            ],
+            file,
+            ctx,
+            warnings,
+        );
+
+        if let Some(serde_yaml::Value::Sequence(envs)) =
+            m.get(serde_yaml::Value::String("environments".into()))
+        {
+            for (i, env) in envs.iter().enumerate() {
+                if let serde_yaml::Value::Mapping(em) = env {
+                    yaml_check_keys(
+                        em,
+                        &[
+                            "name",
+                            "user",
+                            "ssh_key",
+                            "mode",
+                            "ssh_port",
+                            "ssh_options",
+                            "wallix",
+                            "jump",
+                            "servers",
+                            "probe_filesystems",
+                        ],
+                        file,
+                        &format!("{ctx}.environments[{i}]"),
+                        warnings,
+                    );
+                    if let Some(serde_yaml::Value::Sequence(svs)) =
+                        em.get(serde_yaml::Value::String("servers".into()))
+                    {
+                        for (j, s) in svs.iter().enumerate() {
+                            yaml_validate_entry(
+                                s,
+                                file,
+                                &format!("{ctx}.environments[{i}].servers[{j}]"),
+                                warnings,
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(serde_yaml::Value::Sequence(svs)) =
+            m.get(serde_yaml::Value::String("servers".into()))
+        {
+            for (j, s) in svs.iter().enumerate() {
+                yaml_validate_entry(s, file, &format!("{ctx}.servers[{j}]"), warnings);
+            }
+        }
+    }
+}
+
+fn yaml_check_keys(
+    m: &serde_yaml::Mapping,
+    known: &[&str],
+    file: &str,
+    ctx: &str,
+    warnings: &mut Vec<ValidationWarning>,
+) {
+    for key in m.keys() {
+        if let serde_yaml::Value::String(k) = key
+            && !known.contains(&k.as_str())
+        {
+            warnings.push(ValidationWarning {
+                file: file.to_string(),
+                context: ctx.to_string(),
+                field: k.clone(),
+            });
         }
     }
 }
@@ -964,7 +1239,7 @@ groups:
         );
         let main_file = write_temp_yaml(&main_yaml);
 
-        let (config, warnings) =
+        let (config, warnings, _val) =
             Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
         assert!(warnings.is_empty(), "Expected no warnings: {:?}", warnings);
 
@@ -1023,7 +1298,7 @@ groups:
         );
         let main_file = write_temp_yaml(&main_yaml);
 
-        let (config, warnings) =
+        let (config, warnings, _val) =
             Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
         assert!(warnings.is_empty());
 
@@ -1056,7 +1331,7 @@ groups:
 "#;
         let main_file = write_temp_yaml(main_yaml);
 
-        let (config, warnings) =
+        let (config, warnings, _val) =
             Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
 
         // Un avertissement LoadError doit être émis
@@ -1073,8 +1348,8 @@ groups:
     }
 
     #[test]
-    fn test_includes_nested_ignored() {
-        // Fichier inclus qui contient lui-même un `includes:`
+    fn test_includes_nested_recursive() {
+        // Fichier inclus qui contient lui-même un `includes:` — résolution récursive v0.8
         let leaf_yaml = r#"
 groups:
   - name: Leaf
@@ -1110,18 +1385,170 @@ groups: []
         );
         let main_file = write_temp_yaml(&main_yaml);
 
-        let (_config, warnings) =
+        let (config, warnings, _val) =
             Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
 
-        // L'include imbriqué LEAF doit produire un avertissement NestedIgnored
-        let nested_warn = warnings.iter().any(|w| {
-            if let IncludeWarning::NestedIgnored { label } = w {
-                label == "SUB"
-            } else {
-                false
-            }
-        });
-        assert!(nested_warn, "Expected NestedIgnored warning for SUB");
+        // Aucun avertissement : les includes imbriqués sont désormais résolus récursivement
+        assert!(
+            warnings.is_empty(),
+            "Expected no warnings, got: {:?}",
+            warnings
+        );
+
+        // Les deux namespaces aplatis sont présents
+        let labels: Vec<&str> = config
+            .groups
+            .iter()
+            .filter_map(|e| {
+                if let ConfigEntry::Namespace(ns) = e {
+                    Some(ns.label.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(labels.contains(&"SUB"), "Missing SUB, got {:?}", labels);
+        assert!(
+            labels.contains(&"SUB / LEAF"),
+            "Missing 'SUB / LEAF', got {:?}",
+            labels
+        );
+
+        let resolved = config.resolve().unwrap();
+        assert!(
+            resolved
+                .iter()
+                .any(|s| s.name == "sub_srv" && s.namespace == "SUB")
+        );
+        assert!(
+            resolved
+                .iter()
+                .any(|s| s.name == "leaf_srv" && s.namespace == "SUB / LEAF")
+        );
+    }
+
+    #[test]
+    fn test_includes_merge_defaults() {
+        let sub_yaml = r#"
+defaults:
+  user: "sub_user"
+groups:
+  - name: Sub
+    servers:
+      - name: sub_srv
+        host: "1.2.3.4"
+"#;
+        let sub_file = write_temp_yaml(sub_yaml);
+
+        let main_yaml = format!(
+            r#"
+defaults:
+  user: "main_user"
+  ssh_port: 2222
+includes:
+  - label: "SUB"
+    path: "{}"
+    merge_defaults: true
+groups: []
+"#,
+            sub_file.path().to_string_lossy()
+        );
+        let main_file = write_temp_yaml(&main_yaml);
+
+        let (config, _warnings, _val) =
+            Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
+        let resolved = config.resolve().unwrap();
+
+        let sub_srv = resolved.iter().find(|s| s.name == "sub_srv").unwrap();
+        // Sub defaults override main defaults for user
+        assert_eq!(sub_srv.user, "sub_user");
+        // Main port is inherited since sub didn't specify ssh_port
+        assert_eq!(sub_srv.port, 2222);
+    }
+
+    #[test]
+    fn test_includes_circular() {
+        let file_a = tempfile::NamedTempFile::new().unwrap();
+        let file_b = tempfile::NamedTempFile::new().unwrap();
+
+        let yaml_a = format!(
+            r#"
+includes:
+  - label: "B"
+    path: "{}"
+groups:
+  - name: GroupA
+    servers: [{{ name: srv_a, host: "10.0.0.1" }}]
+"#,
+            file_b.path().display()
+        );
+        let yaml_b = format!(
+            r#"
+includes:
+  - label: "A"
+    path: "{}"
+groups:
+  - name: GroupB
+    servers: [{{ name: srv_b, host: "10.0.0.2" }}]
+"#,
+            file_a.path().display()
+        );
+        std::fs::write(file_a.path(), yaml_a.as_bytes()).unwrap();
+        std::fs::write(file_b.path(), yaml_b.as_bytes()).unwrap();
+
+        let (config, warnings, _val) =
+            Config::load_merged(file_a.path(), &mut std::collections::HashSet::new()).unwrap();
+
+        let has_circular = warnings
+            .iter()
+            .any(|w| matches!(w, IncludeWarning::Circular { .. }));
+        assert!(
+            has_circular,
+            "Expected Circular warning, got: {:?}",
+            warnings
+        );
+
+        let resolved = config.resolve().unwrap();
+        assert!(
+            resolved
+                .iter()
+                .any(|s| s.name == "srv_a" || s.name == "srv_b"),
+            "Should resolve at least one server"
+        );
+    }
+
+    #[test]
+    fn test_validation_unknown_field() {
+        let yaml = r#"
+defaults:
+  user: "admin"
+  typo_field: "oops"
+groups: []
+"#;
+        let warnings = validate_yaml(yaml, "test.yml");
+        assert!(
+            warnings.iter().any(|w| w.field == "typo_field"),
+            "Expected ValidationWarning for typo_field, got: {:?}",
+            warnings
+        );
+    }
+
+    #[test]
+    fn test_validation_unknown_server_field() {
+        let yaml = r#"
+groups:
+  - name: G
+    servers:
+      - name: srv
+        host: "1.2.3.4"
+        missspelled_user: "admin"
+"#;
+        let warnings = validate_yaml(yaml, "test.yml");
+        assert!(
+            warnings.iter().any(|w| w.field == "missspelled_user"),
+            "Expected ValidationWarning for missspelled_user, got: {:?}",
+            warnings
+        );
     }
 
     #[test]
@@ -1147,7 +1574,7 @@ groups: []
         );
         let main_file = write_temp_yaml(&main_yaml);
 
-        let (config, _) =
+        let (config, _, _) =
             Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
         let resolved = config.resolve().unwrap();
 

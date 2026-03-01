@@ -32,6 +32,8 @@ defaults:
   wallix:
     host: "bastion.example.com"
     user: "bastion"
+    ssh_options:
+      - "ForwardAgent=yes"
   # BREAKING CHANGE v0.5.0 : rebond est désormais une LISTE (même pour un seul saut).
   # Ancienne syntaxe (v0.4.x) :
   #   rebond:

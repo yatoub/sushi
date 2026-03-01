@@ -192,7 +192,7 @@ pub static STRINGS_FR: Strings = Strings {
     probe_load: "Charge   ",
     probe_ram: "RAM",
     probe_disk: "Disk /",
-    probe_bastion_error: "Diagnostic non disponible en mode Bastion",
+    probe_bastion_error: "Diagnostic non disponible en mode Wallix",
     probe_disk_extra: "Disk {}",
     probe_fs_absent: "⚠  {} — non monté",
 
@@ -267,7 +267,7 @@ pub static STRINGS_EN: Strings = Strings {
     label_mode: "Mode:   ",
     label_key: "Key:    ",
     label_jump: "Jump:   ",
-    label_bastion: "Bastion:",
+    label_bastion: "Wallix:",
     label_options: "Options:",
 
     probe_section: "─── System ──────────────────────",
@@ -278,7 +278,7 @@ pub static STRINGS_EN: Strings = Strings {
     probe_load: "Load     ",
     probe_ram: "RAM",
     probe_disk: "Disk /",
-    probe_bastion_error: "Probe unavailable in Bastion mode",
+    probe_bastion_error: "Probe unavailable in Wallix mode",
     probe_disk_extra: "Disk {}",
     probe_fs_absent: "⚠  {} — not mounted",
 

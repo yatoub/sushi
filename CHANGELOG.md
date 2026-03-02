@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.6] — 2026-03-02
+
+### Fixed
+
+- **CI**: remove invalid `needs: []` in `aur-publish-bin` job that caused a workflow lint error.
+
+---
+
 ## [0.8.5] — 2026-03-02
 
 ### Fixed

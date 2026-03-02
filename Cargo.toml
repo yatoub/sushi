@@ -1,6 +1,6 @@
 [package]
 name = "susshi"
-version = "0.8.5"
+version = "0.8.6"
 edition = "2024"
 
 [dependencies]
@@ -21,12 +21,12 @@ tempfile = "3.25.0"
 
 [profile.release]
 # Optimise pour la taille plutôt que la vitesse
-opt-level = "z"
+# opt-level = "z"
 # Supprime les symboles de debug (économie ~1 Mo typiquement)
-strip = true
+# strip = true
 # Link Time Optimization : élimine le code mort inter-crates
-lto = true
+# lto = true
 # Un seul thread de codegen : plus lent à compiler mais binaire plus petit
-codegen-units = 1
+# codegen-units = 1
 # Pas de symboles de panic verbeux (remplace "panicked at …" par abort)
-panic = "abort"
+# panic = "abort"

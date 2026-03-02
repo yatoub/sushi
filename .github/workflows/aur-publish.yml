@@ -45,9 +45,7 @@ jobs:
   aur-publish-bin:
     name: Publish susshi-bin to AUR
     runs-on: ubuntu-latest
-    # Le binaire Linux est produit par le job build dans release.yml ;
-    # on attend que la GitHub Release soit publiée avant de calculer les checksums.
-    needs: []
+    # Tourne en parallèle de aur-publish ; le step de polling attend
 
     steps:
       - name: Checkout repository

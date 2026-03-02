@@ -12,7 +12,7 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
 use susshi::app::{App, AppMode, CmdState, ConfigItem, ScpState, TunnelOverlayState};
-use susshi::config::{Config, ConnectionMode, IncludeWarning, ResolvedServer};
+use susshi::config::{Config, ConnectionMode, IncludeWarning, ResolvedServer, undefined_vars};
 use susshi::handlers::{get_layout, handle_mouse_event, is_in_rect};
 use susshi::probe::ProbeState;
 use susshi::ssh::client::build_ssh_args;
@@ -112,7 +112,7 @@ fn validate_config(config_path: &std::path::Path) {
             eprintln!("ERREUR : {e}");
             process::exit(1);
         }
-        Ok((_, inc_warnings, val_warnings)) => {
+        Ok((config, inc_warnings, val_warnings)) => {
             let mut has_error = false;
 
             for w in &inc_warnings {
@@ -129,15 +129,37 @@ fn validate_config(config_path: &std::path::Path) {
             for w in &val_warnings {
                 eprintln!("[WARN  yaml]    {w}");
             }
-
+            // Vérification des variables de template non définies
+            let empty = std::collections::HashMap::new();
+            let mut vars_warnings: usize = 0;
+            if let Ok(resolved_servers) = config.resolve() {
+                for srv in &resolved_servers {
+                    let fields = [
+                        ("name", srv.name.as_str()),
+                        ("host", srv.host.as_str()),
+                        ("user", srv.user.as_str()),
+                        ("ssh_key", srv.ssh_key.as_str()),
+                    ];
+                    for (field_name, value) in fields {
+                        for var in undefined_vars(value, &empty) {
+                            eprintln!(
+                                "[WARN  vars]    {} ({}/{}): champ \u{ab} {} \u{bb} contient \u{ab} {{{{ {} }}}} \u{bb} non d\u{e9}fini",
+                                srv.name, srv.namespace, srv.group_name, field_name, var
+                            );
+                            vars_warnings += 1;
+                        }
+                    }
+                }
+            }
+            let total_warnings = inc_warnings.len() + val_warnings.len() + vars_warnings;
             if has_error {
                 process::exit(1);
-            } else if inc_warnings.is_empty() && val_warnings.is_empty() {
-                println!("Configuration valide ✓");
+            } else if total_warnings == 0 {
+                println!("Configuration valide \u{2713}");
             } else {
                 println!(
                     "Configuration valide avec {} avertissement(s)",
-                    inc_warnings.len() + val_warnings.len()
+                    total_warnings
                 );
             }
             process::exit(0);

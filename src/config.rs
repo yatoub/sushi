@@ -375,7 +375,14 @@ impl Config {
                     let ns_local = ns.defaults.clone().unwrap_or_default();
                     let ns_d = merge_default_structs(&d, &ns_local);
                     let ns_use_sys_cfg = ns_d.use_system_ssh_config.unwrap_or(use_sys_cfg);
-                    resolve_entries(&ns.entries, &ns_d, ns_use_sys_cfg, &ns.label, &mut resolved)?;
+                    resolve_entries(
+                        &ns.entries,
+                        &ns_d,
+                        ns_use_sys_cfg,
+                        &ns.label,
+                        &mut resolved,
+                        &ns.vars,
+                    )?;
                 }
                 _ => {
                     resolve_entries(
@@ -384,6 +391,7 @@ impl Config {
                         use_sys_cfg,
                         "",
                         &mut resolved,
+                        &self.vars,
                     )?;
                 }
             }
@@ -525,6 +533,7 @@ fn resolve_entries(
     use_sys_cfg: bool,
     namespace: &str,
     resolved: &mut Vec<ResolvedServer>,
+    vars: &HashMap<String, String>,
 ) -> Result<(), ConfigError> {
     for entry in entries {
         match entry {
@@ -585,6 +594,7 @@ fn resolve_entries(
                                 e_fs.clone(),
                                 e_tunnels.as_ref(),
                                 namespace,
+                                vars,
                             )?;
                             resolved.push(r);
                         }
@@ -608,6 +618,7 @@ fn resolve_entries(
                             g_fs.clone(),
                             g_tunnels.as_ref(),
                             namespace,
+                            vars,
                         )?;
                         resolved.push(r);
                     }
@@ -630,6 +641,7 @@ fn resolve_entries(
                     d.probe_filesystems.clone(),
                     d.tunnels.as_ref(),
                     namespace,
+                    vars,
                 )?;
                 resolved.push(r);
             }
@@ -677,6 +689,36 @@ fn replace_tunnels(
 
 /// Les tags s'accumulent : chaque niveau **ajoute** ses tags à ceux du niveau parent.
 /// Un serveur hérite donc des tags définis dans les defaults, le groupe et l'environnement.
+/// Remplace les occurrences `{{ var }}` dans `s` par les valeurs de `vars`.
+/// Les variables non définies sont laissées telles quelles (`{{ var }}`).
+pub fn interpolate(s: &str, vars: &HashMap<String, String>) -> String {
+    let mut result = s.to_string();
+    for (key, value) in vars {
+        let placeholder = format!("{{{{ {key} }}}}");
+        result = result.replace(&placeholder, value);
+    }
+    result
+}
+
+/// Retourne les noms des variables `{{ var }}` présentes dans `s` mais absentes de `vars`.
+pub fn undefined_vars(s: &str, vars: &HashMap<String, String>) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut rest = s;
+    while let Some(start) = rest.find("{{") {
+        rest = &rest[start + 2..];
+        if let Some(end) = rest.find("}}") {
+            let inner = rest[..end].trim();
+            if !inner.is_empty() && !vars.contains_key(inner) {
+                found.push(inner.to_string());
+            }
+            rest = &rest[end + 2..];
+        } else {
+            break;
+        }
+    }
+    found
+}
+
 fn extend_tags(parent: Option<&Vec<String>>, child: Option<&Vec<String>>) -> Vec<String> {
     let mut merged: Vec<String> = parent.cloned().unwrap_or_default();
     if let Some(c) = child {
@@ -985,15 +1027,14 @@ fn resolve_server(
     def_fs: Option<Vec<String>>,
     def_tunnels: Option<&Vec<TunnelConfig>>,
     namespace: &str,
+    vars: &HashMap<String, String>,
 ) -> Result<ResolvedServer, ConfigError> {
-    let user = s.user.as_deref().or(def_user).unwrap_or("root").to_string();
+    let user = interpolate(s.user.as_deref().or(def_user).unwrap_or("root"), vars);
     let port = s.ssh_port.or(def_port).unwrap_or(22);
-    let key = s
-        .ssh_key
-        .as_deref()
-        .or(def_key)
-        .unwrap_or("~/.ssh/id_rsa")
-        .to_string();
+    let key = interpolate(
+        s.ssh_key.as_deref().or(def_key).unwrap_or("~/.ssh/id_rsa"),
+        vars,
+    );
 
     let opts = if let Some(o) = &s.ssh_options {
         o.clone()
@@ -1037,8 +1078,8 @@ fn resolve_server(
         namespace: namespace.to_string(),
         group_name: group.to_string(),
         env_name: env.to_string(),
-        name: s.name.clone(),
-        host: s.host.clone(),
+        name: interpolate(&s.name, vars),
+        host: interpolate(&s.host, vars),
         user,
         port,
         ssh_key: key,
@@ -1058,6 +1099,89 @@ fn resolve_server(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ─── Tests interpolate / undefined_vars ───────────────────────────────────
+
+    #[test]
+    fn test_interpolate_replaces_known_vars() {
+        let vars = HashMap::from([
+            ("host".to_string(), "bastion.prod.example.com".to_string()),
+            ("env".to_string(), "prod".to_string()),
+        ]);
+        assert_eq!(interpolate("{{ host }}", &vars), "bastion.prod.example.com");
+        assert_eq!(interpolate("{{ env }}-server", &vars), "prod-server");
+        assert_eq!(
+            interpolate("{{ env }}.{{ host }}", &vars),
+            "prod.bastion.prod.example.com"
+        );
+    }
+
+    #[test]
+    fn test_interpolate_leaves_undefined_vars() {
+        let vars = HashMap::new();
+        assert_eq!(interpolate("{{ unknown }}", &vars), "{{ unknown }}");
+    }
+
+    #[test]
+    fn test_interpolate_no_placeholder() {
+        let vars = HashMap::from([("x".to_string(), "y".to_string())]);
+        assert_eq!(interpolate("plain-host", &vars), "plain-host");
+    }
+
+    #[test]
+    fn test_undefined_vars_finds_missing() {
+        let vars = HashMap::from([("a".to_string(), "1".to_string())]);
+        let result = undefined_vars("{{ a }} and {{ b }}", &vars);
+        assert_eq!(result, vec!["b".to_string()]);
+    }
+
+    #[test]
+    fn test_undefined_vars_empty_when_all_defined() {
+        let vars = HashMap::from([("x".to_string(), "v".to_string())]);
+        assert!(undefined_vars("{{ x }}", &vars).is_empty());
+    }
+
+    #[test]
+    fn test_resolve_applies_interpolation() {
+        let vars = HashMap::from([("jump".to_string(), "bastion.example.com".to_string())]);
+        let config = Config {
+            defaults: None,
+            groups: vec![ConfigEntry::Group(Group {
+                name: "G".to_string(),
+                user: None,
+                ssh_key: None,
+                mode: None,
+                ssh_port: None,
+                ssh_options: None,
+                wallix: None,
+                jump: None,
+                probe_filesystems: None,
+                environments: None,
+                tunnels: None,
+                tags: None,
+                servers: Some(vec![Server {
+                    name: "jump-srv".to_string(),
+                    host: "{{ jump }}".to_string(),
+                    user: None,
+                    ssh_key: None,
+                    ssh_port: None,
+                    ssh_options: None,
+                    mode: None,
+                    wallix: None,
+                    jump: None,
+                    probe_filesystems: None,
+                    tunnels: None,
+                    tags: None,
+                }]),
+            })],
+            includes: vec![],
+            vars,
+        };
+
+        let resolved = config.resolve().unwrap();
+        assert_eq!(resolved[0].host, "bastion.example.com");
+        assert_eq!(resolved[0].name, "jump-srv");
+    }
 
     #[test]
     fn test_merge_bastion() {

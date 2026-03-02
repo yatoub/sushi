@@ -17,7 +17,7 @@ shellexpand = "3.1.2"
 thiserror = "2.0.18"
 
 [dev-dependencies]
-tempfile = "3.25.0"
+tempfile = "3.26.0"
 
 [profile.release]
 # Optimise pour la taille plutôt que la vitesse

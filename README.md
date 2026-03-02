@@ -8,7 +8,7 @@
 - **Multi-file Configuration**: Split your config by team or perimeter with `includes:`. Each included file is shown as a collapsible **namespace** in the TUI. Nested includes are resolved recursively. Missing or circular includes are non-fatal warnings.
 - **Connection Modes**:
   - **Direct**: Standard SSH connection.
-  - **Jump/Rebond**: Connect via one or more jump hosts (`-J`). Supports multi-hop chains.
+  - **Jump**: Connect via one or more jump hosts (`-J`). Supports multi-hop chains.
   - **Wallix**: Connect via a Wallix server using custom login string.
   - **Mode Inheritance**: Connection mode inherits from defaults → group → environment → server.
 - **Configuration Inheritance**: Define defaults globally or at the group/environment level to avoid repetition.
@@ -182,9 +182,6 @@ groups:
 ```
 
 > See [`examples/full_config.yaml`](examples/full_config.yaml) for a complete reference with all options and inline comments.
->
-> **⚠️ Breaking change (v0.5.0)** — `jump` (formerly `rebond`) is now a **list** of jump hosts,
-> even for a single hop. If you used the old map syntax, wrap it in a list:
 
 ```yaml
 # Before (v0.4.x)
@@ -234,9 +231,9 @@ jump:
 | `q` | Quit application |
 | `Space` | Toggle expand/collapse group |
 | `Enter` | Connect to server / Toggle group |
-| `Tab` | Cycle connection mode (Direct/Rebond/Wallix) |
+| `Tab` | Cycle connection mode (Direct/Jump/Wallix) |
 | `1` | Select **Direct** mode |
-| `2` | Select **Rebond** mode |
+| `2` | Select **Jump** mode |
 | `3` | Select **Wallix** mode |
 | `Ctrl+U` | Clear search query (while in search mode) |
 | `d` | Run quick SSH diagnostic (kernel, OS, CPU cores, load, RAM, disk) |

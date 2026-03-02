@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   - Groups → Ansible `children`, environments → sub-groups, namespaces (includes) → top-level groups.
   - `--export-output <file>` writes to a file; omit for stdout.
   - `--export-filter <query>` accepts the same text + `#tag` syntax as the TUI search bar.
+- **Templating / variable interpolation** (`_vars` section): define reusable scalar variables at the top of any YAML file (main or included) and interpolate them with `{{ var }}` in any string field (`host`, `user`, `ssh_key`, etc.).
+  - Each file has its own `_vars` scope — variables do not leak into included files or vice versa.
+  - Built-in `{{ index }}`: automatically set to the 1-based position of a server within its parent list, making it easy to declare a fleet of homogeneous servers without copy-pasting (`name: "worker-{{ index }}"`, `host: "10.0.1.{{ index }}"`). Resets to 1 for each list independently.
+  - Referencing an undefined variable leaves the `{{ var }}` placeholder intact and emits a non-blocking warning at startup.
+- **Tags and advanced search filtering** (`tags:` key): attach a list of tags to any server or group.
+  - Search with `#tag` prefix in the TUI search bar (`/`) to filter by tag.
+  - Multiple tags in a query perform an AND filter: `#prod #k8s` shows servers that have **both** tags.
+  - Mixed queries like `api #prod` combine a text match on name/host **and** a tag filter.
+  - `defaults.default_filter`: set an initial search filter applied at startup (e.g. `default_filter: "#prod"`). Clear it with `Esc`.
 
 ---
 

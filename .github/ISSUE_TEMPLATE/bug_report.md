@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Create a report to help us improve Sushi
+about: Create a report to help us improve susshi
 title: "[BUG] "
 labels: bug
 assignees: ''
@@ -21,7 +21,7 @@ Steps to reproduce the behavior:
 A clear and concise description of what you expected to happen.
 
 **Configuration (Optional but helpful)**
-Please provide a minimal `~/.sushi.yml` that reproduces the issue (remove sensitive data like IPs/Users/Keys):
+Please provide a minimal `~/.susshi.yml` that reproduces the issue (remove sensitive data like IPs/Users/Keys):
 ```yaml
 groups:
   - name: "Example"
@@ -37,7 +37,7 @@ If applicable, add screenshots to help explain your problem.
  - OS: [e.g. Linux (Ubuntu 22.04), macOS 14]
  - Terminal Emulator: [e.g. Alacritty, Kitty, iTerm2, WezTerm]
  - SSH version :
- - Sushi Version: [e.g. v0.1.0]
+ - susshi Version: [e.g. v0.1.0]
 
 **Additional context**
 Add any other context about the problem here.

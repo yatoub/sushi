@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// État persistant de l'application (sauvegardé dans ~/.sushi_state.json).
+/// État persistant de l'application (sauvegardé dans ~/.susshi_state.json).
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct AppState {
     /// Clés des groupes/environnements actuellement développés ("Group:foo", "Env:foo:bar").
@@ -22,11 +22,11 @@ pub struct AppState {
 }
 
 fn state_path() -> PathBuf {
-    let raw = shellexpand::tilde("~/.sushi_state.json");
+    let raw = shellexpand::tilde("~/.susshi_state.json");
     PathBuf::from(raw.as_ref())
 }
 
-/// Charge l'état depuis `~/.sushi_state.json`.
+/// Charge l'état depuis `~/.susshi_state.json`.
 /// Retourne un `AppState` par défaut si le fichier est absent ou invalide.
 pub fn load_state() -> AppState {
     let path = state_path();
@@ -36,7 +36,7 @@ pub fn load_state() -> AppState {
     serde_json::from_str(&content).unwrap_or_default()
 }
 
-/// Persiste l'état dans `~/.sushi_state.json`.
+/// Persiste l'état dans `~/.susshi_state.json`.
 /// Les erreurs d'écriture sont silencieuses (non bloquantes).
 pub fn save_state(state: &AppState) {
     let path = state_path();

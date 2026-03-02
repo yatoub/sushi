@@ -1,7 +1,7 @@
-use sushi::config::Config;
+use susshi::config::Config;
 
 fn main() {
-    let config_path = std::env::var("HOME").unwrap() + "/.sushi.yml";
+    let config_path = std::env::var("HOME").unwrap() + "/.susshi.yml";
 
     match Config::load(&config_path) {
         Ok(config) => {

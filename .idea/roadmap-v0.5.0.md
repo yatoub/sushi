@@ -10,7 +10,7 @@ Reprend les items non implémentés de la v0.4.0 et ajoute une nouvelle fonction
   - Fichier : `Cargo.toml`
   - La dépendance `portable-pty = "0.9.0"` est présente mais inutilisée.
   - **Option A (simple)** : la retirer pour alléger le binaire.
-  - **Option B (ambitieuse)** : l'utiliser pour implémenter une session SSH inline dans un panneau de la TUI (PTY géré par sushi, sans quitter l'interface).
+  - **Option B (ambitieuse)** : l'utiliser pour implémenter une session SSH inline dans un panneau de la TUI (PTY géré par susshi, sans quitter l'interface).
 
 - [ ] **2. Multi-sauts SSH (ProxyJump chaîné)**
   - Fichiers : `src/config.rs`, `src/ssh/client.rs`, `examples/full_config.yaml`

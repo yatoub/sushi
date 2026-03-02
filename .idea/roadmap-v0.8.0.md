@@ -35,7 +35,7 @@ En v0.8.0, le fichier principal peut déclarer une clé optionnelle :
 ```yaml
 includes:
   - label: "CES"
-    path: "~/.sushi_ces.yml"
+    path: "~/.susshi_ces.yml"
     merge_defaults: true   # nouveau, défaut : false
 ```
 
@@ -59,7 +59,7 @@ Un utilisateur multi-serveurs dispose d'une vue instantanée du "dernier vu" de 
 
 ### Stockage
 
-Extension de `~/.sushi_state.json` :
+Extension de `~/.susshi_state.json` :
 
 ```json
 {
@@ -165,7 +165,7 @@ pub reload_hint:      &'static str,  // "[r] Recharger"  / "[r] Reload"
 - `f` : bascule le favori du serveur sélectionné (toggle). Icône `⭐` dans l'arbre à droite du nom.
 - `F` : bascule la vue "Favoris uniquement" — l'arbre n'affiche que les serveurs marqués (avec leur hiérarchie complète : namespace / groupe / env conservés).
 - En mode favoris, un bandeau `⭐ Favoris` remplace le titre normal de la zone liste.
-- Les favoris sont persistés dans `~/.sushi_state.json`.
+- Les favoris sont persistés dans `~/.susshi_state.json`.
 
 ### Stockage
 
@@ -290,8 +290,8 @@ Détecter et rapporter les champs inconnus ou mal typés sans bloquer le démarr
   ```
   ⚠  Problèmes de configuration
   ──────────────────────────────
-  ~/.sushi.yml ligne 14 : champ inconnu « usre » (serveur web-01)
-  ~/.sushi_ces.yml ligne 7 : « port » doit être un entier (valeur : "vingt-deux")
+  ~/.susshi.yml ligne 14 : champ inconnu « usre » (serveur web-01)
+  ~/.susshi_ces.yml ligne 7 : « port » doit être un entier (valeur : "vingt-deux")
   ──────────────────────────────
   [Entrée / Esc] Continuer quand même
   ```
@@ -364,7 +364,7 @@ pub enum ValidationWarning {
 
 ## Non inclus dans v0.8.0
 
-- **Auto-discovery `~/.sushi_*.yml`** — déclaration explicite via `includes` reste la norme.
+- **Auto-discovery `~/.susshi_*.yml`** — déclaration explicite via `includes` reste la norme.
 - **Multi `--config` en CLI** — hors scope.
 - **Tunnel de port** (`-L`) — prévu v0.9.
 - **Export `~/.ssh/config`** — prévu v0.9.

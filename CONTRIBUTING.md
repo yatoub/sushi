@@ -1,6 +1,6 @@
-# Contributing to Sushi 🍣
+# Contributing to susshi 🍣
 
-First off, thank you for considering contributing to Sushi! It's people like you that make tools better for everyone.
+First off, thank you for considering contributing to susshi! It's people like you that make tools better for everyone.
 
 Following these guidelines helps to communicate that you respect the time of the developers managing and developing this open source project. In return, they should reciprocate that respect in addressing your issue, assessing changes, and helping you finalize your pull requests.
 
@@ -17,8 +17,8 @@ Following these guidelines helps to communicate that you respect the time of the
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/sushi.git
-   cd sushi
+   git clone https://github.com/yourusername/susshi.git
+   cd susshi
    ```
 
 2. Build the project:
@@ -43,7 +43,7 @@ cargo test
 
 ### Manual Testing
 
-It is recommended to create a local `sushi.yml` config file for testing UI interactions and parsing logic manually.
+It is recommended to create a local `susshi.yml` config file for testing UI interactions and parsing logic manually.
 
 ## 🎨 Coding Style
 
@@ -89,8 +89,8 @@ Bugs are tracked as GitHub issues. When filing an issue, please use the [Bug Rep
 - A clear title and description.
 - Steps to reproduce.
 - Expected vs. actual behavior.
-- Your `sushi.yml` configuration (sanitized).
-- Environment details (OS, Terminal, Sushi version).
+- Your `susshi.yml` configuration (sanitized).
+- Environment details (OS, Terminal, susshi version).
 
 ## 💡 Feature Requests
 

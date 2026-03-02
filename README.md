@@ -1,6 +1,6 @@
-# 🍣 Sushi
+# 🍣 susshi
 
-**Sushi** is a modern, terminal-based SSH connection manager written in Rust. It helps you organize your servers into groups and environments, handle complex connection scenarios (jumphosts, bastions), and connect quickly with a beautiful TUI with Catppuccin theme.
+**susshi** is a modern, terminal-based SSH connection manager written in Rust. It helps you organize your servers into groups and environments, handle complex connection scenarios (jumphosts, bastions), and connect quickly with a beautiful TUI with Catppuccin theme.
 
 ## ✨ Features
 
@@ -35,9 +35,9 @@
   - **Hot Reload** (`r`): Reload all configuration files (main + includes) without restarting. The tree updates in place and the current expansion state is preserved.
   - **Favorites** (`f` / `F`): Mark any server as a favorite (⭐). Press `F` to toggle the favorites-only view — the tree filters all groups, environments, and namespaces accordingly.
   - **Recent Sort** (`H`): Switch between alphabetical order and a flat list sorted by most-recently-used server.
-- **Connection History**: The last connection timestamp for each server is stored in `~/.sushi_state.json` and displayed in the detail pane (e.g., "il y a 2 h" / "2 h ago").
+- **Connection History**: The last connection timestamp for each server is stored in `~/.susshi_state.json` and displayed in the detail pane (e.g., "il y a 2 h" / "2 h ago").
 - **YAML Validation**: Unknown fields in any config file are detected and reported as non-blocking `ValidationWarning` entries at startup.
-- **State Persistence**: Expanded groups, favorites, last-seen timestamps, and sort mode are saved to `~/.sushi_state.json` and restored on next launch.
+- **State Persistence**: Expanded groups, favorites, last-seen timestamps, and sort mode are saved to `~/.susshi_state.json` and restored on next launch.
 - **In-TUI Error Screen**: Connection errors are displayed as an overlay instead of crashing — press `Enter`/`Esc`/`q` to dismiss.
 - **Smart Sorting**: Automatically sorts groups and servers alphabetically.
 
@@ -52,14 +52,14 @@
 
 ```bash
 git clone https://github.com/yatoub/susshi.git
-cd sushi
+cd susshi
 cargo build --release
-sudo cp target/release/sushi /usr/local/bin/
+sudo cp target/release/susshi /usr/local/bin/
 ```
 
 ## ⚙️ Configuration
 
-Sushi looks for a configuration file at `~/.sushi.yml`.  
+susshi looks for a configuration file at `~/.susshi.yml`.  
 A fully annotated example covering every feature is available at [`examples/full_config.yaml`](examples/full_config.yaml).
 
 ### Multi-file configuration — `includes`
@@ -67,12 +67,12 @@ A fully annotated example covering every feature is available at [`examples/full
 Split a large config into one YAML file per team or perimeter and reference them from the main file:
 
 ```yaml
-# ~/.sushi.yml
+# ~/.susshi.yml
 includes:
   - label: "DEV"
-    path: "~/.sushi_dev.yml"
+    path: "~/.susshi_dev.yml"
   - label: "QUALIF"
-    path: "~/.sushi_qualif.yml"
+    path: "~/.susshi_qualif.yml"
     merge_defaults: true   # propagate main-file defaults into this sub-file
 
 defaults:
@@ -88,11 +88,11 @@ groups:
 - **`label`** — text shown as the namespace header (📦) in the TUI.
 - **`path`** — absolute or `~`-expanded path. Relative paths are resolved from the directory of the main file.
 - **`merge_defaults`** *(optional, default: `false`)* — when `true`, the main file's `defaults` are merged as a base layer for the included file's servers (still lower priority than the sub-file's own defaults and any group/env/server-level overrides).
-- Each included file is a standard sushi YAML (`defaults`, `groups`…). Its `defaults` are **local** unless `merge_defaults: true` is set.
+- Each included file is a standard susshi YAML (`defaults`, `groups`…). Its `defaults` are **local** unless `merge_defaults: true` is set.
 - Includes inside an included file are resolved **recursively**. Circular dependencies are detected and reported as non-blocking warnings.
 - If a file is missing or unreadable, the remaining includes still load normally — a warning overlay is shown at startup.
 
-### Example `~/.sushi.yml`
+### Example `~/.susshi.yml`
 
 ```yaml
 defaults:
@@ -227,32 +227,32 @@ jump:
 
 ## 🖥️ CLI Usage
 
-Sushi can connect directly without opening the TUI:
+susshi can connect directly without opening the TUI:
 
 ```bash
 # Connect directly
-sushi --direct root@myserver
-sushi --direct admin@10.0.1.5:2222
+susshi --direct root@myserver
+susshi --direct admin@10.0.1.5:2222
 
 # Connect via jump host
-sushi --jump root@192.168.1.50
+susshi --jump root@192.168.1.50
 
 # Connect via bastion
-sushi --wallix web-01.prod.example.com
+susshi --wallix web-01.prod.example.com
 
 # Override SSH parameters
-sushi --direct myserver.com --user deploy --port 2222 --key ~/.ssh/deploy_rsa
+susshi --direct myserver.com --user deploy --port 2222 --key ~/.ssh/deploy_rsa
 
 # Use a custom config file
-sushi --config ~/work/.sushi.yml
+susshi --config ~/work/.susshi.yml
 
 # Show all options
-sushi --help
+susshi --help
 ```
 
 ## 🎨 Theme & UI
 
-Sushi uses the [Catppuccin](https://github.com/catppuccin/catppuccin) palette. Choose a flavor in your config:
+susshi uses the [Catppuccin](https://github.com/catppuccin/catppuccin) palette. Choose a flavor in your config:
 
 ```yaml
 defaults:

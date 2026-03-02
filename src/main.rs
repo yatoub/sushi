@@ -11,21 +11,21 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
-use sushi::app::{App, AppMode, CmdState, ConfigItem};
-use sushi::config::{Config, ConnectionMode, ResolvedServer};
-use sushi::handlers::{get_layout, handle_mouse_event, is_in_rect};
-use sushi::probe::ProbeState;
-use sushi::ssh::client::build_ssh_args;
-use sushi::state;
-use sushi::ui;
+use susshi::app::{App, AppMode, CmdState, ConfigItem};
+use susshi::config::{Config, ConnectionMode, ResolvedServer};
+use susshi::handlers::{get_layout, handle_mouse_event, is_in_rect};
+use susshi::probe::ProbeState;
+use susshi::ssh::client::build_ssh_args;
+use susshi::state;
+use susshi::ui;
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
-/// 🍣 Sushi — terminal SSH connection manager
+/// 🍣 susshi — terminal SSH connection manager
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// Chemin vers le fichier de configuration (défaut : ~/.sushi.yml)
+    /// Chemin vers le fichier de configuration (défaut : ~/.susshi.yml)
     #[arg(short, long, value_name = "FILE")]
     config: Option<String>,
 
@@ -174,7 +174,7 @@ fn main() -> io::Result<()> {
     let config_path_str = cli
         .config
         .clone()
-        .unwrap_or_else(|| shellexpand::tilde("~/.sushi.yml").into_owned());
+        .unwrap_or_else(|| shellexpand::tilde("~/.susshi.yml").into_owned());
     let config_path = std::path::Path::new(&config_path_str);
 
     if !config_path.exists()
@@ -211,7 +211,7 @@ fn main() -> io::Result<()> {
 
     if let Some((mode, target)) = cli_mode_target {
         let server = build_adhoc_server(&target, mode, &cli, &config);
-        if let Err(e) = sushi::ssh::client::connect(&server, mode, cli.verbose) {
+        if let Err(e) = susshi::ssh::client::connect(&server, mode, cli.verbose) {
             eprintln!("SSH Connection Error: {}", e);
             return Err(io::Error::other(e.to_string()));
         }
@@ -244,7 +244,7 @@ fn main() -> io::Result<()> {
     match res {
         Ok(AppResult::Exit) => {}
         Ok(AppResult::Connect(server, mode, verbose)) => {
-            if let Err(e) = sushi::ssh::client::connect(&server, mode, verbose) {
+            if let Err(e) = susshi::ssh::client::connect(&server, mode, verbose) {
                 eprintln!("SSH Connection Error: {}", e);
             }
         }
@@ -260,7 +260,7 @@ fn main() -> io::Result<()> {
 
 pub enum AppResult {
     Exit,
-    Connect(Box<sushi::config::ResolvedServer>, ConnectionMode, bool),
+    Connect(Box<susshi::config::ResolvedServer>, ConnectionMode, bool),
 }
 
 fn run_app(
@@ -482,7 +482,7 @@ fn run_app(
                                         app.probe_rx = Some(rx);
                                         app.probe_state = ProbeState::Running;
                                         std::thread::spawn(move || {
-                                            let result = sushi::probe::probe(&server_clone, mode)
+                                            let result = susshi::probe::probe(&server_clone, mode)
                                                 .map_err(|e| e.to_string());
                                             let _ = tx.send(result);
                                         });

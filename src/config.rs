@@ -667,7 +667,7 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
 // ─── Validation YAML ─────────────────────────────────────────────────────────
 
 /// Analyse `content` (YAML texte) et retourne les avertissements pour tout champ
-/// dont le nom ne figure pas dans la liste des clés connues du schéma sushi.
+/// dont le nom ne figure pas dans la liste des clés connues du schéma susshi.
 pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
     let value: serde_yaml::Value = match serde_yaml::from_str(content) {
         Ok(v) => v,
@@ -1324,7 +1324,7 @@ defaults:
   user: "admin"
 includes:
   - label: "MISSING"
-    path: "/tmp/sushi_nonexistent_test_file_xyz.yml"
+    path: "/tmp/susshi_nonexistent_test_file_xyz.yml"
 groups:
   - name: Main
     servers:

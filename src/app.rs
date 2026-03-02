@@ -1066,7 +1066,7 @@ mod tests {
     fn test_namespace_visibility_collapsed() {
         let config = make_namespace_config();
         let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
-        // Reset persistent state to ensure a clean initial state independent of ~/.sushi_state.json
+        // Reset persistent state to ensure a clean initial state independent of ~/.susshi_state.json
         app.expanded_items.clear();
         app.invalidate_cache();
         let items = app.get_visible_items();
@@ -1081,7 +1081,7 @@ mod tests {
     fn test_namespace_expansion() {
         let config = make_namespace_config();
         let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
-        // Reset persistent state to ensure a clean initial state independent of ~/.sushi_state.json
+        // Reset persistent state to ensure a clean initial state independent of ~/.susshi_state.json
         app.expanded_items.clear();
         app.invalidate_cache();
 

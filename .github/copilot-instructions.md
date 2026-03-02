@@ -1,4 +1,4 @@
-# Sushi — Instructions pour l'agent de développement
+# susshi — Instructions pour l'agent de développement
 
 > Toute la documentation (README, CHANGELOG, commentaires publics) est en **anglais**.
 > Les instructions de développement et les commentaires privés peuvent être en **français** à usage interne.

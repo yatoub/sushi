@@ -1,5 +1,5 @@
 # ==========================================
-# sushi - Configuration d'exemple
+# susshi - Configuration d'exemple
 # ==========================================
 
 # ─── MULTI-FICHIERS (optionnel) ─────────────────────────────────────────────
@@ -8,9 +8,9 @@
 #
 # includes:
 #   - label: "DEV"                  # Libellé affiché dans la TUI
-#     path: "~/.sushi_dev.yml"      # Chemin absolu ou ~ étendu
+#     path: "~/.susshi_dev.yml"      # Chemin absolu ou ~ étendu
 #   - label: "QUALITY ASSURANCE"
-#     path: "~/.sushi_quality.yml"
+#     path: "~/.susshi_quality.yml"
 #
 # Règles :
 #   - Les `defaults` d'un fichier inclus sont locaux à ce fichier.

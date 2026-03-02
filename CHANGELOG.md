@@ -16,12 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - **Include inheritance**: servers in included files now automatically inherit the main file's `defaults` (user, ssh port, jump host, wallix, probe filesystems, etc.). Previously, inheritance only worked when `merge_defaults: true` was explicitly set on the include entry. The sub-file's own `defaults` still take precedence field-by-field.
-- **Test isolation**: `test_namespace_visibility_collapsed` and `test_namespace_expansion` now reset `expanded_items` after `App::new` to avoid interference from a real `~/.sushi_state.json` on the developer machine.
+- **Test isolation**: `test_namespace_visibility_collapsed` and `test_namespace_expansion` now reset `expanded_items` after `App::new` to avoid interference from a real `~/.susshi_state.json` on the developer machine.
 - **i18n test race condition**: `with_env()` now correctly uses a `Mutex` (as its comment always claimed) to prevent concurrent environment variable mutation across parallel tests.
 
 ### Added
 
-- **Historique des connexions** (`last_seen`): l'horodatage de la dernière connexion à chaque serveur est persisté dans `~/.sushi_state.json`. Il s'affiche dans le panneau de détails (ex. : "il y a 2 h").
+- **Historique des connexions** (`last_seen`): l'horodatage de la dernière connexion à chaque serveur est persisté dans `~/.susshi_state.json`. Il s'affiche dans le panneau de détails (ex. : "il y a 2 h").
 - **Rechargement à chaud** (touche `r`): recharge la configuration depuis le disque sans quitter l'application. Un message temporaire confirme le succès ou l'erreur.
 - **Favoris** (touche `f`) : bascule le statut favori du serveur sélectionné. Les favoris apparaissent avec une icône ⭐ dans l'arbre.
 - **Vue favoris** (touche `F`) : basculer entre l'affichage de tous les serveurs et les favoris seuls.
@@ -123,7 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **`use_system_ssh_config`**: new field in `defaults` (YAML). When `true`, `-F /dev/null` is omitted so `~/.ssh/config` is honored (ControlMaster, aliases, identity files…).
 - **Copy SSH command to clipboard** (`y`) via `arboard`. Feedback appears in green in the status bar for 3 seconds.
 - **`Ctrl+U`** to clear the search query while in search mode.
-- **Expansion state persistence** in `~/.sushi_state.json` (serde_json). Expanded groups/environments are restored on next startup.
+- **Expansion state persistence** in `~/.susshi_state.json` (serde_json). Expanded groups/environments are restored on next startup.
 - **In-TUI error screen**: `AppMode::Error(String)` renders a centered popup with a rounded red border. Enter/Esc/q dismiss the overlay. SSH errors (missing host, etc.) are caught before connecting.
 - **Configurable Catppuccin theme**: `defaults.theme: latte | frappe | macchiato | mocha` in the YAML config. Default: `mocha`.
 - **Enriched detail pane**: now shows the effective port (highlighted in yellow when ≠ 22), connection mode, jump host, and bastion host when configured.

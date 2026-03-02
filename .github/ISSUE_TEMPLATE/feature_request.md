@@ -17,7 +17,7 @@ A clear and concise description of what you want to happen.
 A clear and concise description of any alternative solutions or features you've considered.
 
 **Configuration Example**
-If this feature affects the structure of `~/.sushi.yml`, please suggest how the config would look:
+If this feature affects the structure of `~/.susshi.yml`, please suggest how the config would look:
 ```yaml
 new_feature:
   param1: "value"

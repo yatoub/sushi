@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-    use sushi::config::{Config, ConnectionMode};
+    use susshi::config::{Config, ConnectionMode};
 
     #[test]
     fn test_full_config_structure() {

@@ -6,7 +6,7 @@ Fonctionnalité principale : **configuration multi-fichiers avec `includes`** (i
 
 ## Objectif
 
-Un utilisateur multi-équipes peut maintenant maintenir un fichier YAML par équipe (`~/.sushi_ces.yml`, `~/.sushi_crt.yml`, etc.) et les référencer depuis un fichier principal via la clé `includes`. La TUI affiche les serveurs regroupés par namespace (= label de l'include), sans modifier l'arborescence interne de chaque fichier.
+Un utilisateur multi-équipes peut maintenant maintenir un fichier YAML par équipe (`~/.susshi_ces.yml`, `~/.susshi_crt.yml`, etc.) et les référencer depuis un fichier principal via la clé `includes`. La TUI affiche les serveurs regroupés par namespace (= label de l'include), sans modifier l'arborescence interne de chaque fichier.
 
 ```
 📦 CES
@@ -27,12 +27,12 @@ Les serveurs du fichier principal (sans namespace) continuent d'apparaître dire
 ## Syntaxe YAML
 
 ```yaml
-# ~/.sushi.yml — fichier principal
+# ~/.susshi.yml — fichier principal
 includes:
   - label: "CES"
-    path: "~/.sushi_ces.yml"
+    path: "~/.susshi_ces.yml"
   - label: "CRT"
-    path: "~/.sushi_crt.yml"
+    path: "~/.susshi_crt.yml"
 
 defaults:
   user: "admin"
@@ -47,7 +47,7 @@ groups:
 
 - `label` : texte affiché comme en-tête de namespace dans la TUI.
 - `path` : chemin absolu ou `~`-expandé. Les chemins relatifs sont résolus par rapport au répertoire du fichier principal.
-- Les fichiers inclus sont des YAML sushi standards (même format, même héritage `defaults → group → env → server`).
+- Les fichiers inclus sont des YAML susshi standards (même format, même héritage `defaults → group → env → server`).
 - Les `defaults` d'un fichier inclus sont **locaux** : ils ne fusionnent pas avec ceux du fichier principal.
 - **Les includes dans un fichier inclus sont ignorés** (pas de nesting, v0.7 seulement) — un avertissement non-fatal est affiché.
 
@@ -332,7 +332,7 @@ let (config, warnings) = Config::load_merged(&config_path, &mut HashSet::new())?
 ## Non inclus dans v0.7.0
 
 - **Includes imbriqués** (includes dans un sous-fichier) — prévu v0.8.
-- **Auto-discovery `~/.sushi_*.yml`** — alternative non retenue pour v0.7 (préférence pour la déclaration explicite).
+- **Auto-discovery `~/.susshi_*.yml`** — alternative non retenue pour v0.7 (préférence pour la déclaration explicite).
 - **Multi `--config` en CLI** — le flag `--config` reste mono-fichier ; les includes sont la voie officielle.
 - **Reload à chaud** — rechargement sans redémarrer le TUI.
 - **Fusion des `defaults`** — les defaults d'un sous-fichier restent locaux à ce fichier.

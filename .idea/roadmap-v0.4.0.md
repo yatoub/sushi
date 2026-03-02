@@ -61,7 +61,7 @@ Liste des améliorations à implémenter une par une.
 
 - [x] **11. Persistance de l'état d'expansion**
   - Fichier : `src/app.rs`, nouveau module `src/state.rs`
-  - Sauvegarder `expanded_items: HashSet<String>` dans `~/.sushi_state.json` (serde_json) à la fermeture, restaurer au démarrage.
+  - Sauvegarder `expanded_items: HashSet<String>` dans `~/.susshi_state.json` (serde_json) à la fermeture, restaurer au démarrage.
 
 ---
 

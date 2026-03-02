@@ -349,7 +349,7 @@ pub fn get_strings(lang: Lang) -> &'static Strings {
 ///
 /// # Exemple
 /// ```
-/// use sushi::i18n::fmt;
+/// use susshi::i18n::fmt;
 /// assert_eq!(fmt("Hello {}!", &["world"]), "Hello world!");
 /// ```
 pub fn fmt(template: &'static str, args: &[&str]) -> String {

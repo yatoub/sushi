@@ -97,7 +97,7 @@ pub struct App {
 
 Initialisé dans `App::new()` :
 ```rust
-lang: sushi::i18n::get_strings(sushi::i18n::detect_lang()),
+lang: susshi::i18n::get_strings(susshi::i18n::detect_lang()),
 ```
 
 Tous les textes hardcodés dans `ui/mod.rs`, `main.rs` et `probe.rs` sont remplacés par `app.lang.xxx` ou `format!(app.lang.xxx, valeur)`.

@@ -18,21 +18,21 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            binary_name: sushi
-            asset_name: sushi-linux-amd64
+            binary_name: susshi
+            asset_name: susshi-linux-amd64
           - os: macos-latest
             target: x86_64-apple-darwin
-            binary_name: sushi
-            asset_name: sushi-macos-amd64
+            binary_name: susshi
+            asset_name: susshi-macos-amd64
           - os: macos-14
             target: aarch64-apple-darwin
-            binary_name: sushi
-            asset_name: sushi-macos-arm64
+            binary_name: susshi
+            asset_name: susshi-macos-arm64
           # Windows support (optional, but good to have)
           #- os: windows-latest
           #  target: x86_64-pc-windows-msvc
-          #  binary_name: sushi.exe
-          #  asset_name: sushi-windows-amd64.exe
+          #  binary_name: susshi.exe
+          #  asset_name: susshi-windows-amd64.exe
 
     steps:
       - name: Checkout repository

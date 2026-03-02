@@ -3,12 +3,11 @@ use crate::config::{
     TunnelConfig, ValidationWarning,
 };
 use crate::probe::{ProbeResult, ProbeState};
-use crate::ssh::scp::{self as ssh_scp, ScpDirection, ScpEvent};
+use crate::ssh::scp::{ScpDirection, ScpEvent};
+use crate::ssh::sftp as ssh_sftp;
 use crate::ssh::tunnel::{self as ssh_tunnel, TunnelHandle, TunnelStatus};
 use crate::state::{self, TunnelOverride};
 use crate::ui::theme::{Theme, get_theme};
-#[cfg(unix)]
-use libc;
 use ratatui::widgets::ListState;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -319,10 +318,8 @@ pub struct App {
 
     /// État du transfert SCP en cours.
     pub scp_state: ScpState,
-    /// Récepteur des évènements du thread SCP (présent uniquement quand Running).
+    /// Récepteur des évènements du thread SFTP (présent uniquement quand Running).
     pub scp_rx: Option<mpsc::Receiver<ScpEvent>>,
-    /// PID du processus `scp` en cours (pour pouvoir l'arrêter proprement au Drop).
-    pub scp_child_pid: Option<u32>,
 }
 
 impl App {
@@ -381,7 +378,6 @@ impl App {
             active_tunnels: HashMap::new(),
             scp_state: ScpState::Idle,
             scp_rx: None,
-            scp_child_pid: None,
         };
 
         app.list_state.select(Some(0));
@@ -1750,15 +1746,14 @@ impl App {
             ScpDirection::Download => remote_path.clone(),
         };
 
-        match ssh_scp::spawn_scp(&server, mode, direction.clone(), &local, &remote_path) {
-            Ok((rx, pid)) => {
+        match ssh_sftp::spawn_sftp(&server, mode, direction.clone(), &local, &remote_path) {
+            Ok(rx) => {
                 self.scp_state = ScpState::Running {
                     direction,
                     label,
                     progress: 0,
                 };
                 self.scp_rx = Some(rx);
-                self.scp_child_pid = Some(pid);
             }
             Err(e) => {
                 self.scp_state = ScpState::Error(e.to_string());
@@ -1801,14 +1796,12 @@ impl App {
                         exit_ok: ok,
                     };
                     self.scp_rx = None;
-                    self.scp_child_pid = None;
                     break;
                 }
                 Ok(ScpEvent::Error(e)) => {
                     self.set_status_message(crate::i18n::fmt(self.lang.scp_failed, &[&e]));
                     self.scp_state = ScpState::Error(e);
                     self.scp_rx = None;
-                    self.scp_child_pid = None;
                     break;
                 }
                 Err(TryRecvError::Empty) => break,
@@ -1828,15 +1821,13 @@ impl Drop for App {
     /// Les tunnels SSH sont également tués par le `Drop` de leurs [`TunnelHandle`]
     /// quand `active_tunnels` est libéré, mais `stop_all_tunnels()` les arrête en avance
     /// pour garantir un SIGTERM avant le wait().
-    /// Le processus `scp` est tué via [`libc::kill`] si un PID est enregistré.
+    /// Le transfert SFTP tourne dans un thread Rust : `scp_rx` est droppé pour signaler l'arrêt.
     fn drop(&mut self) {
         self.stop_all_tunnels();
-        #[cfg(unix)]
-        if let Some(pid) = self.scp_child_pid.take() {
-            unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGTERM);
-            }
-        }
+        // Le transfert SFTP tourne dans un thread Rust (pas de sous-processus).
+        // Dropper `scp_rx` ici suffit à signaler au thread SFTP d'arrêter
+        // (il recevra une SendError au prochain ScpEvent::Progress).
+        drop(self.scp_rx.take());
     }
 }
 

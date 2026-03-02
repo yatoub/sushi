@@ -1,24 +1,24 @@
 # ==========================================
-# susshi - Configuration d'exemple
+# susshi - Example configuration
 # ==========================================
 
-# ─── MULTI-FICHIERS (optionnel) ─────────────────────────────────────────────
-# Permet de répartir la configuration par équipe ou périmètre.
-# Chaque fichier inclus apparaît dans la TUI comme un namespace collapsible (📦).
+# ─── MULTI-FILE (optional) ──────────────────────────────────────────────────
+# Split your configuration across multiple files by team or perimeter.
+# Each included file appears in the TUI as a collapsible namespace (📦).
 #
 # includes:
-#   - label: "DEV"                  # Libellé affiché dans la TUI
-#     path: "~/.susshi_dev.yml"      # Chemin absolu ou ~ étendu
+#   - label: "DEV"                  # Label shown in the TUI
+#     path: "~/.susshi_dev.yml"      # Absolute path or ~ expansion
 #   - label: "QUALITY ASSURANCE"
 #     path: "~/.susshi_quality.yml"
 #
-# Règles :
-#   - Les `defaults` d'un fichier inclus sont locaux à ce fichier.
-#   - Les includes imbriqués (includes dans un sous-fichier) sont ignorés (v0.7).
-#   - Un fichier manquant ou circulaire produit un avertissement non-bloquant.
+# Rules:
+#   - `defaults` from an included file are local to that file.
+#   - Nested includes (includes inside a sub-file) are resolved recursively.
+#   - A missing or circular include produces a non-blocking warning.
 
-# 1. Paramètres par défaut (Niveau Global)
-# Ces valeurs sont utilisées si elles ne sont pas redéfinies plus bas.
+# 1. Default settings (Global level)
+# These values are used unless overridden at a lower level.
 defaults:
   user: "admin"
   ssh_key: "~/.ssh/id_ed25519"
@@ -26,45 +26,43 @@ defaults:
   ssh_options:
     - "StrictHostKeyChecking=no"
     - "UserKnownHostsFile=/dev/null"
+  # Set to true to use the SSH config file (~/.ssh/config) for resolving hosts, users, ports, and options.
   use_system_ssh_config: false
-  # Thème Catppuccin : latte | frappe | macchiato | mocha (défaut)
+  # Catppuccin theme: latte | frappe | macchiato | mocha (default)
   theme: mocha
+  # Set to true to reopen the TUI automatically after a connection closes
+  keep_open: false
   wallix:
     host: "bastion.example.com"
     user: "bastion"
     ssh_options:
       - "ForwardAgent=yes"
-  # BREAKING CHANGE v0.5.0 : rebond est désormais une LISTE (même pour un seul saut).
-  # Ancienne syntaxe (v0.4.x) :
-  #   rebond:
-  #     host: "jump.example.com"
-  #     user: "jump"
-  # Nouvelle syntaxe (v0.5.0+) — rebond simple (un saut) :
+  # Single jump host
   jump:
     - host: "jump.example.com"
       user: "jump"
-  # Rebond multi-sauts (deux sauts successifs) :
-  # rebond:
+  # Multi-hop example (two successive hops):
+  # jump:
   #   - host: "jump1.example.com"
   #     user: "jump"
   #   - host: "jump2.example.com"
   #     user: "jump"
 
-  # Points de montage supplémentaires à surveiller lors du diagnostic (`d`).
-  # Sémantique : EXTENSION — chaque niveau AJOUTE ses chemins à ceux du parent
-  # (contrairement à user/ssh_key qui remplacent).
-  # Si un filesystem n'est pas monté sur le serveur, un avertissement ⚠ est affiché
-  # à la place de la barre de progression.
+  # Extra mount points to inspect during the quick diagnostic (`d`).
+  # Semantics: ADDITIVE — each level APPENDS its paths to the parent list
+  # (unlike user/ssh_key which replace the parent value).
+  # If a filesystem is not mounted on the server, a ⚠ warning is shown
+  # instead of a progress bar.
   probe_filesystems:
     - "/var/log"
     - "/data"
 
 groups:
-  # --- EXEMPLE NIVEAU 3 : Projet -> Environnement -> Serveur ---
+  # --- LEVEL 3 example: Group → Environment → Server ---
   - name: "Projet Alpha"
-    user: "dev" # Surcharge le défaut pour tout le projet Alpha
-    # Ajoute /app_data aux filesystems définis dans defaults (/var/log, /data).
-    # Un serveur de ce groupe avec mode: direct surveillera /var/log, /data ET /app_data.
+    user: "dev" # Override the default user for the whole group
+    # Appends /app_data to the filesystems defined in defaults (/var/log, /data).
+    # A server in this group with mode: direct will monitor /var/log, /data AND /app_data.
     probe_filesystems:
       - "/app_data"
     environments:
@@ -73,18 +71,18 @@ groups:
           - name: "nextcloud"
             user: "root"
             host: "192.168.1.13"
-            mode: "direct" # Connexion classique
+            mode: "direct" # Standard SSH connection
           - name: "db-01"
             host: "192.168.1.11"
-            # Ajoute /pg_data au niveau serveur : surveille /var/log, /data, /app_data ET /pg_data.
+            # Appends /pg_data at server level: monitors /var/log, /data, /app_data AND /pg_data.
             probe_filesystems:
               - "/pg_data"
       - name: "Staging"
         servers:
           - name: "web-stg"
             host: "192.168.1.20"
-            mode: "jump" # Passe par un serveur de rebond
-  # --- EXEMPLE NIVEAU 2 : Groupe -> Serveur ---
+            mode: "jump" # Route through a jump host
+  # --- LEVEL 2 example: Group → Server ---
   - name: "Infrastructure"
     servers:
       - name: "proxmox-host"
@@ -93,8 +91,8 @@ groups:
       - name: "internal-nas"
         host: "192.168.1.200"
         user: "root"
-        mode: "bastion" # Passe par un bastion dédié
-  # --- EXEMPLE NIVEAU 1 : Serveur Unique ---
+        mode: "bastion" # Route through a dedicated bastion
+  # --- LEVEL 1 example: Single server at root ---
   - name: "Raspberry-Pi-Home"
     host: "raspberrypi.local"
     user: "pi"

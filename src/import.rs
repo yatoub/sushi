@@ -196,7 +196,7 @@ fn push_entry(
 /// Découpe `"Key Value"` ou `"Key=Value"` en `(key, value)`.
 fn split_kv(s: &str) -> Option<(&str, &str)> {
     // Essayer séparateur espace d'abord
-    if let Some(pos) = s.find(|c: char| c == ' ' || c == '\t' || c == '=') {
+    if let Some(pos) = s.find([' ', '\t', '=']) {
         let key = s[..pos].trim();
         let value = s[pos + 1..].trim().trim_start_matches('=').trim();
         if key.is_empty() || value.is_empty() {

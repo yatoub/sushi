@@ -27,6 +27,9 @@ fn test_server() -> ResolvedServer {
         probe_filesystems: vec![],
         tunnels: vec![],
         tags: vec![],
+        control_master: false,
+        control_path: String::new(),
+        control_persist: "10m".to_string(),
     }
 }
 

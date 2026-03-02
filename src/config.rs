@@ -194,6 +194,13 @@ pub struct Defaults {
     pub default_filter: Option<String>,
     /// Tags hérités en cascade par tous les serveurs du périmètre.
     pub tags: Option<Vec<String>>,
+    /// Si `true`, active le multiplexage SSH ControlMaster (réutilise la connexion TCP).
+    pub control_master: Option<bool>,
+    /// Chemin du socket ControlPath (tilde expandé).
+    /// Défaut : `"~/.ssh/ctl/%h_%p_%r"`.
+    pub control_path: Option<String>,
+    /// Durée de maintien du master après déconnexion. Défaut : `"10m"`.
+    pub control_persist: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -299,6 +306,12 @@ pub struct ResolvedServer {
     pub tunnels: Vec<TunnelConfig>,
     /// Tags du serveur (union de tous les niveaux : defaults → groupe → env → serveur).
     pub tags: Vec<String>,
+    /// Multiplexage SSH ControlMaster actif pour ce serveur.
+    pub control_master: bool,
+    /// Chemin du socket ControlPath (vide si désactivé).
+    pub control_path: String,
+    /// Valeur de ControlPersist (ex. `"10m"`).
+    pub control_persist: String,
 }
 
 impl Config {
@@ -595,6 +608,9 @@ fn resolve_entries(
                                 e_tunnels.as_ref(),
                                 namespace,
                                 vars,
+                                d.control_master.unwrap_or(false),
+                                d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
+                                d.control_persist.as_deref().unwrap_or("10m"),
                             )?;
                             resolved.push(r);
                         }
@@ -619,6 +635,9 @@ fn resolve_entries(
                             g_tunnels.as_ref(),
                             namespace,
                             vars,
+                            d.control_master.unwrap_or(false),
+                            d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
+                            d.control_persist.as_deref().unwrap_or("10m"),
                         )?;
                         resolved.push(r);
                     }
@@ -642,6 +661,9 @@ fn resolve_entries(
                     d.tunnels.as_ref(),
                     namespace,
                     vars,
+                    d.control_master.unwrap_or(false),
+                    d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
+                    d.control_persist.as_deref().unwrap_or("10m"),
                 )?;
                 resolved.push(r);
             }
@@ -796,6 +818,15 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
                 Some(merged)
             }
         },
+        control_master: overrides.control_master.or(base.control_master),
+        control_path: overrides
+            .control_path
+            .clone()
+            .or_else(|| base.control_path.clone()),
+        control_persist: overrides
+            .control_persist
+            .clone()
+            .or_else(|| base.control_persist.clone()),
     }
 }
 
@@ -838,6 +869,9 @@ pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
                     "tunnels",
                     "default_filter",
                     "tags",
+                    "control_master",
+                    "control_path",
+                    "control_persist",
                 ],
                 file_path,
                 "defaults",
@@ -1028,6 +1062,9 @@ fn resolve_server(
     def_tunnels: Option<&Vec<TunnelConfig>>,
     namespace: &str,
     vars: &HashMap<String, String>,
+    def_control_master: bool,
+    def_control_path: &str,
+    def_control_persist: &str,
 ) -> Result<ResolvedServer, ConfigError> {
     let user = interpolate(s.user.as_deref().or(def_user).unwrap_or("root"), vars);
     let port = s.ssh_port.or(def_port).unwrap_or(22);
@@ -1093,6 +1130,13 @@ fn resolve_server(
         probe_filesystems,
         tunnels,
         tags: extend_tags(None, s.tags.as_ref()),
+        control_master: def_control_master,
+        control_path: if def_control_master {
+            shellexpand::tilde(def_control_path).into_owned()
+        } else {
+            String::new()
+        },
+        control_persist: def_control_persist.to_string(),
     })
 }
 

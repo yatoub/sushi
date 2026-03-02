@@ -326,9 +326,11 @@ impl Config {
         for entry in &self.groups {
             match entry {
                 ConfigEntry::Namespace(ns) => {
-                    // Les defaults du sous-fichier sont locaux au namespace.
-                    let ns_d = ns.defaults.clone().unwrap_or_default();
-                    let ns_use_sys_cfg = ns_d.use_system_ssh_config.unwrap_or(false);
+                    // Les defaults du fichier principal servent de base ; les defaults
+                    // locaux du namespace (sous-fichier) les surchargent champ par champ.
+                    let ns_local = ns.defaults.clone().unwrap_or_default();
+                    let ns_d = merge_default_structs(&d, &ns_local);
+                    let ns_use_sys_cfg = ns_d.use_system_ssh_config.unwrap_or(use_sys_cfg);
                     resolve_entries(&ns.entries, &ns_d, ns_use_sys_cfg, &ns.label, &mut resolved)?;
                 }
                 _ => {
@@ -1464,6 +1466,50 @@ groups: []
         assert_eq!(sub_srv.user, "sub_user");
         // Main port is inherited since sub didn't specify ssh_port
         assert_eq!(sub_srv.port, 2222);
+    }
+
+    /// Les defaults du fichier principal sont automatiquement hérités par les
+    /// namespaces inclus, même sans `merge_defaults: true`.
+    #[test]
+    fn test_includes_inherit_main_defaults_automatically() {
+        let sub_yaml = r#"
+groups:
+  - name: SubGroup
+    servers:
+      - name: sub_srv
+        host: "2.3.4.5"
+"#;
+        let sub_file = write_temp_yaml(sub_yaml);
+
+        let main_yaml = format!(
+            r#"
+defaults:
+  user: "main_user"
+  ssh_port: 2222
+  jump:
+    - host: "jump.example.com"
+      user: "juser"
+includes:
+  - label: "SUB"
+    path: "{}"
+groups: []
+"#,
+            sub_file.path().to_string_lossy()
+        );
+        let main_file = write_temp_yaml(&main_yaml);
+
+        let (config, _warnings, _val) =
+            Config::load_merged(main_file.path(), &mut std::collections::HashSet::new()).unwrap();
+        let resolved = config.resolve().unwrap();
+
+        let sub_srv = resolved.iter().find(|s| s.name == "sub_srv").unwrap();
+        // Les defaults du principal doivent être hérités sans merge_defaults: true
+        assert_eq!(sub_srv.user, "main_user");
+        assert_eq!(sub_srv.port, 2222);
+        assert_eq!(
+            sub_srv.jump_host.as_deref(),
+            Some("juser@jump.example.com")
+        );
     }
 
     #[test]

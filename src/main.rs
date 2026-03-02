@@ -1,4 +1,4 @@
-use std::{collections::HashSet, io, time::Duration};
+use std::{collections::HashSet, io, process, time::Duration};
 
 use clap::Parser;
 use crossterm::{
@@ -12,11 +12,11 @@ use crossterm::{
 use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
 use susshi::app::{App, AppMode, CmdState, ConfigItem, ScpState, TunnelOverlayState};
-use susshi::config::{Config, ConnectionMode, ResolvedServer};
+use susshi::config::{Config, ConnectionMode, IncludeWarning, ResolvedServer, undefined_vars};
 use susshi::handlers::{get_layout, handle_mouse_event, is_in_rect};
 use susshi::probe::ProbeState;
 use susshi::ssh::client::build_ssh_args;
-use susshi::ssh::scp::ScpDirection;
+use susshi::ssh::sftp::ScpDirection;
 use susshi::state;
 use susshi::ui;
 
@@ -57,6 +57,10 @@ struct Cli {
     /// Activer le mode verbeux SSH (-v)
     #[arg(short, long)]
     verbose: bool,
+
+    /// Valider la configuration et quitter (code 0 = OK, 1 = erreur bloquante).
+    #[arg(long)]
+    validate: bool,
 }
 
 // ─── Config par défaut ───────────────────────────────────────────────────────
@@ -87,6 +91,81 @@ groups:
 "#;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Valide le fichier de configuration, affiche les diagnostics et quitte le processus.
+///
+/// Code de sortie :
+/// - `0` : configuration valide (avec ou sans avertissements)
+/// - `1` : fichier introuvable ou erreur de parsing
+fn validate_config(config_path: &std::path::Path) {
+    if !config_path.exists() {
+        eprintln!(
+            "ERREUR : fichier de configuration introuvable : {}",
+            config_path.display()
+        );
+        process::exit(1);
+    }
+
+    let mut stack = HashSet::new();
+    match Config::load_merged(config_path, &mut stack) {
+        Err(e) => {
+            eprintln!("ERREUR : {e}");
+            process::exit(1);
+        }
+        Ok((config, inc_warnings, val_warnings)) => {
+            let mut has_error = false;
+
+            for w in &inc_warnings {
+                match w {
+                    IncludeWarning::LoadError { label, path, error } => {
+                        eprintln!("[ERREUR include] {label} ({path}): {error}");
+                        has_error = true;
+                    }
+                    IncludeWarning::Circular { label, path } => {
+                        eprintln!("[WARN  circular] {label} ({path})");
+                    }
+                }
+            }
+            for w in &val_warnings {
+                eprintln!("[WARN  yaml]    {w}");
+            }
+            // Vérification des variables de template non définies
+            let empty = std::collections::HashMap::new();
+            let mut vars_warnings: usize = 0;
+            if let Ok(resolved_servers) = config.resolve() {
+                for srv in &resolved_servers {
+                    let fields = [
+                        ("name", srv.name.as_str()),
+                        ("host", srv.host.as_str()),
+                        ("user", srv.user.as_str()),
+                        ("ssh_key", srv.ssh_key.as_str()),
+                    ];
+                    for (field_name, value) in fields {
+                        for var in undefined_vars(value, &empty) {
+                            eprintln!(
+                                "[WARN  vars]    {} ({}/{}): champ \u{ab} {} \u{bb} contient \u{ab} {{{{ {} }}}} \u{bb} non d\u{e9}fini",
+                                srv.name, srv.namespace, srv.group_name, field_name, var
+                            );
+                            vars_warnings += 1;
+                        }
+                    }
+                }
+            }
+            let total_warnings = inc_warnings.len() + val_warnings.len() + vars_warnings;
+            if has_error {
+                process::exit(1);
+            } else if total_warnings == 0 {
+                println!("Configuration valide \u{2713}");
+            } else {
+                println!(
+                    "Configuration valide avec {} avertissement(s)",
+                    total_warnings
+                );
+            }
+            process::exit(0);
+        }
+    }
+}
 
 /// Décompose `[user@]host[:port]` en ses parties.
 fn parse_target(s: &str) -> (Option<String>, String, Option<u16>) {
@@ -164,6 +243,7 @@ fn build_adhoc_server(
         use_system_ssh_config: d.use_system_ssh_config.unwrap_or(false),
         probe_filesystems: vec![],
         tunnels: vec![],
+        tags: vec![],
     }
 }
 
@@ -178,6 +258,12 @@ fn main() -> io::Result<()> {
         .clone()
         .unwrap_or_else(|| shellexpand::tilde("~/.susshi.yml").into_owned());
     let config_path = std::path::Path::new(&config_path_str);
+
+    // ── Mode validation ─────────────────────────────────────────────────────
+    if cli.validate {
+        validate_config(config_path);
+        // validate_config appelle process::exit() — on ne revient jamais ici.
+    }
 
     if !config_path.exists()
         && let Err(e) = std::fs::write(config_path, DEFAULT_CONFIG)

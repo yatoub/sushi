@@ -3,14 +3,13 @@ use crate::config::{
     TunnelConfig, ValidationWarning,
 };
 use crate::probe::{ProbeResult, ProbeState};
-use crate::ssh::scp::{self as ssh_scp, ScpDirection, ScpEvent};
+use crate::ssh::sftp::{self as ssh_sftp, ScpDirection, ScpEvent};
 use crate::ssh::tunnel::{self as ssh_tunnel, TunnelHandle, TunnelStatus};
 use crate::state::{self, TunnelOverride};
 use crate::ui::theme::{Theme, get_theme};
-#[cfg(unix)]
-use libc;
 use ratatui::widgets::ListState;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Instant;
@@ -282,6 +281,10 @@ pub struct App {
     /// Chemin du fichier de configuration principal (pour le rechargement).
     pub config_path: PathBuf,
 
+    /// Hash (DefaultHasher) du contenu lu sur disque — permet de détecter
+    /// un rechargement inutile lorsque le fichier n'a pas été modifié.
+    pub config_hash: u64,
+
     /// Si true, seuls les favoris sont affichés dans la liste.
     pub favorites_only: bool,
 
@@ -319,10 +322,40 @@ pub struct App {
 
     /// État du transfert SCP en cours.
     pub scp_state: ScpState,
-    /// Récepteur des évènements du thread SCP (présent uniquement quand Running).
+    /// Récepteur des évènements du thread SFTP (présent uniquement quand Running).
     pub scp_rx: Option<mpsc::Receiver<ScpEvent>>,
-    /// PID du processus `scp` en cours (pour pouvoir l'arrêter proprement au Drop).
-    pub scp_child_pid: Option<u32>,
+}
+
+/// Sépare la requête de recherche en tokens texte et tokens `#tag`.
+/// Exemple : `"web #prod DB"` → `(["web", "DB"], ["prod"])`
+pub fn parse_search_tokens(query: &str) -> (Vec<String>, Vec<String>) {
+    let mut text = Vec::new();
+    let mut tags = Vec::new();
+    for token in query.split_whitespace() {
+        if let Some(t) = token.strip_prefix('#') {
+            if !t.is_empty() {
+                tags.push(t.to_lowercase());
+            }
+        } else {
+            text.push(token.to_lowercase());
+        }
+    }
+    (text, tags)
+}
+
+// ─── Helpers internes ─────────────────────────────────────────────────────────
+/// Utilise `DefaultHasher` (non-cryptographique, suffisant pour la détection de changement).
+/// Retourne 0 en cas d'erreur de lecture (force un rechargement).
+fn hash_config_file(path: &PathBuf) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    match std::fs::read(path) {
+        Ok(bytes) => {
+            let mut hasher = DefaultHasher::new();
+            bytes.hash(&mut hasher);
+            hasher.finish()
+        }
+        Err(_) => 0,
+    }
 }
 
 impl App {
@@ -333,6 +366,7 @@ impl App {
         validation_warnings: Vec<ValidationWarning>,
     ) -> Result<Self, ConfigError> {
         let resolved = config.resolve()?;
+        let config_hash = hash_config_file(&config_path);
 
         // Résout le thème avant de déplacer config dans le struct
         let theme_variant = config
@@ -346,6 +380,12 @@ impl App {
             .as_ref()
             .and_then(|d| d.keep_open)
             .unwrap_or(false);
+
+        let default_filter = config
+            .defaults
+            .as_ref()
+            .and_then(|d| d.default_filter.clone())
+            .unwrap_or_default();
 
         let mut app = Self {
             config,
@@ -368,6 +408,7 @@ impl App {
             lang: crate::i18n::get_strings(crate::i18n::detect_lang()),
             warnings,
             config_path,
+            config_hash,
             favorites_only: false,
             sort_by_recent: false,
             last_seen: HashMap::new(),
@@ -381,7 +422,6 @@ impl App {
             active_tunnels: HashMap::new(),
             scp_state: ScpState::Idle,
             scp_rx: None,
-            scp_child_pid: None,
         };
 
         app.list_state.select(Some(0));
@@ -394,6 +434,13 @@ impl App {
         app.sort_by_recent = saved.sort_by_recent;
         app.tunnel_overrides = saved.tunnel_overrides;
         app.items_dirty = true;
+
+        // Applique le filtre par défaut de la configuration si la requête est vide
+        if app.search_query.is_empty() && !default_filter.is_empty() {
+            app.search_query = default_filter;
+            app.is_searching = true;
+            app.items_dirty = true;
+        }
 
         app.update_mode_from_selection();
 
@@ -525,15 +572,17 @@ impl App {
                     }
                 }
                 ConfigEntry::Server(s_conf) => {
-                    if searching && !self.matches_search(&s_conf.name, &s_conf.host) {
-                        continue;
-                    }
                     if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
                         rs.name == s_conf.name
                             && rs.group_name.is_empty()
                             && rs.env_name.is_empty()
                             && rs.namespace.is_empty()
                     }) {
+                        if searching
+                            && !self.matches_search(&resolved.name, &resolved.host, &resolved.tags)
+                        {
+                            continue;
+                        }
                         if self.favorites_only
                             && !self.favorites.contains(&Self::server_key(resolved))
                         {
@@ -568,7 +617,9 @@ impl App {
                 if self.favorites_only && !self.favorites.contains(&Self::server_key(rs)) {
                     return false;
                 }
-                if !self.search_query.is_empty() && !self.matches_search(&rs.name, &rs.host) {
+                if !self.search_query.is_empty()
+                    && !self.matches_search(&rs.name, &rs.host, &rs.tags)
+                {
                     return false;
                 }
                 true
@@ -672,15 +723,17 @@ impl App {
                     }
                 }
                 ConfigEntry::Server(s_conf) => {
-                    if searching && !self.matches_search(&s_conf.name, &s_conf.host) {
-                        continue;
-                    }
                     if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
                         rs.name == s_conf.name
                             && rs.group_name.is_empty()
                             && rs.env_name.is_empty()
                             && rs.namespace == ns
                     }) {
+                        if searching
+                            && !self.matches_search(&resolved.name, &resolved.host, &resolved.tags)
+                        {
+                            continue;
+                        }
                         items.push(ConfigItem::Server(Box::new(resolved.clone())));
                     }
                 }
@@ -724,15 +777,21 @@ impl App {
                 let env_expanded = self.expanded_items.contains(&env_id) || searching;
                 if env_expanded {
                     for server in &env.servers {
-                        if searching && !self.matches_search(&server.name, &server.host) {
-                            continue;
-                        }
                         if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
                             rs.name == server.name
                                 && rs.env_name == env.name
                                 && rs.group_name == group.name
                                 && rs.namespace.is_empty()
                         }) {
+                            if searching
+                                && !self.matches_search(
+                                    &resolved.name,
+                                    &resolved.host,
+                                    &resolved.tags,
+                                )
+                            {
+                                continue;
+                            }
                             if self.favorites_only
                                 && !self.favorites.contains(&Self::server_key(resolved))
                             {
@@ -747,15 +806,17 @@ impl App {
 
         if let Some(servers) = &group.servers {
             for server in servers {
-                if searching && !self.matches_search(&server.name, &server.host) {
-                    continue;
-                }
                 if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
                     rs.name == server.name
                         && rs.env_name.is_empty()
                         && rs.group_name == group.name
                         && rs.namespace.is_empty()
                 }) {
+                    if searching
+                        && !self.matches_search(&resolved.name, &resolved.host, &resolved.tags)
+                    {
+                        continue;
+                    }
                     if self.favorites_only && !self.favorites.contains(&Self::server_key(resolved))
                     {
                         continue;
@@ -800,15 +861,21 @@ impl App {
                 let env_expanded = self.expanded_items.contains(&env_id) || searching;
                 if env_expanded {
                     for server in &env.servers {
-                        if searching && !self.matches_search(&server.name, &server.host) {
-                            continue;
-                        }
                         if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
                             rs.name == server.name
                                 && rs.env_name == env.name
                                 && rs.group_name == group.name
                                 && rs.namespace == ns
                         }) {
+                            if searching
+                                && !self.matches_search(
+                                    &resolved.name,
+                                    &resolved.host,
+                                    &resolved.tags,
+                                )
+                            {
+                                continue;
+                            }
                             if self.favorites_only
                                 && !self.favorites.contains(&Self::server_key(resolved))
                             {
@@ -823,15 +890,17 @@ impl App {
 
         if let Some(servers) = &group.servers {
             for server in servers {
-                if searching && !self.matches_search(&server.name, &server.host) {
-                    continue;
-                }
                 if let Some(resolved) = self.resolved_servers.iter().find(|rs| {
                     rs.name == server.name
                         && rs.env_name.is_empty()
                         && rs.group_name == group.name
                         && rs.namespace == ns
                 }) {
+                    if searching
+                        && !self.matches_search(&resolved.name, &resolved.host, &resolved.tags)
+                    {
+                        continue;
+                    }
                     if self.favorites_only && !self.favorites.contains(&Self::server_key(resolved))
                     {
                         continue;
@@ -842,9 +911,27 @@ impl App {
         }
     }
 
-    fn matches_search(&self, name: &str, host: &str) -> bool {
-        let query = self.search_query.to_lowercase();
-        name.to_lowercase().contains(&query) || host.to_lowercase().contains(&query)
+    fn matches_search(&self, name: &str, host: &str, tags: &[String]) -> bool {
+        let (text_tokens, tag_tokens) = parse_search_tokens(&self.search_query);
+
+        // Tous les #tag doivent être présents (AND)
+        let tags_ok = tag_tokens.iter().all(|t| {
+            tags.iter()
+                .any(|tag| tag.to_lowercase() == t.to_lowercase())
+        });
+        if !tags_ok {
+            return false;
+        }
+
+        // Tokens textuels : chacun doit apparaître dans name ou host (AND)
+        if text_tokens.is_empty() {
+            return true;
+        }
+        let name_lc = name.to_lowercase();
+        let host_lc = host.to_lowercase();
+        text_tokens
+            .iter()
+            .all(|t| name_lc.contains(t.as_str()) || host_lc.contains(t.as_str()))
     }
 
     pub fn next(&mut self) {
@@ -1501,6 +1588,14 @@ impl App {
 
     /// Recharge la configuration depuis le disque sans quitter.
     pub fn reload(&mut self) -> Result<(), ConfigError> {
+        // Rechargement sélectif : si le contenu du fichier n'a pas changé, on n'a rien à faire.
+        let new_hash = hash_config_file(&self.config_path);
+        if new_hash == self.config_hash {
+            self.set_status_message(self.lang.config_reloaded);
+            return Ok(());
+        }
+        self.config_hash = new_hash;
+
         let mut stack = std::collections::HashSet::new();
         let (new_config, new_warnings, new_val_warnings) =
             Config::load_merged(&self.config_path, &mut stack)?;
@@ -1750,15 +1845,14 @@ impl App {
             ScpDirection::Download => remote_path.clone(),
         };
 
-        match ssh_scp::spawn_scp(&server, mode, direction.clone(), &local, &remote_path) {
-            Ok((rx, pid)) => {
+        match ssh_sftp::spawn_sftp(&server, mode, direction.clone(), &local, &remote_path) {
+            Ok(rx) => {
                 self.scp_state = ScpState::Running {
                     direction,
                     label,
                     progress: 0,
                 };
                 self.scp_rx = Some(rx);
-                self.scp_child_pid = Some(pid);
             }
             Err(e) => {
                 self.scp_state = ScpState::Error(e.to_string());
@@ -1801,14 +1895,12 @@ impl App {
                         exit_ok: ok,
                     };
                     self.scp_rx = None;
-                    self.scp_child_pid = None;
                     break;
                 }
                 Ok(ScpEvent::Error(e)) => {
                     self.set_status_message(crate::i18n::fmt(self.lang.scp_failed, &[&e]));
                     self.scp_state = ScpState::Error(e);
                     self.scp_rx = None;
-                    self.scp_child_pid = None;
                     break;
                 }
                 Err(TryRecvError::Empty) => break,
@@ -1828,15 +1920,13 @@ impl Drop for App {
     /// Les tunnels SSH sont également tués par le `Drop` de leurs [`TunnelHandle`]
     /// quand `active_tunnels` est libéré, mais `stop_all_tunnels()` les arrête en avance
     /// pour garantir un SIGTERM avant le wait().
-    /// Le processus `scp` est tué via [`libc::kill`] si un PID est enregistré.
+    /// Le transfert SFTP tourne dans un thread Rust : `scp_rx` est droppé pour signaler l'arrêt.
     fn drop(&mut self) {
         self.stop_all_tunnels();
-        #[cfg(unix)]
-        if let Some(pid) = self.scp_child_pid.take() {
-            unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGTERM);
-            }
-        }
+        // Le transfert SFTP tourne dans un thread Rust (pas de sous-processus).
+        // Dropper `scp_rx` ici suffit à signaler au thread SFTP d'arrêter
+        // (il recevra une SendError au prochain ScpEvent::Progress).
+        drop(self.scp_rx.take());
     }
 }
 
@@ -1870,6 +1960,7 @@ mod tests {
                     jump: None,
                     probe_filesystems: None,
                     tunnels: None,
+                    tags: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
                         host: "10.0.0.1".to_string(),
@@ -1882,6 +1973,7 @@ mod tests {
                         jump: None,
                         probe_filesystems: None,
                         tunnels: None,
+                        tags: None,
                     }],
                 }]),
                 servers: Some(vec![Server {
@@ -1896,10 +1988,156 @@ mod tests {
                     jump: None,
                     probe_filesystems: None,
                     tunnels: None,
+                    tags: None,
                 }]),
                 tunnels: None,
+                tags: None,
             })],
+            vars: Default::default(),
         }
+    }
+
+    // ─── Tests parse_search_tokens ────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_tokens_text_only() {
+        let (text, tags) = parse_search_tokens("web DB");
+        assert_eq!(text, vec!["web", "db"]);
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn test_parse_tokens_tags_only() {
+        let (text, tags) = parse_search_tokens("#prod #eu");
+        assert!(text.is_empty());
+        assert_eq!(tags, vec!["prod", "eu"]);
+    }
+
+    #[test]
+    fn test_parse_tokens_mixed() {
+        let (text, tags) = parse_search_tokens("web #prod DB");
+        assert_eq!(text, vec!["web", "db"]);
+        assert_eq!(tags, vec!["prod"]);
+    }
+
+    #[test]
+    fn test_parse_tokens_empty_hash() {
+        let (text, tags) = parse_search_tokens("# word");
+        // bare '#' est ignoré car empty tag, "word" est texte
+        assert_eq!(text, vec!["word"]);
+        assert!(tags.is_empty());
+    }
+
+    // ─── Tests filtrage par #tag ──────────────────────────────────────────────
+
+    fn make_tagged_config() -> Config {
+        use crate::config::{Group, Server};
+        Config {
+            defaults: None,
+            includes: vec![],
+            groups: vec![ConfigEntry::Group(Group {
+                name: "G".to_string(),
+                user: None,
+                ssh_key: None,
+                mode: None,
+                ssh_port: None,
+                ssh_options: None,
+                wallix: None,
+                jump: None,
+                probe_filesystems: None,
+                environments: None,
+                tunnels: None,
+                tags: None,
+                servers: Some(vec![
+                    Server {
+                        name: "prod-web".to_string(),
+                        host: "1.1.1.1".to_string(),
+                        user: None,
+                        ssh_key: None,
+                        ssh_port: None,
+                        ssh_options: None,
+                        mode: None,
+                        wallix: None,
+                        jump: None,
+                        probe_filesystems: None,
+                        tunnels: None,
+                        tags: Some(vec!["prod".to_string(), "web".to_string()]),
+                    },
+                    Server {
+                        name: "staging-db".to_string(),
+                        host: "2.2.2.2".to_string(),
+                        user: None,
+                        ssh_key: None,
+                        ssh_port: None,
+                        ssh_options: None,
+                        mode: None,
+                        wallix: None,
+                        jump: None,
+                        probe_filesystems: None,
+                        tunnels: None,
+                        tags: Some(vec!["staging".to_string(), "db".to_string()]),
+                    },
+                ]),
+            })],
+            vars: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_tag_filter_matches() {
+        let config = make_tagged_config();
+        let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
+
+        app.search_query = "#prod".to_string();
+        app.invalidate_cache();
+        let items = app.get_visible_items();
+
+        let has_prod = items.iter().any(|i| match i {
+            ConfigItem::Server(s) => s.name == "prod-web",
+            _ => false,
+        });
+        let has_staging = items.iter().any(|i| match i {
+            ConfigItem::Server(s) => s.name == "staging-db",
+            _ => false,
+        });
+        assert!(has_prod, "prod-web doit être visible avec #prod");
+        assert!(
+            !has_staging,
+            "staging-db ne doit pas être visible avec #prod"
+        );
+    }
+
+    #[test]
+    fn test_tag_filter_and_text() {
+        let config = make_tagged_config();
+        let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
+
+        // #prod ET texte "web"
+        app.search_query = "#prod web".to_string();
+        app.invalidate_cache();
+        let items = app.get_visible_items();
+
+        let has_prod_web = items.iter().any(|i| match i {
+            ConfigItem::Server(s) => s.name == "prod-web",
+            _ => false,
+        });
+        assert!(has_prod_web, "prod-web correspond à #prod web");
+    }
+
+    #[test]
+    fn test_tag_filter_no_match() {
+        let config = make_tagged_config();
+        let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
+
+        app.search_query = "#inexistant".to_string();
+        app.invalidate_cache();
+        let items = app.get_visible_items();
+
+        let has_server = items.iter().any(|i| matches!(i, ConfigItem::Server(_)));
+        assert!(
+            !has_server,
+            "Aucun serveur ne doit correspondre à #inexistant"
+        );
     }
 
     #[test]
@@ -2025,6 +2263,7 @@ mod tests {
                     probe_filesystems: None,
                     environments: None,
                     tunnels: None,
+                    tags: None,
                     servers: Some(vec![Server {
                         name: "root_srv".to_string(),
                         host: "1.1.1.1".to_string(),
@@ -2037,12 +2276,14 @@ mod tests {
                         jump: None,
                         probe_filesystems: None,
                         tunnels: None,
+                        tags: None,
                     }]),
                 }),
                 ConfigEntry::Namespace(NamespaceEntry {
                     label: "CES".to_string(),
                     source_path: "/fake/ces.yml".to_string(),
                     defaults: None,
+                    vars: Default::default(),
                     entries: vec![ConfigEntry::Group(crate::config::Group {
                         name: "CES_Group".to_string(),
                         user: None,
@@ -2055,6 +2296,7 @@ mod tests {
                         probe_filesystems: None,
                         environments: None,
                         tunnels: None,
+                        tags: None,
                         servers: Some(vec![Server {
                             name: "ces_srv".to_string(),
                             host: "2.2.2.2".to_string(),
@@ -2067,10 +2309,12 @@ mod tests {
                             jump: None,
                             probe_filesystems: None,
                             tunnels: None,
+                            tags: None,
                         }]),
                     })],
                 }),
             ],
+            vars: Default::default(),
         }
     }
 

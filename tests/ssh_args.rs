@@ -28,6 +28,7 @@ fn base_server() -> ResolvedServer {
         use_system_ssh_config: false,
         probe_filesystems: vec![],
         tunnels: vec![],
+        tags: vec![],
     }
 }
 

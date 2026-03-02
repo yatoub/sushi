@@ -1,14 +1,79 @@
 # susshi — Instructions pour l'agent de développement
 
-> Toute la documentation (README, CHANGELOG, commentaires publics) est en **anglais**.
-> Les instructions de développement et les commentaires privés peuvent être en **français** à usage interne.
-> Les commits doivent être en anglais, mais les branches peuvent être nommées en français (ex: `feature/écran-erreur-tui`).
-> Les commits doivent respecter la convention [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
-> On est en TDD — écris les tests avant d'implémenter la fonctionnalité.
-> Les PR doivent être rédigées en anglais, mais les titres peuvent être en français (ex: "Écran d'erreur in-TUI").
-> Ce fichier d'instructions est en français à usage interne.
-> On utilise le tutoiement pour une communication directe et informelle avec l'agent de développement.
-> Les notes de release sont rédigées en anglais pour une communication claire avec les utilisateurs, mais peuvent être écrites en français dans les branches de développement avant d'être traduites pour la release.
-> Les discussions techniques peuvent être en français, mais les décisions clés doivent être documentées en anglais dans les issues ou les PR pour une traçabilité claire.
-> Les commentaires de code peuvent être en français pour une communication rapide entre développeurs, mais les commentaires publics (ex: docstrings) doivent être en anglais pour une meilleure compréhension par la communauté.
-> Les roadmap de version sont dans le répertoire `.idea` pour une visibilité interne, mais les notes de release sont dans le CHANGELOG.md pour une communication claire avec les utilisateurs.
+Ce fichier est en français, à usage interne. Communiquer avec l'utilisateur en utilisant le tutoiement.
+
+---
+
+## Projet
+
+- **Nom du binaire** : `susshi`
+- **Langage** : Rust (édition 2024), TUI via `ratatui` + `crossterm`, thème Catppuccin
+- **Dépôt** : https://github.com/yatoub/susshi
+- **Roadmaps** : dans `.idea/` (usage interne uniquement)
+
+---
+
+## Langues
+
+| Contexte | Langue |
+|---|---|
+| Code source, doc publique (README, CHANGELOG, docstrings) | **Anglais** |
+| Commits, PR, issues, noms de branches | **Anglais** |
+| Commentaires privés dans le code | Français autorisé |
+| Instructions (ce fichier), discussions techniques | **Français** |
+
+---
+
+## Commits
+
+- Respecter [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) **obligatoirement**.
+- Types courants : `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `perf:`
+- Le corps du commit peut être en français.
+- Ne jamais écrire le message de commit en multiligne dans le shell : utiliser un fichier temporaire avec `git commit -F /tmp/msg.txt`.
+
+---
+
+## Développement
+
+- **TDD** : écrire les tests avant l'implémentation.
+- `cargo fmt` avant tout commit.
+- `cargo clippy -- -D warnings` doit passer sans erreur.
+- `cargo test` doit passer (tous les tests, y compris les tests d'intégration dans `tests/`).
+- Aucun `unwrap()` dans le code de production sans justification explicite.
+- Le code Unix-spécifique (`libc`, `nix`, `CommandExt::exec/pre_exec`) doit être gaté derrière `#[cfg(unix)]`. `nix` est dans `[target.'cfg(unix)'.dependencies]` dans `Cargo.toml`.
+
+---
+
+## Chaîne CI/CD
+
+La chaîne de release est **entièrement automatisée** via release-plz.
+
+### ⚠️ Interdictions absolues
+- Ne **jamais** modifier le champ `version` dans `Cargo.toml` manuellement dans le cadre d'une release.
+- Ne **jamais** pousser un tag `v*.*.*` manuellement — cela court-circuiterait release-plz.
+- Ne **jamais** éditer le `CHANGELOG.md` pour les versions futures — release-plz le génère depuis les commits.
+
+### Flux automatique
+
+```
+commit feat:/fix: → push master
+  ├── ci.yml          : fmt + clippy + tests
+  └── release-plz.yml : ouvre/met à jour une PR "chore: release vX.Y.Z"
+                        (bump Cargo.toml + CHANGELOG auto)
+
+merge de la PR release-plz
+  └── release-plz.yml : crée le tag vX.Y.Z + GitHub Release
+
+push tag v*.*.*
+  └── release.yml     : build Linux x86_64 / macOS Intel / macOS ARM / Windows x86_64
+                        → binaires attachés à la GitHub Release
+```
+
+### Workflows
+
+| Fichier | Déclencheur | Rôle |
+|---|---|---|
+| `ci.yml` | push `master` + PR | fmt, clippy, tests |
+| `release-plz.yml` | push `master` | PR de release + tag + GitHub Release |
+| `release.yml` | push tag `v*.*.*` | build multiplateforme + upload binaires |
+| `aur-publish.yml` | push tag `v*.*.*` | mise à jour du PKGBUILD AUR |

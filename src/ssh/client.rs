@@ -348,4 +348,33 @@ mod tests {
         let l_pos = args.iter().position(|a| a == "-l").expect("-l present");
         assert_eq!(args[l_pos + 1], "buser+admin@10.0.0.1");
     }
+
+    // ── invariant destination ─────────────────────────────────────────────────
+
+    /// Garantit que la destination (`user@host`) est toujours le dernier argument,
+    /// quelle que soit la combinaison d'options. Cet invariant est utilisé par
+    /// `build_tunnel_args` et `probe` pour insérer des options juste avant la cible.
+    #[test]
+    fn destination_is_last() {
+        // Direct avec clé + options + port non-standard
+        let mut s = base_server();
+        s.ssh_key = "~/.ssh/id_ed25519".into();
+        s.ssh_options = vec!["StrictHostKeyChecking=no".into(), "-T".into()];
+        s.port = 2222;
+        let args = build_ssh_args(&s, ConnectionMode::Direct, true).unwrap();
+        assert_eq!(args.last().unwrap(), "admin@10.0.0.1");
+
+        // Jump avec clé + port dans l'hôte
+        let mut s2 = base_server();
+        s2.ssh_key = "~/.ssh/id_ed25519".into();
+        s2.host = "10.0.0.1:2222".into();
+        s2.jump_host = Some("juser@jump.example.com:22".into());
+        let args2 = build_ssh_args(&s2, ConnectionMode::Jump, false).unwrap();
+        assert_eq!(args2.last().unwrap(), "admin@10.0.0.1");
+
+        // Direct minimal — destination = dernier arg même sans options
+        let s3 = base_server();
+        let args3 = build_ssh_args(&s3, ConnectionMode::Direct, false).unwrap();
+        assert_eq!(args3.last().unwrap(), "admin@10.0.0.1");
+    }
 }

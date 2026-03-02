@@ -1,43 +1,62 @@
 ---
 name: Bug Report
-about: Create a report to help us improve susshi
-title: "[BUG] "
+about: Something isn't working as expected in susshi
+title: "fix: "
 labels: bug
 assignees: ''
 
 ---
 
-**Describe the bug**
+## Describe the bug
+
 A clear and concise description of what the bug is.
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+## Steps to reproduce
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+1. Launch susshi with `susshi` (or `susshi --config ...`)
+2. Navigate to '...'
+3. Press key '...'
+4. Observe: ...
 
-**Configuration (Optional but helpful)**
-Please provide a minimal `~/.susshi.yml` that reproduces the issue (remove sensitive data like IPs/Users/Keys):
+## Expected behavior
+
+What you expected to happen instead.
+
+## Error output
+
+If susshi printed an error or exited unexpectedly, paste it here:
+
+```
+
+```
+
+## Minimal config (`~/.susshi.yml`)
+
+Provide the smallest config that reproduces the issue. **Remove all sensitive data** (real hostnames, IPs, usernames, SSH keys).
+
 ```yaml
 groups:
   - name: "Example"
     servers:
-      - name: "Buggy Server"
-        host: "..."
+      - name: "test-server"
+        host: "192.0.2.1"
+        mode: direct
 ```
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+## Environment
 
-**Desktop (please complete the following information):**
- - OS: [e.g. Linux (Ubuntu 22.04), macOS 14]
- - Terminal Emulator: [e.g. Alacritty, Kitty, iTerm2, WezTerm]
- - SSH version :
- - susshi Version: [e.g. v0.1.0]
+| Field | Value |
+|---|---|
+| susshi version | `susshi --version` |
+| OS | e.g. Ubuntu 24.04 / macOS 15 / Windows 11 |
+| Terminal emulator | e.g. Alacritty, Kitty, WezTerm, iTerm2 |
+| SSH version | `ssh -V` |
+| Installation method | binary / AUR / built from source |
 
-**Additional context**
-Add any other context about the problem here.
+## Screenshots / recordings
+
+If the bug is visual, add a screenshot or an [asciinema](https://asciinema.org) recording.
+
+## Additional context
+
+Anything else that might help.

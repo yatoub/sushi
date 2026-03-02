@@ -1,31 +1,48 @@
 ---
 name: Config Help / Question
-about: Need help with your susshi config setup?
-title: "[CONFIG] "
-labels: question, discussion
+about: Need help with your susshi configuration?
+title: "[config] "
+labels: question
+assignees: ''
 
 ---
 
-**What are you trying to achieve?**
-A clear description of your network topology or use case (e.g. "I want to access server C via jump host B which is inside environment A").
+## What are you trying to achieve?
 
-**Current Configuration**
-Please share your minimal, sanitized `~/.susshi.yml` (remove any real IPs, users, SSH keys!):
+Describe your setup in plain terms:
+> e.g. "I have a jump host at `jump.example.com` and want to reach servers inside a private network. I also use a Wallix bastion for a second environment."
+
+## Your config (`~/.susshi.yml`)
+
+**Remove all sensitive data** (real hostnames, IPs, usernames, SSH keys) before pasting.
+
 ```yaml
-# susshi.yml
+defaults:
+  user: admin
+  mode: direct
+
 groups:
   - name: "MyGroup"
-    ...
+    servers:
+      - name: "my-server"
+        host: "192.0.2.1"
 ```
 
-**What isn't working?**
-- My config parses but the connection fails
-- My config fails to parse with error: `Error: ...`
-- The feature isn't behaving as documented
+## What's happening?
 
-**Environment**
- - OS: [e.g. Linux, macOS]
- - susshi Version: [e.g. v1.0]
+- [ ] The config fails to parse — error: `...`
+- [ ] The config parses but the connection fails
+- [ ] The TUI doesn't display what I expect
+- [ ] I'm not sure how to write the config for my use case
 
-**Additional context**
-Add any other context about the problem here.
+## Environment
+
+| Field | Value |
+|---|---|
+| susshi version | `susshi --version` |
+| OS | e.g. Ubuntu 24.04 / macOS 15 |
+| Connection mode used | direct / jump / wallix |
+
+## Additional context
+
+Anything else that might help (SSH config, network topology diagram, etc.).

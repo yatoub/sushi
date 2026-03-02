@@ -1,101 +1,159 @@
 # Contributing to susshi 🍣
 
-First off, thank you for considering contributing to susshi! It's people like you that make tools better for everyone.
+Thank you for taking the time to contribute! This guide covers everything you need to get started.
 
-Following these guidelines helps to communicate that you respect the time of the developers managing and developing this open source project. In return, they should reciprocate that respect in addressing your issue, assessing changes, and helping you finalize your pull requests.
+---
 
-## 🛠️ Development Setup
+## Table of contents
 
-### Prerequisites
+1. [Development setup](#development-setup)
+2. [Workflow](#workflow)
+3. [Commit conventions](#commit-conventions)
+4. [Coding standards](#coding-standards)
+5. [Testing](#testing)
+6. [Submitting a pull request](#submitting-a-pull-request)
+7. [Reporting bugs](#reporting-bugs)
+8. [Requesting features](#requesting-features)
 
-- **Rust**: Ensure you have the latest stable version of Rust installed.
-  ```bash
-  rustup update stable
-  ```
+---
 
-### Building the Project
+## Development setup
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/yourusername/susshi.git
-   cd susshi
-   ```
-
-2. Build the project:
-   ```bash
-   cargo build
-   ```
-
-3. Run the project:
-   ```bash
-   cargo run
-   ```
-
-## 🧪 Testing
-
-We value high code quality and reliability. Before submitting a PR, please ensure all tests pass.
-
-### Running Unit Tests
+**Prerequisites**: Rust stable, a terminal with truecolor support.
 
 ```bash
+rustup update stable
+git clone https://github.com/yatoub/susshi.git
+cd susshi
+cargo build
+cargo run
+```
+
+A minimal `~/.susshi.yml` is enough to test the TUI locally. See [`examples/full_config.yaml`](examples/full_config.yaml) for a fully annotated reference.
+
+---
+
+## Workflow
+
+> **`master` is a protected branch.** Direct pushes are not allowed. All changes go through a pull request.
+
+1. **Fork** the repository (external contributors) or create a branch (maintainers).
+2. Branch off `master`: `git checkout -b fix/my-bug` or `feat/my-feature`.
+3. Write your code — **tests first** (TDD).
+4. Ensure the full quality gate passes locally (see [Coding standards](#coding-standards)).
+5. Open a Pull Request against `master` using the PR template.
+6. The CI (`ci.yml`) must pass: fmt + clippy + tests.
+
+> Do **not** bump the version in `Cargo.toml` or create a git tag manually.  
+> Releases are handled automatically by [release-plz](https://release-plz.gg/) once your PR is merged:  
+> it opens a release PR, bumps the version, generates the CHANGELOG, creates the tag and the GitHub Release.  
+> The `release.yml` workflow then builds the binaries for all platforms.
+
+---
+
+## Commit conventions
+
+All commits **must** follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).  
+This is not just style — release-plz uses commit types to determine the next version and to generate the CHANGELOG automatically.
+
+| Type | When to use | Version bump |
+|---|---|---|
+| `feat:` | New user-facing feature | minor |
+| `fix:` | Bug fix | patch |
+| `feat!:` / `fix!:` | Breaking change | major |
+| `perf:` | Performance improvement | patch |
+| `refactor:` | Internal restructure, no behaviour change | — |
+| `docs:` | Documentation only | — |
+| `test:` | Tests only | — |
+| `chore:` | Build, CI, dependencies, tooling | — |
+
+**Examples:**
+```
+feat: add SCP file transfer with real-time progress
+fix: cast TIOCSCTTY to c_ulong for macOS ioctl compatibility
+docs: add tunnel configuration example to README
+test: add unit tests for build_tunnel_args
+```
+
+**Multi-line commit bodies**: fish shell does not support heredoc-style inline multiline strings. Write the message to a file and use `git commit -F`:
+
+```bash
+# Write message to a temp file, then:
+git commit -F /tmp/my_commit_msg.txt
+```
+
+---
+
+## Coding standards
+
+All three checks must pass before opening a PR — the CI will enforce them.
+
+```bash
+# 1. Format
+cargo fmt --all
+
+# 2. Lint (zero warnings)
+cargo clippy --all-targets --all-features -- -D warnings
+
+# 3. Tests
 cargo test
 ```
 
-### Manual Testing
+**Additional rules:**
 
-It is recommended to create a local `susshi.yml` config file for testing UI interactions and parsing logic manually.
+- No `unwrap()` in production code without an explicit comment justifying why it cannot panic.
+- Unix-only APIs (`libc`, `nix`, `std::os::unix::process::CommandExt`) must be gated behind `#[cfg(unix)]`.  
+  `nix` is declared under `[target.'cfg(unix)'.dependencies]` in `Cargo.toml` — keep it there.
+- Public items (functions, structs, enums) must have English doc comments (`///`).
+- Internal/private comments may be in French.
 
-## 🎨 Coding Style
+---
 
-We follow standard Rust coding conventions.
+## Testing
 
-### Formatting
-
-Please ensure your code is formatted with `rustfmt` before committing.
-
-```bash
-cargo fmt --all
-```
-
-### Linting
-
-We use `clippy` to catch common mistakes and improve code quality.
+We follow TDD: write tests before (or alongside) implementation.
 
 ```bash
-cargo clippy --all-targets --all-features -- -D warnings
+# Run all tests including integration tests in tests/
+cargo test
+
+# Run a specific test
+cargo test tunnel_args_includes_ssh_key
 ```
 
-*Note: The CI pipeline will fail if there are any warnings or formatting issues.*
+- Unit tests live in `#[cfg(test)] mod tests` at the bottom of each module.
+- Integration tests live in `tests/` and load fixtures from `tests/fixtures/`.
+- If you add a new SSH argument or config option, add a corresponding unit test in `src/ssh/client.rs`, `src/ssh/tunnel.rs`, or `src/ssh/scp.rs`.
 
-## 📬 Submitting a Pull Request
+---
 
-1. **Fork the Repository**: Create your own fork of the code.
-2. **Create a Branch**: Create a branch for your feature or fix (`git checkout -b feature/amazing-feature`).
-3. **Commit Changes**: Make sure your commit messages are clear and descriptive.
-4. **Push to Branch**: Push your changes to your fork (`git push origin feature/amazing-feature`).
-5. **Open a Pull Request**: Go to the original repository and click "New Pull Request".
+## Submitting a pull request
 
-### PR Guidelines
+1. Fill in the [PR template](.github/PULL_REQUEST_TEMPLATE.md).
+2. The PR **title** must follow Conventional Commits — it becomes the squash-merge commit message and feeds the CHANGELOG.
+3. If the PR changes the TUI, attach a screenshot or an [asciinema](https://asciinema.org) recording.
+4. A maintainer will review and merge. release-plz takes care of the rest.
 
-- **Title**: Use a clear title describing the change.
-- **Description**: Follow the [PULL_REQUEST_TEMPLATE](.github/PULL_REQUEST_TEMPLATE.md). Explain *what* you changed and *why*.
-- **Tests**: Include tests for any new logic.
-- **Screenshots**: If you changed the TUI, please include a screenshot or GIF.
+---
 
-## 🐛 Reporting Bugs
+## Reporting bugs
 
-Bugs are tracked as GitHub issues. When filing an issue, please use the [Bug Report Template](.github/ISSUE_TEMPLATE/bug_report.md) and include:
+Use the [Bug Report template](.github/ISSUE_TEMPLATE/bug_report.md). Include:
 
-- A clear title and description.
 - Steps to reproduce.
-- Expected vs. actual behavior.
-- Your `susshi.yml` configuration (sanitized).
-- Environment details (OS, Terminal, susshi version).
+- Expected vs. actual behaviour.
+- A **sanitized** minimal `~/.susshi.yml` (no real hosts, IPs, usernames or keys).
+- Environment: OS, terminal emulator, `ssh -V` output, susshi version.
 
-## 💡 Feature Requests
+---
 
-Have an idea? We'd love to hear it! Please use the [Feature Request Template](.github/ISSUE_TEMPLATE/feature_request.md).
+## Requesting features
 
-## 📜 License
+Use the [Feature Request template](.github/ISSUE_TEMPLATE/feature_request.md). Describe the problem you're solving, your proposed UX (keybinding, config key, TUI panel), and any config schema changes.
 
-By contributing, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
+---
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the project's [MIT License](LICENCE).
+

@@ -35,6 +35,7 @@ Ce fichier est en français, à usage interne. Communiquer avec l'utilisateur en
 
 ## Développement
 
+- **Toujours travailler sur une branche** — ne jamais pousser directement sur `master`. Ouvrir une PR et attendre que `ci.yml` (fmt + clippy + tests) passe avant de merger.
 - **TDD** : écrire les tests avant l'implémentation.
 - `cargo fmt` avant tout commit.
 - `cargo clippy -- -D warnings` doit passer sans erreur.
@@ -49,6 +50,7 @@ Ce fichier est en français, à usage interne. Communiquer avec l'utilisateur en
 La chaîne de release est **entièrement automatisée** via release-plz.
 
 ### ⚠️ Interdictions absolues
+- Ne **jamais** pousser directement sur `master` — toujours passer par une PR.
 - Ne **jamais** modifier le champ `version` dans `Cargo.toml` manuellement dans le cadre d'une release.
 - Ne **jamais** pousser un tag `v*.*.*` manuellement — cela court-circuiterait release-plz.
 - Ne **jamais** éditer le `CHANGELOG.md` pour les versions futures — release-plz le génère depuis les commits.

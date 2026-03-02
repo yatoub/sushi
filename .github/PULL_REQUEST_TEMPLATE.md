@@ -1,34 +1,41 @@
-## Description
+## Summary
 
-Please ensure you have read the [CONTRIBUTING](CONTRIBUTING.md) guide before submitting this PR.
+<!-- One sentence: what does this PR do and why? -->
 
-### Summary of Changes
-Provide a brief summary of the changes introduced in this PR.
+Closes #
 
-### Related Issue
-Closes # (issue number)
+## Type of change
 
-### Type of Change
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
-- [ ] Refactoring (no functional changes, no api changes)
-- [ ] Build/CI/Infrastructure maintenance
+- [ ] `fix:` — bug fix (non-breaking)
+- [ ] `feat:` — new feature (non-breaking)
+- [ ] `feat!:` / `fix!:` — **breaking change**
+- [ ] `refactor:` — internal restructure, no behaviour change
+- [ ] `docs:` — documentation only
+- [ ] `test:` — tests only
+- [ ] `chore:` — build, CI, dependencies
 
-### How Has This Been Tested?
-Please describe the tests that you ran to verify your changes. 
-- [ ] Unit Tests
-- [ ] Manual verification with a specific config file (please attach if relevant)
+> The PR title must follow [Conventional Commits](https://www.conventionalcommits.org/) —
+> it becomes the commit message when squash-merged and feeds the auto-generated CHANGELOG.
 
-### Checklist:
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
-- [ ] I have run `cargo fmt` and `cargo clippy`
+## Changes
 
-### Screenshots (if appropriate):
-If this PR changes the UI, please add screenshots here. 
+Brief bullet list of what changed and why.
+
+## Testing
+
+- [ ] `cargo fmt --check` passes
+- [ ] `cargo clippy -- -D warnings` passes
+- [ ] `cargo test` passes (all existing + new tests)
+- [ ] Manual verification with a `~/.susshi.yml` (describe scenario below if relevant)
+
+<!-- Optional: describe manual testing scenario -->
+
+## Screenshots / recordings
+
+<!-- If this changes the TUI, add a screenshot or asciinema recording -->
+
+## Notes
+
+<!-- Breaking changes, migration path, open questions, etc. -->
+
+> ⚠️ Do **not** bump the version in `Cargo.toml` — this is handled automatically by release-plz when this PR is merged.

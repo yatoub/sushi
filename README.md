@@ -9,7 +9,7 @@
 - **Connection Modes**:
   - **Direct**: Standard SSH connection.
   - **Jump/Rebond**: Connect via one or more jump hosts (`-J`). Supports multi-hop chains.
-  - **Bastion**: Connect via a hardened bastion using custom login string.
+  - **Wallix**: Connect via a Wallix server using custom login string.
   - **Mode Inheritance**: Connection mode inherits from defaults → group → environment → server.
 - **Configuration Inheritance**: Define defaults globally or at the group/environment level to avoid repetition.
   - Full cascading support for user, ssh_key, mode, port, options, and connection configs.
@@ -29,11 +29,12 @@
   - **Configurable Theme**: Choose from four Catppuccin flavors — `latte`, `frappe`, `macchiato`, or `mocha` (default) via `defaults.theme` in your config.
   - **Verbose Mode**: Toggle SSH verbose output with `v`.
   - **Rich Detail Pane**: Shows port (highlighted when non-standard), connection mode, jump host, bastion host, SSH options, and last connection timestamp.
-  - **Quick Diagnostic** (`d`): Press `d` on any server to run a non-blocking SSH probe. The detail pane displays a **System** block with kernel, CPU model, load average, and color-coded RAM/Disk progress bars (green < 60%, yellow 60–85%, red > 85%). Additional mount points configured via `probe_filesystems` are also shown: each extra path gets its own bar, or a yellow `⚠ /path — not mounted` warning if absent. An animated spinner shows while the probe is running. Press `d` again to refresh; changing server resets it.
+  - **Quick Diagnostic** (`d`): Press `d` on any server to run a non-blocking SSH probe. The detail pane displays a **System** block with kernel version, OS name and version (from `/etc/os-release`), CPU model and logical core count, load average, and color-coded RAM/Disk progress bars (green < 60%, yellow 60–85%, red > 85%). Additional mount points configured via `probe_filesystems` are also shown: each extra path gets its own bar, or a yellow `⚠ /path — not mounted` warning if absent. An animated spinner shows while the probe is running. Press `d` again to refresh; changing server resets it.
   - **Ad-hoc Command** (`x`): Run any non-interactive SSH command on the selected server directly from the TUI. The output (up to 20 lines) is displayed in the detail pane with a colored exit status indicator.
   - **Clipboard**: Copy the SSH command for any server with `y` (requires a running clipboard manager on Linux).
   - **Hot Reload** (`r`): Reload all configuration files (main + includes) without restarting. The tree updates in place and the current expansion state is preserved.
   - **Favorites** (`f` / `F`): Mark any server as a favorite (⭐). Press `F` to toggle the favorites-only view — the tree filters all groups, environments, and namespaces accordingly.
+  - **Collapse All** (`C`): Press `C` to instantly collapse all expanded groups, namespaces, and environments and jump back to the top of the list.
   - **Recent Sort** (`H`): Switch between alphabetical order and a flat list sorted by most-recently-used server.
 - **Connection History**: The last connection timestamp for each server is stored in `~/.susshi_state.json` and displayed in the detail pane (e.g., "il y a 2 h" / "2 h ago").
 - **YAML Validation**: Unknown fields in any config file are detected and reported as non-blocking `ValidationWarning` entries at startup.
@@ -44,12 +45,35 @@
 
 ## 🚀 Installation
 
-### Prerequisites
+### Pre-built binaries
 
-- [Rust & Cargo](https://rustup.rs/)
-- A terminal with truecolor support (e.g., Alacritty, Kitty, WezTerm, iTerm2, Tilix).
+Download the latest binary directly — the URL always points to the most recent release:
+
+```bash
+# Linux x86_64
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64
+chmod +x susshi-linux-amd64
+sudo mv susshi-linux-amd64 /usr/local/bin/susshi
+
+# macOS Intel
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi-macos-amd64
+
+# macOS Apple Silicon
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi-macos-arm64
+```
+
+### Package manager (AUR)
+
+For Arch Linux users:
+
+```bash
+paru -S susshi-bin  # pre-compiled binary
+paru -S susshi      # build from source
+```
 
 ### Build from Source
+
+Requires [Rust & Cargo](https://rustup.rs/) and a terminal with truecolor support (e.g., Alacritty, Kitty, WezTerm, iTerm2, Tilix).
 
 ```bash
 git clone https://github.com/yatoub/susshi.git
@@ -215,11 +239,12 @@ jump:
 | `2` | Select **Rebond** mode |
 | `3` | Select **Wallix** mode |
 | `Ctrl+U` | Clear search query (while in search mode) |
-| `d` | Run quick SSH diagnostic (kernel, CPU, load, RAM, disk) |
+| `d` | Run quick SSH diagnostic (kernel, OS, CPU cores, load, RAM, disk) |
 | `y` | Copy SSH command to clipboard |
 | `r` | Hot-reload configuration files |
 | `f` | Toggle favorite on selected server |
 | `F` | Toggle favorites-only view |
+| `C` | Collapse all expanded groups / environments / namespaces |
 | `H` | Toggle recent-sort (flat list sorted by last connection) |
 | `x` | Run ad-hoc SSH command on selected server |
 | `Esc` | Cancel search / close ad-hoc prompt / dismiss error overlay |

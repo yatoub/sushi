@@ -10,8 +10,8 @@ provides=('susshi')
 conflicts=('susshi')
 source=("https://github.com/yatoub/susshi/archive/refs/tags/v${pkgver}.tar.gz")
 source_x86_64=("susshi-${pkgver}-linux-amd64::https://github.com/yatoub/susshi/releases/download/v${pkgver}/susshi-linux-amd64")
-b2sums=('SKIP')
-b2sums_x86_64=('SKIP')
+b2sums=('eb218268299cea5f277285ca67065f0119fd9461c13e9f1c261fc2c61d035f5a7e03720d13926c3c3af16a5f3432a721a2a45420395250859b3694b6eb339cbc')
+b2sums_x86_64=('243d453a9c87817a13acb0ded28c09a4d9d4adaea0e850c4506843a613f335a25d647fe1c1d39df960090c095c0dba7275aabd76f9b5c4d0a3dd4da99a4ec17c')
 
 package() {
     install -Dm0755 "susshi-${pkgver}-linux-amd64" "$pkgdir/usr/bin/susshi"

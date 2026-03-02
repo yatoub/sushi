@@ -1,5 +1,6 @@
 use crate::config::{ConnectionMode, ResolvedServer};
 use anyhow::Result;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::process::Command;
 
@@ -90,8 +91,18 @@ pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> 
     let args = build_ssh_args(server, mode, verbose)?;
     let mut command = Command::new("ssh");
     command.args(&args);
-    let err = command.exec();
-    Err(anyhow::Error::new(err).context("Failed to exec ssh command"))
+    #[cfg(unix)]
+    {
+        let err = command.exec();
+        return Err(anyhow::Error::new(err).context("Failed to exec ssh command"));
+    }
+    #[cfg(not(unix))]
+    {
+        command
+            .status()
+            .map(|_| ())
+            .map_err(|e| anyhow::Error::new(e).context("Failed to spawn ssh command"))
+    }
 }
 
 /// Lance la connexion SSH dans un sous-processus bloquant (sans `exec`).

@@ -29,10 +29,10 @@ jobs:
             binary_name: susshi
             asset_name: susshi-macos-arm64
           # Windows support (optional, but good to have)
-          #- os: windows-latest
-          #  target: x86_64-pc-windows-msvc
-          #  binary_name: susshi.exe
-          #  asset_name: susshi-windows-amd64.exe
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_name: susshi.exe
+            asset_name: susshi-windows-amd64.exe
 
     steps:
       - name: Checkout repository

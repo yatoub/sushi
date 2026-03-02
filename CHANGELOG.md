@@ -11,7 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.10.0] — 2026-05-26
+## [0.10.1] — 2026-03-02
+
+### Fixed
+
+- **Windows build**: gate all Unix-only code (`nix`, `libc::setsid/ioctl/kill`, `CommandExt::exec/pre_exec`) behind `#[cfg(unix)]`. `nix` moved to `[target.'cfg(unix)'.dependencies]`. `spawn_scp` provides a no-op stub on Windows. `client::connect` falls back to `spawn().wait()` on Windows.
+
+---
+
+## [0.10.0] — 2026-03-02
 
 ### Added
 

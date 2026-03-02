@@ -7,6 +7,7 @@ use crate::ssh::scp::{self as ssh_scp, ScpDirection, ScpEvent};
 use crate::ssh::tunnel::{self as ssh_tunnel, TunnelHandle, TunnelStatus};
 use crate::state::{self, TunnelOverride};
 use crate::ui::theme::{Theme, get_theme};
+#[cfg(unix)]
 use libc;
 use ratatui::widgets::ListState;
 use std::collections::{HashMap, HashSet};
@@ -1830,6 +1831,7 @@ impl Drop for App {
     /// Le processus `scp` est tué via [`libc::kill`] si un PID est enregistré.
     fn drop(&mut self) {
         self.stop_all_tunnels();
+        #[cfg(unix)]
         if let Some(pid) = self.scp_child_pid.take() {
             unsafe {
                 libc::kill(pid as libc::pid_t, libc::SIGTERM);

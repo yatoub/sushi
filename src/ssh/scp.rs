@@ -1,8 +1,12 @@
 use crate::config::{ConnectionMode, ResolvedServer};
 use anyhow::Result;
+#[cfg(unix)]
 use libc;
+#[cfg(unix)]
 use std::fs::File;
+#[cfg(unix)]
 use std::io::Read;
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
@@ -137,6 +141,7 @@ pub fn build_scp_args(
 /// - [`ScpEvent::Progress`] au fur et à mesure (0–100)
 /// - [`ScpEvent::Done`] à la fin
 /// - [`ScpEvent::Error`] si le lancement échoue
+#[cfg(unix)]
 pub fn spawn_scp(
     server: &ResolvedServer,
     mode: ConnectionMode,
@@ -260,6 +265,18 @@ pub fn spawn_scp(
     });
 
     Ok((rx, child_pid))
+}
+
+/// Stub Windows : SCP nécessite un PTY Unix pour la progression.
+#[cfg(not(unix))]
+pub fn spawn_scp(
+    _server: &ResolvedServer,
+    _mode: ConnectionMode,
+    _direction: ScpDirection,
+    _local: &str,
+    _remote: &str,
+) -> Result<(mpsc::Receiver<ScpEvent>, u32)> {
+    anyhow::bail!("SCP non disponible sur Windows")
 }
 
 // ─── Helpers privés ───────────────────────────────────────────────────────────

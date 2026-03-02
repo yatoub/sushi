@@ -109,13 +109,15 @@ fn build_tunnel_args_structure() {
     // -L localPort:remoteHost:remotePort
     let l_pos = args.iter().position(|a| a == "-L").expect("-L attendu");
     assert_eq!(
-        args[l_pos + 1], "5433:127.0.0.1:5432",
+        args[l_pos + 1],
+        "5433:127.0.0.1:5432",
         "format -L incorrect"
     );
 
     // ExitOnForwardFailure doit être activé
     assert!(
-        args.iter().any(|a: &String| a.contains("ExitOnForwardFailure")),
+        args.iter()
+            .any(|a: &String| a.contains("ExitOnForwardFailure")),
         "ExitOnForwardFailure attendu"
     );
 
@@ -193,7 +195,8 @@ fn build_tunnel_args_l_flag_format_with_named_host() {
     let args = build_tunnel_args(&s, ConnectionMode::Direct, &t).unwrap();
     let l_pos = args.iter().position(|a| a == "-L").expect("-L attendu");
     assert_eq!(
-        args[l_pos + 1], "15432:db.internal.example.com:5432",
+        args[l_pos + 1],
+        "15432:db.internal.example.com:5432",
         "format -L incorrect avec nom d'hôte"
     );
 }

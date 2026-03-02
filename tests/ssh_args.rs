@@ -46,7 +46,10 @@ fn direct_minimal() {
         "destination attendue"
     );
     // Pas d'options superflues pour un serveur port-22 sans clé
-    assert!(!args.contains(&"-p".to_string()), "-p inattendu pour port 22");
+    assert!(
+        !args.contains(&"-p".to_string()),
+        "-p inattendu pour port 22"
+    );
     assert!(!args.contains(&"-i".to_string()), "-i inattendu sans clé");
     assert!(!args.contains(&"-v".to_string()), "-v inattendu");
 }
@@ -109,7 +112,8 @@ fn direct_with_options() {
 
     let o_pos = args.iter().position(|a| a == "-o").expect("-o attendu");
     assert_eq!(
-        args[o_pos + 1], "ServerAliveInterval=30",
+        args[o_pos + 1],
+        "ServerAliveInterval=30",
         "option scalaire incorrecte"
     );
     assert!(
@@ -170,7 +174,8 @@ fn wallix_template() {
 
     let l_pos = args.iter().position(|a| a == "-l").expect("-l attendu");
     assert_eq!(
-        args[l_pos + 1], "ops@192.168.1.10:SSH:bops",
+        args[l_pos + 1],
+        "ops@192.168.1.10:SSH:bops",
         "template Wallix incorrect"
     );
     assert!(
@@ -203,7 +208,11 @@ fn destination_is_last() {
     // Direct + clé + options + port non-standard + verbose
     let mut s = base_server();
     s.ssh_key = "~/.ssh/id_ed25519".into();
-    s.ssh_options = vec!["StrictHostKeyChecking=no".into(), "-T".into(), "BatchMode=yes".into()];
+    s.ssh_options = vec![
+        "StrictHostKeyChecking=no".into(),
+        "-T".into(),
+        "BatchMode=yes".into(),
+    ];
     s.port = 22222;
     let args = build_ssh_args(&s, ConnectionMode::Direct, true).unwrap();
     assert_eq!(

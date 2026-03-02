@@ -116,14 +116,8 @@ fn jump_host_forwarded() {
 #[test]
 fn jump_missing_host_returns_error() {
     let s = base_server(); // jump_host = None
-    let err = build_scp_args(
-        &s,
-        ConnectionMode::Jump,
-        &ScpDirection::Upload,
-        "f",
-        "r",
-    )
-    .unwrap_err();
+    let err =
+        build_scp_args(&s, ConnectionMode::Jump, &ScpDirection::Upload, "f", "r").unwrap_err();
     assert!(
         err.to_string().contains("Jump host"),
         "message d'erreur attendu, obtenu : {}",
@@ -159,19 +153,23 @@ fn wallix_disabled() {
 fn port_flag_is_uppercase_p() {
     let mut s = base_server();
     s.port = 2222;
-    let args =
-        build_scp_args(&s, ConnectionMode::Direct, &ScpDirection::Upload, "f", "r").unwrap();
+    let args = build_scp_args(&s, ConnectionMode::Direct, &ScpDirection::Upload, "f", "r").unwrap();
     assert!(args.contains(&"-P".to_string()), "-P (majuscule) attendu");
-    assert!(!args.contains(&"-p".to_string()), "-p (minuscule) inattendu");
+    assert!(
+        !args.contains(&"-p".to_string()),
+        "-p (minuscule) inattendu"
+    );
 }
 
 /// Port 22 par défaut ne doit pas générer de flag `-P`.
 #[test]
 fn no_port_flag_for_default_port_22() {
     let s = base_server();
-    let args =
-        build_scp_args(&s, ConnectionMode::Direct, &ScpDirection::Upload, "f", "r").unwrap();
-    assert!(!args.contains(&"-P".to_string()), "-P inattendu pour port 22");
+    let args = build_scp_args(&s, ConnectionMode::Direct, &ScpDirection::Upload, "f", "r").unwrap();
+    assert!(
+        !args.contains(&"-P".to_string()),
+        "-P inattendu pour port 22"
+    );
 }
 
 // ─── Clé SSH ──────────────────────────────────────────────────────────────────
@@ -181,8 +179,7 @@ fn no_port_flag_for_default_port_22() {
 fn ssh_key_passed_with_i_flag() {
     let mut s = base_server();
     s.ssh_key = "/home/ops/.ssh/prod_ed25519".into();
-    let args =
-        build_scp_args(&s, ConnectionMode::Direct, &ScpDirection::Upload, "f", "r").unwrap();
+    let args = build_scp_args(&s, ConnectionMode::Direct, &ScpDirection::Upload, "f", "r").unwrap();
     let i_pos = args.iter().position(|a| a == "-i").expect("-i attendu");
     assert_eq!(args[i_pos + 1], "/home/ops/.ssh/prod_ed25519");
 }
@@ -194,8 +191,7 @@ fn ssh_key_passed_with_i_flag() {
 fn use_system_ssh_config_omits_f_flag() {
     let mut s = base_server();
     s.use_system_ssh_config = true;
-    let args =
-        build_scp_args(&s, ConnectionMode::Direct, &ScpDirection::Upload, "f", "r").unwrap();
+    let args = build_scp_args(&s, ConnectionMode::Direct, &ScpDirection::Upload, "f", "r").unwrap();
     assert!(
         !args.contains(&"-F".to_string()),
         "-F ne doit pas être présent quand use_system_ssh_config=true"

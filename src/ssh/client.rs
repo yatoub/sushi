@@ -94,7 +94,7 @@ pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> 
     #[cfg(unix)]
     {
         let err = command.exec();
-        return Err(anyhow::Error::new(err).context("Failed to exec ssh command"));
+        Err(anyhow::Error::new(err).context("Failed to exec ssh command"))
     }
     #[cfg(not(unix))]
     {

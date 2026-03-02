@@ -311,6 +311,15 @@ fn build_adhoc_server(
         control_master: false,
         control_path: String::new(),
         control_persist: "10m".to_string(),
+        pre_connect_hook: d
+            .pre_connect_hook
+            .as_deref()
+            .map(|h| shellexpand::tilde(h).into_owned()),
+        post_disconnect_hook: d
+            .post_disconnect_hook
+            .as_deref()
+            .map(|h| shellexpand::tilde(h).into_owned()),
+        hook_timeout_secs: d.hook_timeout_secs.unwrap_or(5),
     }
 }
 
@@ -370,6 +379,13 @@ fn main() -> io::Result<()> {
 
     if let Some((mode, target)) = cli_mode_target {
         let server = build_adhoc_server(&target, mode, &cli, &config);
+        if let Err(e) =
+            susshi::hooks::run_hook(server.pre_connect_hook.as_deref().unwrap_or(""), &server)
+        {
+            eprintln!("Hook pre_connect a annulé la connexion : {e}");
+            return Err(io::Error::other(e.to_string()));
+        }
+        // post_disconnect_hook non supporté ici : exec() remplace le processus.
         if let Err(e) = susshi::ssh::client::connect(&server, mode, cli.verbose) {
             eprintln!("SSH Connection Error: {}", e);
             return Err(io::Error::other(e.to_string()));
@@ -407,14 +423,35 @@ fn main() -> io::Result<()> {
                 if app.keep_open {
                     // Connexion bloquante : SSH tourne comme sous-processus,
                     // la TUI redémarre automatiquement après la déconnexion.
-                    if let Err(e) = susshi::ssh::client::connect_blocking(&server, mode, verbose) {
-                        eprintln!("SSH Connection Error: {}", e);
+                    if let Err(e) = susshi::hooks::run_hook(
+                        server.pre_connect_hook.as_deref().unwrap_or(""),
+                        &server,
+                    ) {
+                        eprintln!("Hook pre_connect a annulé la connexion : {e}");
+                    } else {
+                        if let Err(e) =
+                            susshi::ssh::client::connect_blocking(&server, mode, verbose)
+                        {
+                            eprintln!("SSH Connection Error: {}", e);
+                        }
+                        let _ = susshi::hooks::run_hook(
+                            server.post_disconnect_hook.as_deref().unwrap_or(""),
+                            &server,
+                        );
                     }
                     // Boucle → ré-ouvre la TUI
                 } else {
                     // Comportement historique : exec() remplace le processus.
-                    if let Err(e) = susshi::ssh::client::connect(&server, mode, verbose) {
-                        eprintln!("SSH Connection Error: {}", e);
+                    if let Err(e) = susshi::hooks::run_hook(
+                        server.pre_connect_hook.as_deref().unwrap_or(""),
+                        &server,
+                    ) {
+                        eprintln!("Hook pre_connect a annulé la connexion : {e}");
+                    } else {
+                        // post_disconnect_hook non supporté ici : exec() remplace le processus.
+                        if let Err(e) = susshi::ssh::client::connect(&server, mode, verbose) {
+                            eprintln!("SSH Connection Error: {}", e);
+                        }
                     }
                     break;
                 }

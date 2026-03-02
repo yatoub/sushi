@@ -1,6 +1,7 @@
 pub mod app;
 pub mod config;
 pub mod handlers;
+pub mod hooks;
 pub mod i18n;
 pub mod import;
 pub mod probe;

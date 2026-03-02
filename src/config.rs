@@ -201,6 +201,14 @@ pub struct Defaults {
     pub control_path: Option<String>,
     /// Durée de maintien du master après déconnexion. Défaut : `"10m"`.
     pub control_persist: Option<String>,
+    /// Chemin vers le script à exécuter avant chaque connexion SSH.
+    /// Le hook reçoit : `SUSSHI_SERVER`, `SUSSHI_HOST`, `SUSSHI_USER`, `SUSSHI_PORT`, `SUSSHI_MODE`.
+    /// Un code de retour non-zéro annule la connexion.
+    pub pre_connect_hook: Option<String>,
+    /// Chemin vers le script à exécuter après chaque déconnexion SSH.
+    pub post_disconnect_hook: Option<String>,
+    /// Délai maximum accordé à un hook avant de le tuer (secondes). Défaut : 5.
+    pub hook_timeout_secs: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -263,7 +271,7 @@ pub struct Environment {
     pub tags: Option<Vec<String>>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct Server {
     pub name: String,
     pub host: String, // Host is mandatory on leaf
@@ -277,6 +285,10 @@ pub struct Server {
     pub probe_filesystems: Option<Vec<String>>,
     pub tunnels: Option<Vec<TunnelConfig>>,
     pub tags: Option<Vec<String>>,
+    /// Script pré-connexion spécifique au serveur (surcharge le défaut).
+    pub pre_connect_hook: Option<String>,
+    /// Script post-déconnexion spécifique au serveur (surcharge le défaut).
+    pub post_disconnect_hook: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -312,6 +324,12 @@ pub struct ResolvedServer {
     pub control_path: String,
     /// Valeur de ControlPersist (ex. `"10m"`).
     pub control_persist: String,
+    /// Script pré-connexion (None = désactivé).
+    pub pre_connect_hook: Option<String>,
+    /// Script post-déconnexion (None = désactivé).
+    pub post_disconnect_hook: Option<String>,
+    /// Timeout des hooks en secondes.
+    pub hook_timeout_secs: u64,
 }
 
 impl Config {
@@ -611,6 +629,9 @@ fn resolve_entries(
                                 d.control_master.unwrap_or(false),
                                 d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
                                 d.control_persist.as_deref().unwrap_or("10m"),
+                                d.pre_connect_hook.as_deref(),
+                                d.post_disconnect_hook.as_deref(),
+                                d.hook_timeout_secs.unwrap_or(5),
                             )?;
                             resolved.push(r);
                         }
@@ -638,6 +659,9 @@ fn resolve_entries(
                             d.control_master.unwrap_or(false),
                             d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
                             d.control_persist.as_deref().unwrap_or("10m"),
+                            d.pre_connect_hook.as_deref(),
+                            d.post_disconnect_hook.as_deref(),
+                            d.hook_timeout_secs.unwrap_or(5),
                         )?;
                         resolved.push(r);
                     }
@@ -664,6 +688,9 @@ fn resolve_entries(
                     d.control_master.unwrap_or(false),
                     d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
                     d.control_persist.as_deref().unwrap_or("10m"),
+                    d.pre_connect_hook.as_deref(),
+                    d.post_disconnect_hook.as_deref(),
+                    d.hook_timeout_secs.unwrap_or(5),
                 )?;
                 resolved.push(r);
             }
@@ -827,6 +854,15 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
             .control_persist
             .clone()
             .or_else(|| base.control_persist.clone()),
+        pre_connect_hook: overrides
+            .pre_connect_hook
+            .clone()
+            .or_else(|| base.pre_connect_hook.clone()),
+        post_disconnect_hook: overrides
+            .post_disconnect_hook
+            .clone()
+            .or_else(|| base.post_disconnect_hook.clone()),
+        hook_timeout_secs: overrides.hook_timeout_secs.or(base.hook_timeout_secs),
     }
 }
 
@@ -872,6 +908,9 @@ pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
                     "control_master",
                     "control_path",
                     "control_persist",
+                    "pre_connect_hook",
+                    "post_disconnect_hook",
+                    "hook_timeout_secs",
                 ],
                 file_path,
                 "defaults",
@@ -1065,6 +1104,9 @@ fn resolve_server(
     def_control_master: bool,
     def_control_path: &str,
     def_control_persist: &str,
+    def_pre_connect_hook: Option<&str>,
+    def_post_disconnect_hook: Option<&str>,
+    def_hook_timeout_secs: u64,
 ) -> Result<ResolvedServer, ConfigError> {
     let user = interpolate(s.user.as_deref().or(def_user).unwrap_or("root"), vars);
     let port = s.ssh_port.or(def_port).unwrap_or(22);
@@ -1137,6 +1179,17 @@ fn resolve_server(
             String::new()
         },
         control_persist: def_control_persist.to_string(),
+        pre_connect_hook: s
+            .pre_connect_hook
+            .as_deref()
+            .or(def_pre_connect_hook)
+            .map(|h| shellexpand::tilde(h).into_owned()),
+        post_disconnect_hook: s
+            .post_disconnect_hook
+            .as_deref()
+            .or(def_post_disconnect_hook)
+            .map(|h| shellexpand::tilde(h).into_owned()),
+        hook_timeout_secs: def_hook_timeout_secs,
     })
 }
 
@@ -1216,6 +1269,7 @@ mod tests {
                     probe_filesystems: None,
                     tunnels: None,
                     tags: None,
+                    ..Default::default()
                 }]),
             })],
             includes: vec![],
@@ -1282,6 +1336,7 @@ mod tests {
                     probe_filesystems: None,
                     tunnels: None,
                     tags: None,
+                    ..Default::default()
                 }),
                 ConfigEntry::Group(Group {
                     name: "Beta".to_string(),
@@ -1364,6 +1419,7 @@ mod tests {
                         probe_filesystems: None,
                         tunnels: None,
                         tags: None,
+                        ..Default::default()
                     }],
                 }]),
                 servers: None,
@@ -1415,6 +1471,7 @@ mod tests {
                         probe_filesystems: None, // hérite du groupe → defaults
                         tunnels: None,
                         tags: None,
+                        ..Default::default()
                     },
                     Server {
                         name: "extends".to_string(),
@@ -1429,6 +1486,7 @@ mod tests {
                         probe_filesystems: Some(vec!["/mnt/nas".to_string()]), // s'ajoute aux defaults
                         tunnels: None,
                         tags: None,
+                        ..Default::default()
                     },
                 ]),
             })],
@@ -1489,6 +1547,7 @@ mod tests {
                     probe_filesystems: None,
                     tunnels: None,
                     tags: None,
+                    ..Default::default()
                 }]),
             })],
             includes: vec![],

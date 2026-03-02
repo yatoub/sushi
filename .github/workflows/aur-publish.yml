@@ -1,0 +1,43 @@
+name: Publish to AUR
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  aur-publish:
+    name: Publish to AUR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Compute b2sum of release archive
+        id: b2sum
+        run: |
+          curl -fsSL "https://github.com/yatoub/susshi/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" -o archive.tar.gz
+          echo "sum=$(b2sum archive.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
+
+      - name: Update PKGBUILD
+        run: |
+          sed -i "s/^pkgver=.*/pkgver=${{ steps.ver.outputs.version }}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          sed -i "s/^b2sums=(.*/b2sums=(${{ steps.b2sum.outputs.sum }})/" PKGBUILD
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        with:
+          pkgname: susshi
+          pkgbuild: ./PKGBUILD
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "chore: update to ${{ github.ref_name }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519
+          allow_empty_commits: false

@@ -1,5 +1,5 @@
 pkgname=susshi
-pkgver=0.8.1
+pkgver=0.8.2
 pkgrel=1
 pkgdesc='modern, terminal-based SSH connection manager'
 url='https://github.com/yatoub/susshi'

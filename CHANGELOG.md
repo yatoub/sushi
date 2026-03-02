@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.2] — 2026-03-02
+
+### Fixed
+
+- **AUR package**: fix broken install caused by `source` URL still pointing to the old `sushi` repository name instead of `susshi`. The extracted directory was named `sushi-x.y.z` while the PKGBUILD expected `susshi-x.y.z`.
+- **AUR automation**: add GitHub Actions workflow to automatically publish updated PKGBUILD to AUR on every tagged release.
+
+---
+
 ## [0.8.1] — 2026-03-02
 
 ### Fixed

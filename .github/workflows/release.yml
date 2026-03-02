@@ -52,7 +52,6 @@ jobs:
         shell: bash
         run: |
           cargo build --release --target ${{ matrix.target }}
-          
       - name: Prepare asset (Unix)
         if: matrix.os != 'windows-latest'
         shell: bash

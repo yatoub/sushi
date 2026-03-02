@@ -18,3 +18,15 @@ thiserror = "2.0.18"
 
 [dev-dependencies]
 tempfile = "3.25.0"
+
+[profile.release]
+# Optimise pour la taille plutôt que la vitesse
+opt-level = "z"
+# Supprime les symboles de debug (économie ~1 Mo typiquement)
+strip = true
+# Link Time Optimization : élimine le code mort inter-crates
+lto = true
+# Un seul thread de codegen : plus lent à compiler mais binaire plus petit
+codegen-units = 1
+# Pas de symboles de panic verbeux (remplace "panicked at …" par abort)
+panic = "abort"

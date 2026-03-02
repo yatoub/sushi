@@ -44,6 +44,10 @@
 - **SCP File Transfer** (`s`): Press `s` to open the SCP form. Choose upload or download, fill in the local and remote paths, and watch real-time transfer progress directly in the TUI. The transfer runs via a PTY so OpenSSH streams percentage updates live.
 - **In-TUI Error Screen**: Connection errors are displayed as an overlay instead of crashing — press `Enter`/`Esc`/`q` to dismiss.
 - **Smart Sorting**: Automatically sorts groups and servers alphabetically.
+- **Import `~/.ssh/config`** (`--import-ssh-config`): parse an OpenSSH client config file (including recursive `Include` directives) and emit a susshi-compatible YAML block. Supports `--ssh-config-path <path>`, `--output <file>`, and `--dry-run` (preview without writing). `ProxyJump` entries are automatically converted to jump-mode servers.
+- **ControlMaster SSH multiplexing**: set `control_master: true` in `defaults` to reuse SSH connections across sessions. susshi injects `-o ControlMaster=auto -o ControlPath=… -o ControlPersist=…` automatically and creates the socket directory if needed. Configurable via `control_path` (default: `~/.ssh/ctl/%h_%p_%r`) and `control_persist` (default: `10m`). Silently disabled in Wallix mode.
+- **Hooks `pre_connect_hook` / `post_disconnect_hook`**: run shell scripts before/after each SSH connection. Configurable globally in `defaults` or per server. Variables `SUSSHI_SERVER`, `SUSSHI_HOST`, `SUSSHI_USER`, `SUSSHI_PORT`, `SUSSHI_MODE` are passed as environment variables. A non-zero exit from `pre_connect_hook` cancels the connection. `hook_timeout_secs` (default: `5`) controls the kill timeout.
+- **Export Ansible inventory** (`--export ansible`): generate a YAML Ansible inventory from your susshi config. Groups → `children`, environments → sub-groups, namespaces → top-level groups. Use `--export-output <file>` to write to a file, and `--export-filter <query>` to apply the same text + `#tag` filter as the TUI search.
 
 ## 🚀 Installation
 
@@ -214,6 +218,9 @@ jump:
   - `use_system_ssh_config`: Set to `true` to honour `~/.ssh/config` instead of passing `-F /dev/null`. Defaults to `false`.
   - `probe_filesystems`: List of extra mount points to inspect during the quick diagnostic (`d`). Uses **additive inheritance**: each level appends its paths to the parent list (unlike `user` or `ssh_key` which replace). If a path is not mounted on the target server a yellow `⚠` warning is shown instead of a progress bar.
   - `keep_open`: Set to `true` to reopen the TUI automatically after a connection closes. Defaults to `false` (historical behaviour: susshi exits after connecting).
+  - `control_master` / `control_path` / `control_persist`: Enable SSH ControlMaster multiplexing (reuse connections). `control_path` is tilde-expanded and its parent directory is created automatically. Not active in Wallix mode.
+  - `pre_connect_hook` / `post_disconnect_hook`: Path to a shell script run before/after each connection (tilde-expanded). Receives `SUSSHI_*` environment variables. Non-zero exit from `pre_connect_hook` aborts the connection. Can also be set per-server.
+  - `hook_timeout_secs`: Maximum seconds to wait for a hook to exit before killing it (default: `5`).
 - **`groups`**: The top-level hierarchy. Can contain `environments` or direct `servers`.
   - Can override any default setting including `mode`.
 - **`environments`**: A sub-grouping under a Group.
@@ -281,6 +288,18 @@ susshi --direct myserver.com --user deploy --port 2222 --key ~/.ssh/deploy_rsa
 
 # Use a custom config file
 susshi --config ~/work/.susshi.yml
+
+# Import ~/.ssh/config
+susshi --import-ssh-config                        # print generated YAML to stdout
+susshi --import-ssh-config --dry-run              # preview, do not write
+susshi --import-ssh-config --output ~/.susshi.yml # write directly to a file
+susshi --import-ssh-config --ssh-config-path ~/work/.ssh/config  # alternate source
+
+# Export Ansible inventory
+susshi --export ansible                             # print to stdout
+susshi --export ansible --export-output ~/inventory.yml
+susshi --export ansible --export-filter "#prod"   # filter by tag
+susshi --export ansible --export-filter "web"     # filter by name
 
 # Show all options
 susshi --help

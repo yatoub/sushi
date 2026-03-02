@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Import `~/.ssh/config`** (`--import-ssh-config`): parse an OpenSSH client config file (including recursive `Include` directives) and generate a susshi-compatible YAML block. Supports `--ssh-config-path <path>`, `--output <file>`, and `--dry-run`. Mapping: `Host`/`HostName`, `User`, `Port`, `IdentityFile`, `ProxyJump` (grouped as jump-mode servers), `ServerAliveInterval`. Wildcard entries (`Host *`) are skipped with a comment; `ProxyCommand` entries produce a warning.
+- **ControlMaster SSH multiplexing**: new optional keys in `defaults` (and per-server overrides via inheritance):
+  - `control_master: true` — activate connection multiplexing.
+  - `control_path: "~/.ssh/ctl/%h_%p_%r"` — socket path (tilde-expanded; parent directory auto-created).
+  - `control_persist: "10m"` — keep-alive duration after the last client disconnects.
+  When active, `build_ssh_args()` injects `-o ControlMaster=auto -o ControlPath=… -o ControlPersist=…` before the destination. Silently disabled in Wallix mode.
+- **Hooks `pre_connect` / `post_disconnect`**: run shell scripts before and after each SSH connection.
+  - Configurable globally in `defaults` or overridden per server (`pre_connect_hook`, `post_disconnect_hook`).
+  - The hook receives `SUSSHI_SERVER`, `SUSSHI_HOST`, `SUSSHI_USER`, `SUSSHI_PORT`, `SUSSHI_MODE` as environment variables.
+  - A non-zero exit code from `pre_connect_hook` cancels the connection with an error message.
+  - `hook_timeout_secs` (default: `5`) prevents blocking on slow hooks.
+- **Export Ansible inventory** (`--export ansible`): generate an Ansible YAML inventory from the susshi config.
+  - Groups → Ansible `children`, environments → sub-groups, namespaces (includes) → top-level groups.
+  - `--export-output <file>` writes to a file; omit for stdout.
+  - `--export-filter <query>` accepts the same text + `#tag` syntax as the TUI search bar.
+
 ---
 
 ## [0.10.2] — 2026-03-02

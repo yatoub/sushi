@@ -58,6 +58,30 @@ defaults:
     - "/var/log"
     - "/data"
 
+  # ─── SSH CONTROLMASTER (optional) ──────────────────────────────────────────
+  # Reuse SSH connections for the same host — subsequent connections are
+  # nearly instantaneous. Not supported in wallix mode.
+  # susshi automatically creates the parent directory of the socket path.
+  #
+  # control_master: true
+  # control_path: "~/.ssh/ctl/%h_%p_%r"   # default socket location
+  # control_persist: "10m"                # keep master alive 10 min after disconnect
+
+  # ─── HOOKS (optional) ──────────────────────────────────────────────────────
+  # Shell scripts executed before / after each SSH connection.
+  # Environment variables available inside the hook:
+  #   SUSSHI_SERVER  — server name as declared in the config
+  #   SUSSHI_HOST    — resolved hostname / IP
+  #   SUSSHI_USER    — SSH user
+  #   SUSSHI_PORT    — SSH port
+  #   SUSSHI_MODE    — connection mode (direct | jump | wallix)
+  # A non-zero exit code from pre_connect_hook cancels the connection.
+  # hook_timeout_secs prevents blocking on slow hooks (default: 5).
+  #
+  # pre_connect_hook: "~/.config/susshi/hooks/pre_connect.sh"
+  # post_disconnect_hook: "~/.config/susshi/hooks/post_disconnect.sh"
+  # hook_timeout_secs: 5
+
   # ─── SSH TUNNELS (optional) ───────────────────────────────────────────────
   # Pre-configured SSH local-port-forwarding tunnels for a server.
   # Press `T` in the TUI to open the tunnel manager and start/stop each tunnel.

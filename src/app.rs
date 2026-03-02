@@ -3,8 +3,7 @@ use crate::config::{
     TunnelConfig, ValidationWarning,
 };
 use crate::probe::{ProbeResult, ProbeState};
-use crate::ssh::scp::{ScpDirection, ScpEvent};
-use crate::ssh::sftp as ssh_sftp;
+use crate::ssh::sftp::{self as ssh_sftp, ScpDirection, ScpEvent};
 use crate::ssh::tunnel::{self as ssh_tunnel, TunnelHandle, TunnelStatus};
 use crate::state::{self, TunnelOverride};
 use crate::ui::theme::{Theme, get_theme};
@@ -1893,6 +1892,7 @@ mod tests {
                     jump: None,
                     probe_filesystems: None,
                     tunnels: None,
+                    tags: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
                         host: "10.0.0.1".to_string(),
@@ -1905,6 +1905,7 @@ mod tests {
                         jump: None,
                         probe_filesystems: None,
                         tunnels: None,
+                        tags: None,
                     }],
                 }]),
                 servers: Some(vec![Server {
@@ -1919,9 +1920,12 @@ mod tests {
                     jump: None,
                     probe_filesystems: None,
                     tunnels: None,
+                    tags: None,
                 }]),
                 tunnels: None,
+                tags: None,
             })],
+            vars: Default::default(),
         }
     }
 
@@ -2048,6 +2052,7 @@ mod tests {
                     probe_filesystems: None,
                     environments: None,
                     tunnels: None,
+                    tags: None,
                     servers: Some(vec![Server {
                         name: "root_srv".to_string(),
                         host: "1.1.1.1".to_string(),
@@ -2060,12 +2065,14 @@ mod tests {
                         jump: None,
                         probe_filesystems: None,
                         tunnels: None,
+                        tags: None,
                     }]),
                 }),
                 ConfigEntry::Namespace(NamespaceEntry {
                     label: "CES".to_string(),
                     source_path: "/fake/ces.yml".to_string(),
                     defaults: None,
+                    vars: Default::default(),
                     entries: vec![ConfigEntry::Group(crate::config::Group {
                         name: "CES_Group".to_string(),
                         user: None,
@@ -2078,6 +2085,7 @@ mod tests {
                         probe_filesystems: None,
                         environments: None,
                         tunnels: None,
+                        tags: None,
                         servers: Some(vec![Server {
                             name: "ces_srv".to_string(),
                             host: "2.2.2.2".to_string(),
@@ -2090,10 +2098,12 @@ mod tests {
                             jump: None,
                             probe_filesystems: None,
                             tunnels: None,
+                            tags: None,
                         }]),
                     })],
                 }),
             ],
+            vars: Default::default(),
         }
     }
 

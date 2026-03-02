@@ -1,13 +1,11 @@
 //! Transfert de fichiers SFTP natif via `libssh2`.
 //!
-//! Remplace le spawn système `scp` de [`crate::ssh::scp`] par une session
-//! SSH pure Rust utilisant la crate `ssh2` (wrapper autour de `libssh2`).
+//! Ce module expose [également les types partagés `ScpDirection` et `ScpEvent`]
+//! précédemment dans `ssh::scp`.
 //!
 //! ## Interface publique
 //!
-//! [`spawn_sftp`] retourne un [`std::sync::mpsc::Receiver<ScpEvent>`] identique
-//! à celui de `spawn_scp`, ce qui permet de remplacer l'appel côté [`crate::app::App`]
-//! sans modifier la logique de polling ni l'UI.
+//! [`spawn_sftp`] retourne un [`std::sync::mpsc::Receiver<ScpEvent>`].
 //!
 //! ## Avantages vs spawn `scp`
 //!
@@ -31,9 +29,40 @@
 //! | Wallix   | ✖ retourne une erreur |
 
 use crate::config::{ConnectionMode, ResolvedServer};
-use crate::ssh::scp::{ScpDirection, ScpEvent};
 use anyhow::Result;
 use std::sync::mpsc;
+
+// ─── Types partagés ────────────────────────────────────────────────────────────
+
+/// Sens du transfert SFTP.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScpDirection {
+    /// Envoi : local → serveur.
+    Upload,
+    /// Récupération : serveur → local.
+    Download,
+}
+
+impl ScpDirection {
+    /// Libellé court en français.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Upload => "Upload",
+            Self::Download => "Download",
+        }
+    }
+}
+
+/// Évènement émis par le thread de transfert SFTP.
+#[derive(Debug)]
+pub enum ScpEvent {
+    /// Progression (0–100).
+    Progress(u8),
+    /// Transfert terminé — `true` = succès.
+    Done(bool),
+    /// Erreur irrécupérable.
+    Error(String),
+}
 
 // ─── API publique ─────────────────────────────────────────────────────────────
 
@@ -155,8 +184,21 @@ fn transfer_inner(
                 .stat(&remote_path)
                 .map(|s| s.size.unwrap_or(0))
                 .unwrap_or(0);
+            // Si la cible locale est un répertoire (ou se termine par '/'),
+            // on y ajoute le nom du fichier distant — comportement symétrique à l'upload.
+            let local_path = {
+                let p = Path::new(local);
+                if local.ends_with('/') || local.ends_with('\\') || p.is_dir() {
+                    let filename = remote_path
+                        .file_name()
+                        .unwrap_or_else(|| std::ffi::OsStr::new("download"));
+                    p.join(filename)
+                } else {
+                    p.to_path_buf()
+                }
+            };
             let mut src = sftp.open(&remote_path)?;
-            let mut dst = File::create(Path::new(local))?;
+            let mut dst = File::create(&local_path)?;
             copy_with_progress(&mut src, &mut dst, file_size, tx)?;
         }
     }
@@ -518,6 +560,7 @@ mod tests {
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
+            tags: vec![],
         }
     }
 }

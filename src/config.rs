@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -84,6 +84,8 @@ pub struct NamespaceEntry {
     /// Defaults locaux du sous-fichier (ne s'appliquent pas au fichier principal).
     pub defaults: Option<Defaults>,
     pub entries: Vec<ConfigEntry>,
+    /// Variables `{{ var }}` définies dans le sous-fichier (scope local au fichier).
+    pub vars: HashMap<String, String>,
 }
 
 // NamespaceEntry doit implémenter Deserialize pour que ConfigEntry puisse le faire
@@ -138,6 +140,11 @@ pub struct Config {
     /// Fichiers supplémentaires à fusionner (ignoré dans les sous-fichiers).
     #[serde(default)]
     pub includes: Vec<IncludeEntry>,
+    /// Variables de templating `{{ var }}` (scope local au fichier YAML).
+    /// Exemple : `_vars: { jump: "bastion.prod.example.com" }`
+    /// Usage   : `host: "{{ jump }}"`
+    #[serde(default, rename = "_vars")]
+    pub vars: HashMap<String, String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -183,6 +190,10 @@ pub struct Defaults {
     /// Sémantique : REPLACE — un niveau enfant remplace entièrement la liste parente.
     /// Non disponible en mode Wallix.
     pub tunnels: Option<Vec<TunnelConfig>>,
+    /// Filtre de recherche actif au démarrage (ex. `"#prod"`).
+    pub default_filter: Option<String>,
+    /// Tags hérités en cascade par tous les serveurs du périmètre.
+    pub tags: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -226,6 +237,7 @@ pub struct Group {
     pub servers: Option<Vec<Server>>,
     pub probe_filesystems: Option<Vec<String>>,
     pub tunnels: Option<Vec<TunnelConfig>>,
+    pub tags: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -241,6 +253,7 @@ pub struct Environment {
     pub servers: Vec<Server>,
     pub probe_filesystems: Option<Vec<String>>,
     pub tunnels: Option<Vec<TunnelConfig>>,
+    pub tags: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -256,6 +269,7 @@ pub struct Server {
     pub jump: Option<Vec<JumpConfig>>,
     pub probe_filesystems: Option<Vec<String>>,
     pub tunnels: Option<Vec<TunnelConfig>>,
+    pub tags: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -283,6 +297,8 @@ pub struct ResolvedServer {
     pub probe_filesystems: Vec<String>,
     /// Tunnels SSH préconfigurés (fusion REPLACE depuis la hiérarchie config + overrides state).
     pub tunnels: Vec<TunnelConfig>,
+    /// Tags du serveur (union de tous les niveaux : defaults → groupe → env → serveur).
+    pub tags: Vec<String>,
 }
 
 impl Config {
@@ -480,6 +496,7 @@ impl Config {
                 source_path: sub_canonical.display().to_string(),
                 defaults: sub_config.defaults,
                 entries: direct_entries,
+                vars: sub_config.vars.clone(),
             }));
 
             // Namespaces imbriqués aplatis avec label préfixé "parent / enfant"
@@ -489,6 +506,7 @@ impl Config {
                     source_path: nested.source_path,
                     defaults: nested.defaults,
                     entries: nested.entries,
+                    vars: nested.vars,
                 }));
             }
         }
@@ -657,6 +675,20 @@ fn replace_tunnels(
     child.clone().or_else(|| parent.clone())
 }
 
+/// Les tags s'accumulent : chaque niveau **ajoute** ses tags à ceux du niveau parent.
+/// Un serveur hérite donc des tags définis dans les defaults, le groupe et l'environnement.
+fn extend_tags(parent: Option<&Vec<String>>, child: Option<&Vec<String>>) -> Vec<String> {
+    let mut merged: Vec<String> = parent.cloned().unwrap_or_default();
+    if let Some(c) = child {
+        for tag in c {
+            if !merged.contains(tag) {
+                merged.push(tag.clone());
+            }
+        }
+    }
+    merged
+}
+
 /// Les probe_filesystems s'accumulent en cascade : chaque niveau ajoute ses
 /// entrées à celles du niveau parent (sans doublon).
 /// Un groupe définissant `/kafka_data` héritera donc aussi des filesystems
@@ -705,6 +737,23 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
             .or_else(|| base.probe_filesystems.clone()),
         keep_open: overrides.keep_open.or(base.keep_open),
         tunnels: overrides.tunnels.clone().or_else(|| base.tunnels.clone()),
+        default_filter: overrides
+            .default_filter
+            .clone()
+            .or_else(|| base.default_filter.clone()),
+        tags: match (&base.tags, &overrides.tags) {
+            (None, r) => r.clone(),
+            (l, None) => l.clone(),
+            (Some(b), Some(o)) => {
+                let mut merged = b.clone();
+                for t in o {
+                    if !merged.contains(t) {
+                        merged.push(t.clone());
+                    }
+                }
+                Some(merged)
+            }
+        },
     }
 }
 
@@ -723,7 +772,7 @@ pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
     if let serde_yaml::Value::Mapping(root) = &value {
         yaml_check_keys(
             root,
-            &["defaults", "groups", "includes"],
+            &["defaults", "groups", "includes", "_vars"],
             file_path,
             "root",
             &mut warnings,
@@ -745,6 +794,8 @@ pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
                     "probe_filesystems",
                     "keep_open",
                     "tunnels",
+                    "default_filter",
+                    "tags",
                 ],
                 file_path,
                 "defaults",
@@ -804,6 +855,7 @@ fn yaml_validate_entry(
                 "jump",
                 "probe_filesystems",
                 "tunnels",
+                "tags",
             ],
             file,
             ctx,
@@ -826,6 +878,7 @@ fn yaml_validate_entry(
                 "servers",
                 "probe_filesystems",
                 "tunnels",
+                "tags",
             ],
             file,
             ctx,
@@ -851,6 +904,7 @@ fn yaml_validate_entry(
                             "servers",
                             "probe_filesystems",
                             "tunnels",
+                            "tags",
                         ],
                         file,
                         &format!("{ctx}.environments[{i}]"),
@@ -997,6 +1051,7 @@ fn resolve_server(
         use_system_ssh_config,
         probe_filesystems,
         tunnels,
+        tags: extend_tags(None, s.tags.as_ref()),
     })
 }
 
@@ -1044,6 +1099,7 @@ mod tests {
                     servers: None,
                     probe_filesystems: None,
                     tunnels: None,
+                    tags: None,
                 }),
                 ConfigEntry::Server(Server {
                     name: "Alpha".to_string(),
@@ -1057,6 +1113,7 @@ mod tests {
                     jump: None,
                     probe_filesystems: None,
                     tunnels: None,
+                    tags: None,
                 }),
                 ConfigEntry::Group(Group {
                     name: "Beta".to_string(),
@@ -1071,9 +1128,11 @@ mod tests {
                     servers: None,
                     probe_filesystems: None,
                     tunnels: None,
+                    tags: None,
                 }),
             ],
             includes: vec![],
+            vars: Default::default(),
         };
 
         config.sort();
@@ -1111,6 +1170,7 @@ mod tests {
                 wallix: None,
                 jump: None,
                 probe_filesystems: None,
+                tags: None,
                 environments: Some(vec![Environment {
                     name: "Env1".to_string(),
                     user: None, // Inherits "group_user"
@@ -1122,6 +1182,7 @@ mod tests {
                     jump: None,
                     probe_filesystems: None,
                     tunnels: None,
+                    tags: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
                         host: "1.1.1.1".to_string(),
@@ -1134,12 +1195,14 @@ mod tests {
                         jump: None,
                         probe_filesystems: None,
                         tunnels: None,
+                        tags: None,
                     }],
                 }]),
                 servers: None,
                 tunnels: None,
             })],
             includes: vec![],
+            vars: Default::default(),
         };
 
         let resolved = config.resolve().unwrap();
@@ -1169,6 +1232,7 @@ mod tests {
                 probe_filesystems: None, // hérite des defaults
                 environments: None,
                 tunnels: None,
+                tags: None,
                 servers: Some(vec![
                     Server {
                         name: "inherits".to_string(),
@@ -1182,6 +1246,7 @@ mod tests {
                         jump: None,
                         probe_filesystems: None, // hérite du groupe → defaults
                         tunnels: None,
+                        tags: None,
                     },
                     Server {
                         name: "extends".to_string(),
@@ -1195,10 +1260,12 @@ mod tests {
                         jump: None,
                         probe_filesystems: Some(vec!["/mnt/nas".to_string()]), // s'ajoute aux defaults
                         tunnels: None,
+                        tags: None,
                     },
                 ]),
             })],
             includes: vec![],
+            vars: Default::default(),
         };
 
         let resolved = config.resolve().unwrap();
@@ -1240,6 +1307,7 @@ mod tests {
                 probe_filesystems: Some(vec!["/kafka_data".to_string()]), // s'ajoute
                 environments: None,
                 tunnels: None,
+                tags: None,
                 servers: Some(vec![Server {
                     name: "kafka01".to_string(),
                     host: "10.0.0.1".to_string(),
@@ -1252,9 +1320,11 @@ mod tests {
                     jump: None,
                     probe_filesystems: None,
                     tunnels: None,
+                    tags: None,
                 }]),
             })],
             includes: vec![],
+            vars: Default::default(),
         };
 
         let resolved = config.resolve().unwrap();

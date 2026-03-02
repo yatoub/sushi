@@ -16,7 +16,7 @@ use susshi::config::{Config, ConnectionMode, IncludeWarning, ResolvedServer};
 use susshi::handlers::{get_layout, handle_mouse_event, is_in_rect};
 use susshi::probe::ProbeState;
 use susshi::ssh::client::build_ssh_args;
-use susshi::ssh::scp::ScpDirection;
+use susshi::ssh::sftp::ScpDirection;
 use susshi::state;
 use susshi::ui;
 
@@ -221,6 +221,7 @@ fn build_adhoc_server(
         use_system_ssh_config: d.use_system_ssh_config.unwrap_or(false),
         probe_filesystems: vec![],
         tunnels: vec![],
+        tags: vec![],
     }
 }
 

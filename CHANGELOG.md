@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.4] — 2026-03-02
+
+### Added
+
+- **Collapse all** (`C`): press `C` to collapse all expanded groups, namespaces and environments at once and jump back to the top of the list (closes #7).
+- **CPU core count in diag** (`d`): the diagnostic panel now shows the number of logical CPU cores (`nproc`) below the CPU model (closes #8).
+- **OS name in diag** (`d`): the diagnostic panel now shows the OS name and version from `/etc/os-release` (e.g. `Debian GNU/Linux 12`) below the kernel version (closes #10).
+
+---
+
 ## [0.8.3] — 2026-03-02
 
 ### Fixed

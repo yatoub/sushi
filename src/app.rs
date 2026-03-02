@@ -261,6 +261,13 @@ impl App {
         self.items_dirty = true; // l'état d'expansion a changé
     }
 
+    /// Replie tous les groupes, namespaces et environnements développés.
+    pub fn collapse_all(&mut self) {
+        self.expanded_items.clear();
+        self.selected_index = 0;
+        self.items_dirty = true;
+    }
+
     pub fn get_visible_items(&mut self) -> Vec<ConfigItem> {
         if self.items_dirty {
             self.cached_items = self.build_visible_items();
@@ -965,6 +972,30 @@ mod tests {
             ConfigItem::Server(s) => assert_eq!(s.name, "S2"),
             _ => panic!("Expected Server S2"),
         }
+    }
+
+    #[test]
+    fn test_collapse_all() {
+        let config = create_test_config();
+        let mut app = App::new(config, vec![], std::path::PathBuf::new(), vec![]).unwrap();
+
+        // Expand G1, then navigate and expand E1
+        app.toggle_expansion(); // expands G1 (index 0)
+        app.selected_index = 1;
+        app.items_dirty = true;
+        app.toggle_expansion(); // expands E1
+
+        // Vérifier que des items sont bien expandés
+        assert!(!app.expanded_items.is_empty());
+
+        // Replier tout
+        app.collapse_all();
+
+        assert!(app.expanded_items.is_empty());
+        assert_eq!(app.selected_index, 0);
+        // Seul le groupe racine doit être visible
+        let items = app.get_visible_items();
+        assert_eq!(items.len(), 1);
     }
 
     #[test]

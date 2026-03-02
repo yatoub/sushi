@@ -9,15 +9,19 @@ use anyhow::Result;
 use std::process::Command;
 
 /// Partie fixe du one-liner bash envoyé en argument SSH.
-/// Retourne exactement 5 lignes :
+/// Retourne exactement 7 lignes :
 /// 1. kernel (`uname -r`)
 /// 2. modèle CPU (première entrée `/proc/cpuinfo`)
-/// 3. load average 1/5/15m
-/// 4. RAM : `<pct_used> <total_bytes>`
-/// 5. Disque `/` : `<pct_used> <total_bytes>`
+/// 3. nombre de cœurs logiques (`nproc`)
+/// 4. nom et version de l'OS (`/etc/os-release`)
+/// 5. load average 1/5/15m
+/// 6. RAM : `<pct_used> <total_bytes>`
+/// 7. Disque `/` : `<pct_used> <total_bytes>`
 const PROBE_BASE: &str = concat!(
     "uname -r; ",
     "awk '/^model name/{sub(/.*: /,\"\"); print; exit}' /proc/cpuinfo; ",
+    "nproc; ",
+    "awk -F= '/^NAME=/{gsub(/\"/,\"\",$2);n=$2}/^VERSION_ID=/{gsub(/\"/,\"\",$2);v=$2}END{print n(v?\" \"v:\"\")}' /etc/os-release 2>/dev/null||echo unknown; ",
     "uptime | awk -F'load average:' '{print $2}' | xargs; ",
     "free -b | awk '/^Mem/{printf \"%.0f %.0f\\n\", $3/$2*100, $2}'; ",
     "df -B1 / | awk 'NR==2{printf \"%.0f %.0f\\n\", $3/$2*100, $2}'",
@@ -66,6 +70,10 @@ pub struct FsEntry {
 pub struct ProbeResult {
     pub kernel: String,
     pub cpu_model: String,
+    /// Nombre de cœurs logiques (`nproc`).
+    pub cpu_cores: u32,
+    /// Nom et version de l'OS (ex. `"Debian GNU/Linux 12"`).
+    pub os_name: String,
     /// Load average formaté : `"0.42, 0.38, 0.31"`
     pub load: String,
     /// Pourcentage de RAM utilisée (0–100).
@@ -97,7 +105,7 @@ pub enum ProbeState {
 // ─── Parsing ──────────────────────────────────────────────────────────────────
 
 impl ProbeResult {
-    /// Parse la sortie de `build_probe_cmd` : 5 lignes fixes + N lignes pour
+    /// Parse la sortie de `build_probe_cmd` : 7 lignes fixes + N lignes pour
     /// les filesystems supplémentaires (soit `<pct> <bytes>` soit `absent`).
     pub fn parse(raw: &str, extra_filesystems: &[String]) -> Result<Self> {
         let lines: Vec<&str> = raw
@@ -106,20 +114,24 @@ impl ProbeResult {
             .filter(|l| !l.is_empty())
             .collect();
 
-        if lines.len() < 5 {
+        if lines.len() < 7 {
             anyhow::bail!(
-                "sortie inattendue ({} lignes au lieu de 5) :\n{}",
+                "sortie inattendue ({} lignes au lieu de 7) :\n{}",
                 lines.len(),
                 raw
             );
         }
 
-        let (ram_pct, ram_total_gb) = parse_pct_bytes(lines[3], "RAM")?;
-        let (disk_pct, disk_total_gb) = parse_pct_bytes(lines[4], "Disk")?;
+        let cpu_cores: u32 = lines[2]
+            .parse()
+            .map_err(|e| anyhow::anyhow!("cpu_cores: {}", e))?;
+        let os_name = lines[3].to_string();
+        let (ram_pct, ram_total_gb) = parse_pct_bytes(lines[5], "RAM")?;
+        let (disk_pct, disk_total_gb) = parse_pct_bytes(lines[6], "Disk")?;
 
         let mut extra_fs = Vec::new();
         for (i, mountpoint) in extra_filesystems.iter().enumerate() {
-            let usage = match lines.get(5 + i) {
+            let usage = match lines.get(7 + i) {
                 Some(&"absent") | None => None,
                 Some(line) => {
                     let (pct, total_gb) = parse_pct_bytes(line, mountpoint)?;
@@ -135,7 +147,9 @@ impl ProbeResult {
         Ok(ProbeResult {
             kernel: lines[0].to_string(),
             cpu_model: lines[1].to_string(),
-            load: lines[2].to_string(),
+            cpu_cores,
+            os_name,
+            load: lines[4].to_string(),
             ram_pct,
             ram_total_gb,
             disk_pct,
@@ -216,6 +230,8 @@ mod tests {
     /// Sortie typique du one-liner sur un serveur Debian.
     const SAMPLE: &str = "6.1.0-28-amd64\n\
         Intel(R) Xeon(R) CPU E5-2670 0 @ 2.60GHz\n\
+        8\n\
+        Debian GNU/Linux 12\n\
         0.42, 0.38, 0.31\n\
         67 16106127360\n\
         23 499963174912\n";
@@ -225,6 +241,8 @@ mod tests {
         let r = ProbeResult::parse(SAMPLE, &[]).unwrap();
         assert_eq!(r.kernel, "6.1.0-28-amd64");
         assert_eq!(r.cpu_model, "Intel(R) Xeon(R) CPU E5-2670 0 @ 2.60GHz");
+        assert_eq!(r.cpu_cores, 8);
+        assert_eq!(r.os_name, "Debian GNU/Linux 12");
         assert_eq!(r.load, "0.42, 0.38, 0.31");
         assert_eq!(r.ram_pct, 67);
         assert!((r.ram_total_gb - 15.0).abs() < 1.0, "ram ~15 GB");
@@ -247,26 +265,32 @@ mod tests {
 
     #[test]
     fn parse_bad_ram_pct() {
-        let bad = "6.1.0\nIntel\n0.1\nXX 16000000000\n23 500000000000\n";
+        let bad = "6.1.0\nIntel\n8\nDebian 12\n0.1\nXX 16000000000\n23 500000000000\n";
         assert!(ProbeResult::parse(bad, &[]).is_err());
     }
 
     #[test]
     fn parse_bad_ram_bytes() {
-        let bad = "6.1.0\nIntel\n0.1\n67 not_a_number\n23 500000000000\n";
+        let bad = "6.1.0\nIntel\n8\nDebian 12\n0.1\n67 not_a_number\n23 500000000000\n";
         assert!(ProbeResult::parse(bad, &[]).is_err());
     }
 
     #[test]
     fn parse_bad_disk_pct() {
-        let bad = "6.1.0\nIntel\n0.1\n67 16000000000\nXX 500000000000\n";
+        let bad = "6.1.0\nIntel\n8\nDebian 12\n0.1\n67 16000000000\nXX 500000000000\n";
         assert!(ProbeResult::parse(bad, &[]).is_err());
     }
 
     #[test]
     fn parse_disk_single_column() {
         // Seulement un champ sur la ligne disk → erreur
-        let bad = "6.1.0\nIntel\n0.1\n67 16000000000\n23\n";
+        let bad = "6.1.0\nIntel\n8\nDebian 12\n0.1\n67 16000000000\n23\n";
+        assert!(ProbeResult::parse(bad, &[]).is_err());
+    }
+
+    #[test]
+    fn parse_bad_cpu_cores() {
+        let bad = "6.1.0\nIntel\nnot_a_number\nDebian 12\n0.1\n67 16000000000\n23 500000000000\n";
         assert!(ProbeResult::parse(bad, &[]).is_err());
     }
 

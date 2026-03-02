@@ -81,6 +81,10 @@ pub struct Strings {
     pub probe_running: &'static str,
     pub probe_kernel: &'static str,
     pub probe_cpu: &'static str,
+    /// Nombre de cœurs logiques.
+    pub probe_cpu_cores: &'static str,
+    /// Nom et version de l'OS.
+    pub probe_os: &'static str,
     pub probe_load: &'static str,
     pub probe_ram: &'static str,
     pub probe_disk: &'static str,
@@ -189,6 +193,8 @@ pub static STRINGS_FR: Strings = Strings {
     probe_running: "Diagnostic en cours…",
     probe_kernel: "Kernel   ",
     probe_cpu: "CPU      ",
+    probe_cpu_cores: "Cœurs    ",
+    probe_os: "OS       ",
     probe_load: "Charge   ",
     probe_ram: "RAM",
     probe_disk: "Disk /",
@@ -196,7 +202,7 @@ pub static STRINGS_FR: Strings = Strings {
     probe_disk_extra: "Disk {}",
     probe_fs_absent: "⚠  {} — non monté",
 
-    status_normal: "Navigation : ↑/↓ | Ouvrir : Espace/Entrée | Recherche : / | Mode : Tab/1-3 | v : Verbose | y : Copier | d : Probe | f : Favori | F : Vue favs | r : Recharger | x : Cmd | H : Tri | q : Quitter",
+    status_normal: "Navigation : ↑/↓ | Ouvrir : Espace/Entrée | Recherche : / | Mode : Tab/1-3 | v : Verbose | y : Copier | d : Probe | f : Favori | F : Vue favs | r : Recharger | x : Cmd | H : Tri | C : Replier tout | q : Quitter",
     status_searching: "Recherche : Tapez pour filtrer… | Échap : Annuler | Ctrl+U : Effacer | Entrée : Valider",
     status_search_active: "Navigation : ↑/↓ | Effacer : Échap | Nouvelle recherche : / | Verbose : v | Entrée : Connecter | q : Quitter",
 
@@ -275,6 +281,8 @@ pub static STRINGS_EN: Strings = Strings {
     probe_running: "Running probe…",
     probe_kernel: "Kernel   ",
     probe_cpu: "CPU      ",
+    probe_cpu_cores: "Cores    ",
+    probe_os: "OS       ",
     probe_load: "Load     ",
     probe_ram: "RAM",
     probe_disk: "Disk /",
@@ -282,7 +290,7 @@ pub static STRINGS_EN: Strings = Strings {
     probe_disk_extra: "Disk {}",
     probe_fs_absent: "⚠  {} — not mounted",
 
-    status_normal: "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | v: Verbose | y: Copy | d: Probe | f: Fav | F: Favs | r: Reload | x: Cmd | H: Sort | q: Quit",
+    status_normal: "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | v: Verbose | y: Copy | d: Probe | f: Fav | F: Favs | r: Reload | x: Cmd | H: Sort | C: Collapse all | q: Quit",
     status_searching: "Search Mode: Type to filter | ESC: Cancel | Ctrl+U: Clear | Enter: Apply",
     status_search_active: "Navigate: ↑/↓ | Clear: ESC | New search: / | Verbose: v | Enter: Connect | q: Quit",
 

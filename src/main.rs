@@ -438,6 +438,9 @@ fn run_app(
                             KeyCode::Char('F') => {
                                 app.toggle_favorites_view();
                             }
+                            KeyCode::Char('C') => {
+                                app.collapse_all();
+                            }
                             KeyCode::Char('H') => {
                                 app.sort_by_recent = !app.sort_by_recent;
                                 app.items_dirty = true;

@@ -641,10 +641,24 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                 ]));
                                 lines.push(Line::from(vec![
                                     Span::styled(
+                                        app.lang.probe_os,
+                                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                    ),
+                                    Span::raw(r.os_name.clone()),
+                                ]));
+                                lines.push(Line::from(vec![
+                                    Span::styled(
                                         app.lang.probe_cpu,
                                         Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
                                     ),
                                     Span::raw(r.cpu_model.clone()),
+                                ]));
+                                lines.push(Line::from(vec![
+                                    Span::styled(
+                                        app.lang.probe_cpu_cores,
+                                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                    ),
+                                    Span::raw(r.cpu_cores.to_string()),
                                 ]));
                                 lines.push(Line::from(vec![
                                     Span::styled(

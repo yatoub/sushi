@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Import `~/.ssh/config`** (`--import-ssh-config`): parse an OpenSSH client config file (including recursive `Include` directives) and generate a susshi-compatible YAML block. Supports `--ssh-config-path <path>`, `--output <file>`, and `--dry-run`. Mapping: `Host`/`HostName`, `User`, `Port`, `IdentityFile`, `ProxyJump` (grouped as jump-mode servers), `ServerAliveInterval`. Wildcard entries (`Host *`) are skipped with a comment; `ProxyCommand` entries produce a warning.
+- **ControlMaster SSH multiplexing**: new optional keys in `defaults` (and per-server overrides via inheritance):
+  - `control_master: true` — activate connection multiplexing.
+  - `control_path: "~/.ssh/ctl/%h_%p_%r"` — socket path (tilde-expanded; parent directory auto-created).
+  - `control_persist: "10m"` — keep-alive duration after the last client disconnects.
+  When active, `build_ssh_args()` injects `-o ControlMaster=auto -o ControlPath=… -o ControlPersist=…` before the destination. Silently disabled in Wallix mode.
+- **Hooks `pre_connect` / `post_disconnect`**: run shell scripts before and after each SSH connection.
+  - Configurable globally in `defaults` or overridden per server (`pre_connect_hook`, `post_disconnect_hook`).
+  - The hook receives `SUSSHI_SERVER`, `SUSSHI_HOST`, `SUSSHI_USER`, `SUSSHI_PORT`, `SUSSHI_MODE` as environment variables.
+  - A non-zero exit code from `pre_connect_hook` cancels the connection with an error message.
+  - `hook_timeout_secs` (default: `5`) prevents blocking on slow hooks.
+- **Export Ansible inventory** (`--export ansible`): generate an Ansible YAML inventory from the susshi config.
+  - Groups → Ansible `children`, environments → sub-groups, namespaces (includes) → top-level groups.
+  - `--export-output <file>` writes to a file; omit for stdout.
+  - `--export-filter <query>` accepts the same text + `#tag` syntax as the TUI search bar.
+- **Templating / variable interpolation** (`_vars` section): define reusable scalar variables at the top of any YAML file (main or included) and interpolate them with `{{ var }}` in any string field (`host`, `user`, `ssh_key`, etc.).
+  - Each file has its own `_vars` scope — variables do not leak into included files or vice versa.
+  - Built-in `{{ index }}`: automatically set to the 1-based position of a server within its parent list, making it easy to declare a fleet of homogeneous servers without copy-pasting (`name: "worker-{{ index }}"`, `host: "10.0.1.{{ index }}"`). Resets to 1 for each list independently.
+  - Referencing an undefined variable leaves the `{{ var }}` placeholder intact and emits a non-blocking warning at startup.
+- **Tags and advanced search filtering** (`tags:` key): attach a list of tags to any server or group.
+  - Search with `#tag` prefix in the TUI search bar (`/`) to filter by tag.
+  - Multiple tags in a query perform an AND filter: `#prod #k8s` shows servers that have **both** tags.
+  - Mixed queries like `api #prod` combine a text match on name/host **and** a tag filter.
+  - `defaults.default_filter`: set an initial search filter applied at startup (e.g. `default_filter: "#prod"`). Clear it with `Esc`.
+
 ---
 
 ## [0.10.2] — 2026-03-02

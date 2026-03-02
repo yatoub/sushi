@@ -15,7 +15,7 @@
   - Full cascading support for user, ssh_key, mode, port, options, and connection configs.
   - `use_system_ssh_config`: opt in to respecting `~/.ssh/config` (ControlMaster, aliases…).
 - **CLI — connect without opening the TUI**:
-  - `--direct`, `--rebond`, `--bastion` `[user@]host[:port]` — instant SSH connection.
+  - `--direct`, `--jump`, `--wallix` `[user@]host[:port]` — instant SSH connection.
   - `-u/--user`, `-p/--port`, `-k/--key` — override any SSH parameter.
   - `-c/--config` — use an alternate configuration file.
   - `-v/--verbose` — enable SSH verbose output.
@@ -235,10 +235,10 @@ sushi --direct root@myserver
 sushi --direct admin@10.0.1.5:2222
 
 # Connect via jump host
-sushi --rebond root@192.168.1.50
+sushi --jump root@192.168.1.50
 
 # Connect via bastion
-sushi --bastion web-01.prod.example.com
+sushi --wallix web-01.prod.example.com
 
 # Override SSH parameters
 sushi --direct myserver.com --user deploy --port 2222 --key ~/.ssh/deploy_rsa

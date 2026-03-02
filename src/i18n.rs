@@ -32,8 +32,8 @@ pub struct Strings {
     pub tab_direct: &'static str,
     /// Libellé de l'onglet Jump/Rebond.
     pub tab_jump: &'static str,
-    /// Libellé de l'onglet Bastion.
-    pub tab_bastion: &'static str,
+    /// Libellé de l'onglet Wallix.
+    pub tab_wallix: &'static str,
 
     // ── Toggle verbose ──────────────────────────────────────────────────────
     pub verbose_title: &'static str,
@@ -72,7 +72,7 @@ pub struct Strings {
     pub label_mode: &'static str,
     pub label_key: &'static str,
     pub label_jump: &'static str,
-    pub label_bastion: &'static str,
+    pub label_wallix: &'static str,
     pub label_options: &'static str,
 
     // ── Bloc diagnostic (System) ────────────────────────────────────────────
@@ -88,8 +88,8 @@ pub struct Strings {
     pub probe_load: &'static str,
     pub probe_ram: &'static str,
     pub probe_disk: &'static str,
-    /// Erreur quand le diagnostic est demandé en mode Bastion.
-    pub probe_bastion_error: &'static str,
+    /// Erreur quand le diagnostic est demandé en mode Wallix.
+    pub probe_wallix_error: &'static str,
     /// Libellé d'un filesystem supplémentaire présent — `{}` = point de montage.
     pub probe_disk_extra: &'static str,
     /// Ligne complète pour un filesystem absent — `{}` = point de montage.
@@ -159,7 +159,7 @@ pub static STRINGS_FR: Strings = Strings {
     tab_title: " Mode de Connexion (Tab pour changer) ",
     tab_direct: "Direct [1]",
     tab_jump: "Rebond [2]",
-    tab_bastion: "Wallix [3]",
+    tab_wallix: "Wallix [3]",
 
     verbose_title: " Options (v pour basculer) ",
     verbose_label: "Verbose (-v)",
@@ -185,7 +185,7 @@ pub static STRINGS_FR: Strings = Strings {
     label_mode: "Mode:   ",
     label_key: "Clé:    ",
     label_jump: "Rebond: ",
-    label_bastion: "Bastion:",
+    label_wallix: "Wallix:",
     label_options: "Options:",
 
     probe_section: "─── Système ─────────────────────",
@@ -198,7 +198,7 @@ pub static STRINGS_FR: Strings = Strings {
     probe_load: "Charge   ",
     probe_ram: "RAM",
     probe_disk: "Disk /",
-    probe_bastion_error: "Diagnostic non disponible en mode Wallix",
+    probe_wallix_error: "Diagnostic non disponible en mode Wallix",
     probe_disk_extra: "Disk {}",
     probe_fs_absent: "⚠  {} — non monté",
 
@@ -247,7 +247,7 @@ pub static STRINGS_EN: Strings = Strings {
     tab_title: " Connection Mode (Tab to switch) ",
     tab_direct: "Direct [1]",
     tab_jump: "Jump [2]",
-    tab_bastion: "Wallix [3]",
+    tab_wallix: "Wallix [3]",
 
     verbose_title: " Options (v to toggle) ",
     verbose_label: "Verbose (-v)",
@@ -273,7 +273,7 @@ pub static STRINGS_EN: Strings = Strings {
     label_mode: "Mode:   ",
     label_key: "Key:    ",
     label_jump: "Jump:   ",
-    label_bastion: "Wallix:",
+    label_wallix: "Wallix:",
     label_options: "Options:",
 
     probe_section: "─── System ──────────────────────",
@@ -286,7 +286,7 @@ pub static STRINGS_EN: Strings = Strings {
     probe_load: "Load     ",
     probe_ram: "RAM",
     probe_disk: "Disk /",
-    probe_bastion_error: "Probe unavailable in Wallix mode",
+    probe_wallix_error: "Probe unavailable in Wallix mode",
     probe_disk_extra: "Disk {}",
     probe_fs_absent: "⚠  {} — not mounted",
 

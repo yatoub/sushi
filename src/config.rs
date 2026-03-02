@@ -4,7 +4,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-/// Mode de connexion SSH. Remplace les chaînes magiques "direct"/"jump"/"bastion".
+/// Mode de connexion SSH. Remplace les chaînes magiques "direct"/"jump"/"wallix".
 /// Copy car l'enum ne contient aucune donnée — pas besoin de clone explicite.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -12,7 +12,9 @@ pub enum ConnectionMode {
     #[default]
     Direct,
     Jump,
-    Bastion,
+    /// Anciennement `bastion` — `#[serde(alias)]` conservé pour rétrocompatibilité.
+    #[serde(alias = "bastion")]
+    Wallix,
 }
 
 impl fmt::Display for ConnectionMode {
@@ -20,18 +22,18 @@ impl fmt::Display for ConnectionMode {
         match self {
             ConnectionMode::Direct => write!(f, "direct"),
             ConnectionMode::Jump => write!(f, "jump"),
-            ConnectionMode::Bastion => write!(f, "bastion"),
+            ConnectionMode::Wallix => write!(f, "wallix"),
         }
     }
 }
 
 impl ConnectionMode {
-    /// Indice tab (Direct=0, Jump=1, Bastion=2) — utilisé par l'UI Tabs::select().
+    /// Indice tab (Direct=0, Jump=1, Wallix=2) — utilisé par l'UI Tabs::select().
     pub fn index(self) -> usize {
         match self {
             ConnectionMode::Direct => 0,
             ConnectionMode::Jump => 1,
-            ConnectionMode::Bastion => 2,
+            ConnectionMode::Wallix => 2,
         }
     }
 
@@ -39,12 +41,12 @@ impl ConnectionMode {
     pub fn from_index(i: usize) -> Self {
         match i {
             1 => ConnectionMode::Jump,
-            2 => ConnectionMode::Bastion,
+            2 => ConnectionMode::Wallix,
             _ => ConnectionMode::Direct,
         }
     }
 
-    /// Passe au mode suivant en boucle (Direct → Jump → Bastion → Direct).
+    /// Passe au mode suivant en boucle (Direct → Jump → Wallix → Direct).
     pub fn next(self) -> Self {
         Self::from_index((self.index() + 1) % 3)
     }

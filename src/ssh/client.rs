@@ -56,11 +56,11 @@ pub fn build_ssh_args(
             args.push(jump_str.to_string());
             collect_target_args(&mut args, &server.user, &server.host, server.port);
         }
-        ConnectionMode::Bastion => {
+        ConnectionMode::Wallix => {
             let bastion_host_str = server.bastion_host.as_deref().unwrap_or("");
             if bastion_host_str.is_empty() {
                 return Err(anyhow::anyhow!(
-                    "Bastion host not configured for this server"
+                    "Wallix host not configured for this server"
                 ));
             }
             let bastion_user = server.bastion_user.as_deref().unwrap_or("root");
@@ -284,14 +284,14 @@ mod tests {
         assert!(err.to_string().contains("Jump host not configured"));
     }
 
-    // ── mode Bastion ─────────────────────────────────────────────────────────
+    // ── mode Wallix ──────────────────────────────────────────────────────────
 
     #[test]
-    fn bastion_basic() {
+    fn wallix_basic() {
         let mut s = base_server();
         s.bastion_host = Some("bastion.example.com".into());
         s.bastion_user = Some("buser".into());
-        let args = build_ssh_args(&s, ConnectionMode::Bastion, false).unwrap();
+        let args = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap();
         let l_pos = args.iter().position(|a| a == "-l").expect("-l present");
         // template: {target_user}@%n:SSH:{bastion_user}
         assert_eq!(args[l_pos + 1], "admin@10.0.0.1:SSH:buser");
@@ -299,40 +299,40 @@ mod tests {
     }
 
     #[test]
-    fn bastion_with_port() {
+    fn wallix_with_port() {
         let mut s = base_server();
         s.bastion_host = Some("bastion.example.com:8022".into());
         s.bastion_user = Some("buser".into());
-        let args = build_ssh_args(&s, ConnectionMode::Bastion, false).unwrap();
+        let args = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap();
         assert!(args.contains(&"-p".to_string()));
         assert!(args.contains(&"8022".to_string()));
         assert!(args.contains(&"bastion.example.com".to_string()));
     }
 
     #[test]
-    fn bastion_fallback_user() {
+    fn wallix_fallback_user() {
         let mut s = base_server();
         s.bastion_host = Some("bastion.example.com".into());
         s.bastion_user = None; // fallback → "root"
-        let args = build_ssh_args(&s, ConnectionMode::Bastion, false).unwrap();
+        let args = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap();
         let l_pos = args.iter().position(|a| a == "-l").expect("-l present");
         assert!(args[l_pos + 1].ends_with(":SSH:root"));
     }
 
     #[test]
-    fn bastion_missing_host_returns_error() {
+    fn wallix_missing_host_returns_error() {
         let s = base_server(); // bastion_host = None
-        let err = build_ssh_args(&s, ConnectionMode::Bastion, false).unwrap_err();
-        assert!(err.to_string().contains("Bastion host not configured"));
+        let err = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap_err();
+        assert!(err.to_string().contains("Wallix host not configured"));
     }
 
     #[test]
-    fn bastion_custom_template() {
+    fn wallix_custom_template() {
         let mut s = base_server();
         s.bastion_host = Some("bastion.example.com".into());
         s.bastion_user = Some("buser".into());
         s.bastion_template = "{bastion_user}+{target_user}@{target_host}".into();
-        let args = build_ssh_args(&s, ConnectionMode::Bastion, false).unwrap();
+        let args = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap();
         let l_pos = args.iter().position(|a| a == "-l").expect("-l present");
         assert_eq!(args[l_pos + 1], "buser+admin@10.0.0.1");
     }

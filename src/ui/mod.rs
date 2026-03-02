@@ -111,7 +111,7 @@ fn draw_connection_mode_area(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
-    let titles = vec![app.lang.tab_direct, app.lang.tab_jump, app.lang.tab_bastion];
+    let titles = vec![app.lang.tab_direct, app.lang.tab_jump, app.lang.tab_wallix];
     let tabs = Tabs::new(titles)
         .block(
             Block::default()
@@ -473,7 +473,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]));
                 }
 
-                // Bastion host
+                // Wallix host
                 if let Some(bhost) = &server.bastion_host {
                     let bastion_display = match &server.bastion_user {
                         Some(u) => format!("{}@{}", u, bhost),
@@ -481,7 +481,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     };
                     lines.push(Line::from(vec![
                         Span::styled(
-                            app.lang.label_bastion,
+                            app.lang.label_wallix,
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),

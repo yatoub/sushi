@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.9.1] — 2026-03-02
+
+### Changed
+
+- **Rename `ConnectionMode::Bastion` → `ConnectionMode::Wallix`**: the connection mode is now called `wallix` in config files (YAML value). Backward compatibility is preserved via a serde alias — existing configs using `mode: "bastion"` continue to work.
+
+### Removed
+
+- **Example scripts** (`examples/check_mode_inheritance.rs`, `examples/test_search.rs`): removed stale development helpers that required a personal `~/.susshi.yml` to run and were not reproducible as automated tests.
+
+---
+
 ## [0.9.0] — 2026-03-02
 
 ### Added

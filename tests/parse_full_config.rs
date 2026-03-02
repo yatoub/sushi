@@ -41,8 +41,8 @@ mod tests {
             .find(|s| s.name == "internal-nas")
             .expect("internal-nas found");
         assert_eq!(nas.user, "root"); // server override
-        assert_eq!(nas.default_mode, ConnectionMode::Bastion);
-        // Bastion should be inherited from defaults
+        assert_eq!(nas.default_mode, ConnectionMode::Wallix);
+        // Wallix (bastion) config should be inherited from defaults
         assert_eq!(nas.bastion_host.as_deref().unwrap(), "bastion.example.com");
         assert_eq!(nas.bastion_user.as_deref().unwrap(), "bastion");
     }

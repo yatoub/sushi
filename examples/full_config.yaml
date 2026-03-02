@@ -92,7 +92,7 @@ groups:
       - name: "internal-nas"
         host: "192.168.1.200"
         user: "root"
-        mode: "wallix" # Route through a dedicated wallix
+        mode: "wallix" # Route through a dedicated Wallix bastion
   # --- LEVEL 1 example: Single server at root ---
   - name: "Raspberry-Pi-Home"
     host: "raspberrypi.local"

@@ -181,11 +181,11 @@ fn parse_pct_bytes(line: &str, label: &str) -> Result<(u8, f32)> {
 /// puis ajoute le one-liner bash comme commande distante.
 ///
 /// **Modes supportés** : `Direct` et `Jump` uniquement.
-/// Le mode `Bastion` retourne une erreur immédiate car le format de connexion
+/// Le mode `Wallix` retourne une erreur immédiate car le format de connexion
 /// est incompatible avec l'ajout d'une commande distante.
 pub fn probe(server: &ResolvedServer, mode: ConnectionMode) -> Result<ProbeResult> {
-    if mode == ConnectionMode::Bastion {
-        anyhow::bail!("Le diagnostic n'est pas disponible en mode Bastion");
+    if mode == ConnectionMode::Wallix {
+        anyhow::bail!("Le diagnostic n'est pas disponible en mode Wallix");
     }
 
     let mut args = build_ssh_args(server, mode, false)?;

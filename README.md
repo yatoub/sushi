@@ -1,6 +1,6 @@
 # 🍣 susshi
 
-**susshi** is a modern, terminal-based SSH connection manager written in Rust. It helps you organize your servers into groups and environments, handle complex connection scenarios (jumphosts, bastions), and connect quickly with a beautiful TUI with Catppuccin theme.
+**susshi** is a modern, terminal-based SSH connection manager written in Rust. It helps you organize your servers into groups and environments, handle complex connection scenarios (jumphosts, Wallix bastions), and connect quickly with a beautiful TUI with Catppuccin theme.
 
 ## ✨ Features
 
@@ -28,7 +28,7 @@
   - **Mouse Support**: Click to select, double-click to connect.
   - **Configurable Theme**: Choose from four Catppuccin flavors — `latte`, `frappe`, `macchiato`, or `mocha` (default) via `defaults.theme` in your config.
   - **Verbose Mode**: Toggle SSH verbose output with `v`.
-  - **Rich Detail Pane**: Shows port (highlighted when non-standard), connection mode, jump host, bastion host, SSH options, and last connection timestamp.
+  - **Rich Detail Pane**: Shows port (highlighted when non-standard), connection mode, jump host, wallix host, SSH options, and last connection timestamp.
   - **Quick Diagnostic** (`d`): Press `d` on any server to run a non-blocking SSH probe. The detail pane displays a **System** block with kernel version, OS name and version (from `/etc/os-release`), CPU model and logical core count, load average, and color-coded RAM/Disk progress bars (green < 60%, yellow 60–85%, red > 85%). Additional mount points configured via `probe_filesystems` are also shown: each extra path gets its own bar, or a yellow `⚠ /path — not mounted` warning if absent. An animated spinner shows while the probe is running. Press `d` again to refresh; changing server resets it.
   - **Ad-hoc Command** (`x`): Run any non-interactive SSH command on the selected server directly from the TUI. The output (up to 20 lines) is displayed in the detail pane with a colored exit status indicator.
   - **Clipboard**: Copy the SSH command for any server with `y` (requires a running clipboard manager on Linux).
@@ -172,7 +172,7 @@ groups:
       - name: "internal-nas"
         host: "192.168.1.200"
         user: "root"
-        mode: "bastion"
+        mode: "wallix"
 
   # Level 1: Single server at root
   - name: "Raspberry-Pi-Home"
@@ -208,7 +208,7 @@ jump:
   - `mode`: Default connection mode (`direct`, `jump`, or `wallix`).
   - `theme`: UI color theme — `latte`, `frappe`, `macchiato`, or `mocha` (default).
   - `jump`: Jump host chain — a **list** of `{ host, user }` entries. SSH receives `-J user1@host1,user2@host2`. Even a single hop must be written as a list item.
-  - `wallix`: Wallix/bastion configuration (required when using `bastion` mode).
+  - `wallix`: Wallix bastion configuration (required when using `wallix` mode). The YAML key `bastion` is accepted as a backward-compatible alias.
   - `use_system_ssh_config`: Set to `true` to honour `~/.ssh/config` instead of passing `-F /dev/null`. Defaults to `false`.
   - `probe_filesystems`: List of extra mount points to inspect during the quick diagnostic (`d`). Uses **additive inheritance**: each level appends its paths to the parent list (unlike `user` or `ssh_key` which replace). If a path is not mounted on the target server a yellow `⚠` warning is shown instead of a progress bar.
   - `keep_open`: Set to `true` to reopen the TUI automatically after a connection closes. Defaults to `false` (historical behaviour: susshi exits after connecting).
@@ -263,7 +263,7 @@ susshi --direct admin@10.0.1.5:2222
 # Connect via jump host
 susshi --jump root@192.168.1.50
 
-# Connect via bastion
+# Connect via Wallix bastion
 susshi --wallix web-01.prod.example.com
 
 # Override SSH parameters
@@ -291,7 +291,7 @@ defaults:
 - **Sapphire**: Active search border
 - **Green**: Successful search results, verbose mode active, environment headers
 - **Red**: No search results, error overlay border
-- **Sky**: Active connection mode tab, jump / bastion host in detail pane
+- **Sky**: Active connection mode tab, jump / wallix host in detail pane
 - **Yellow**: Port number when different from 22
 - **Lavender**: Namespace headers (📦 included files)
 - **Mauve**: Group headers
@@ -302,7 +302,7 @@ defaults:
 - **Search Bar**: Dynamic title showing result count ("🔍 45 / 387 servers")
 - **Connection Modes**: Tab interface with visual highlight
 - **Verbose Toggle**: Checkbox indicator (☐/☑) with color feedback
-  - **Detail Pane**: Port, mode, identity file, jump/bastion host, SSH options, last connection time, **ad-hoc command output** (when active), and **System** block (kernel, CPU, load, RAM/Disk bars, plus extra mount points) after running `d`
+  - **Detail Pane**: Port, mode, identity file, jump/wallix host, SSH options, last connection time, **ad-hoc command output** (when active), and **System** block (kernel, CPU, load, RAM/Disk bars, plus extra mount points) after running `d`
 - **Error Overlay**: Centered popup for connection errors — press `Enter` to dismiss
 
 ## 🤝 Contributing

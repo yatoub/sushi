@@ -37,7 +37,7 @@ struct Cli {
     #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "wallix"])]
     jump: Option<String>,
 
-    /// Connexion via bastion sans TUI : [user@]host[:port]
+    /// Connexion via wallix sans TUI : [user@]host[:port]
     #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "jump"])]
     wallix: Option<String>,
 
@@ -206,7 +206,7 @@ fn main() -> io::Result<()> {
         .or_else(|| {
             cli.wallix
                 .as_deref()
-                .map(|t| (ConnectionMode::Bastion, t.to_string()))
+                .map(|t| (ConnectionMode::Wallix, t.to_string()))
         });
 
     if let Some((mode, target)) = cli_mode_target {
@@ -395,7 +395,7 @@ fn run_app(
                                 app.connection_mode = ConnectionMode::Jump;
                             }
                             KeyCode::Char('3') => {
-                                app.connection_mode = ConnectionMode::Bastion;
+                                app.connection_mode = ConnectionMode::Wallix;
                             }
                             KeyCode::Char('v') => {
                                 app.verbose_mode = !app.verbose_mode;
@@ -490,9 +490,9 @@ fn run_app(
                                 {
                                     let server_clone = (**server).clone();
                                     let mode = app.connection_mode;
-                                    if mode == ConnectionMode::Bastion {
+                                    if mode == ConnectionMode::Wallix {
                                         app.set_status_message(
-                                            app.lang.probe_bastion_error.to_string(),
+                                            app.lang.probe_wallix_error.to_string(),
                                         );
                                     } else {
                                         let (tx, rx) = std::sync::mpsc::channel();

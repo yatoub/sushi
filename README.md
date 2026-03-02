@@ -38,6 +38,7 @@
 - **Connection History**: The last connection timestamp for each server is stored in `~/.susshi_state.json` and displayed in the detail pane (e.g., "il y a 2 h" / "2 h ago").
 - **YAML Validation**: Unknown fields in any config file are detected and reported as non-blocking `ValidationWarning` entries at startup.
 - **State Persistence**: Expanded groups, favorites, last-seen timestamps, and sort mode are saved to `~/.susshi_state.json` and restored on next launch.
+- **Keep-Open Mode**: Set `keep_open: true` in `defaults` to automatically reopen the TUI after a connection closes — no need to relaunch susshi to switch to another server.
 - **In-TUI Error Screen**: Connection errors are displayed as an overlay instead of crashing — press `Enter`/`Esc`/`q` to dismiss.
 - **Smart Sorting**: Automatically sorts groups and servers alphabetically.
 
@@ -105,6 +106,8 @@ defaults:
     - "UserKnownHostsFile=/dev/null"
   # Set to true to honour ~/.ssh/config (ControlMaster, aliases, etc.)
   use_system_ssh_config: false
+  # Set to true to reopen the TUI after each connection closes
+  keep_open: false
   jump:
     - host: "jump.example.com"
       user: "jump"
@@ -187,6 +190,7 @@ jump:
   - `wallix`: Wallix/bastion configuration (required when using `bastion` mode).
   - `use_system_ssh_config`: Set to `true` to honour `~/.ssh/config` instead of passing `-F /dev/null`. Defaults to `false`.
   - `probe_filesystems`: List of extra mount points to inspect during the quick diagnostic (`d`). Uses **additive inheritance**: each level appends its paths to the parent list (unlike `user` or `ssh_key` which replace). If a path is not mounted on the target server a yellow `⚠` warning is shown instead of a progress bar.
+  - `keep_open`: Set to `true` to reopen the TUI automatically after a connection closes. Defaults to `false` (historical behaviour: susshi exits after connecting).
 - **`groups`**: The top-level hierarchy. Can contain `environments` or direct `servers`.
   - Can override any default setting including `mode`.
 - **`environments`**: A sub-grouping under a Group.

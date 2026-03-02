@@ -219,37 +219,51 @@ fn main() -> io::Result<()> {
     }
 
     // ── Mode TUI normal ─────────────────────────────────────────────────────
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
     let mut app = App::new(config, warnings, config_path.to_path_buf(), val_warnings)
         .map_err(io::Error::other)?;
 
-    let res = run_app(&mut terminal, &mut app);
+    loop {
+        enable_raw_mode()?;
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+        let backend = CrosstermBackend::new(stdout);
+        let mut terminal = Terminal::new(backend)?;
 
-    // Persiste l'état d'expansion avant de quitter la TUI
-    state::save_state(&app.to_app_state());
+        let res = run_app(&mut terminal, &mut app);
 
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
-    terminal.show_cursor()?;
+        // Persiste l'état avant de quitter la TUI
+        state::save_state(&app.to_app_state());
 
-    match res {
-        Ok(AppResult::Exit) => {}
-        Ok(AppResult::Connect(server, mode, verbose)) => {
-            if let Err(e) = susshi::ssh::client::connect(&server, mode, verbose) {
-                eprintln!("SSH Connection Error: {}", e);
+        disable_raw_mode()?;
+        execute!(
+            terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )?;
+        terminal.show_cursor()?;
+
+        match res {
+            Ok(AppResult::Exit) => break,
+            Ok(AppResult::Connect(server, mode, verbose)) => {
+                if app.keep_open {
+                    // Connexion bloquante : SSH tourne comme sous-processus,
+                    // la TUI redémarre automatiquement après la déconnexion.
+                    if let Err(e) = susshi::ssh::client::connect_blocking(&server, mode, verbose) {
+                        eprintln!("SSH Connection Error: {}", e);
+                    }
+                    // Boucle → ré-ouvre la TUI
+                } else {
+                    // Comportement historique : exec() remplace le processus.
+                    if let Err(e) = susshi::ssh::client::connect(&server, mode, verbose) {
+                        eprintln!("SSH Connection Error: {}", e);
+                    }
+                    break;
+                }
             }
-        }
-        Err(err) => {
-            eprintln!("Application Error: {:?}", err);
+            Err(err) => {
+                eprintln!("Application Error: {:?}", err);
+                break;
+            }
         }
     }
 

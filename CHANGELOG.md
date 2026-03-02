@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.9.0] — 2026-03-02
+
+### Added
+
+- **Keep-open mode** (`keep_open`): set `defaults.keep_open: true` in your config to automatically reopen the TUI after a connection closes, allowing you to quickly switch to another server without relaunching susshi. Defaults to `false` (historical behaviour: the process exits after connecting via `exec`). Closes #9.
+
+---
+
 ## [0.8.6] — 2026-03-02
 
 ### Fixed

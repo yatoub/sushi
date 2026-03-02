@@ -115,6 +115,9 @@ pub struct App {
 
     /// Avertissements de validation YAML (champs inconnus).
     pub validation_warnings: Vec<ValidationWarning>,
+
+    /// Si true, la TUI se rouvre après la fermeture de la connexion SSH.
+    pub keep_open: bool,
 }
 
 impl App {
@@ -132,6 +135,12 @@ impl App {
             .as_ref()
             .and_then(|d| d.theme)
             .unwrap_or(ThemeVariant::Mocha);
+
+        let keep_open = config
+            .defaults
+            .as_ref()
+            .and_then(|d| d.keep_open)
+            .unwrap_or(false);
 
         let mut app = Self {
             config,
@@ -161,6 +170,7 @@ impl App {
             cmd_state: CmdState::Idle,
             cmd_rx: None,
             validation_warnings,
+            keep_open,
         };
 
         app.list_state.select(Some(0));
@@ -773,6 +783,12 @@ impl App {
         let old_idx = self.selected_index;
 
         self.config = new_config;
+        self.keep_open = self
+            .config
+            .defaults
+            .as_ref()
+            .and_then(|d| d.keep_open)
+            .unwrap_or(false);
         self.resolved_servers = resolved;
         self.warnings = new_warnings;
         self.validation_warnings = new_val_warnings;

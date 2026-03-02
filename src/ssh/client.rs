@@ -94,6 +94,22 @@ pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> 
     Err(anyhow::Error::new(err).context("Failed to exec ssh command"))
 }
 
+/// Lance la connexion SSH dans un sous-processus bloquant (sans `exec`).
+/// Contrairement à [`connect`], retourne après la fin de la session SSH —
+/// utilisé quand `keep_open` est actif pour revenir à la TUI ensuite.
+pub fn connect_blocking(
+    server: &ResolvedServer,
+    mode: ConnectionMode,
+    verbose: bool,
+) -> Result<()> {
+    let args = build_ssh_args(server, mode, verbose)?;
+    Command::new("ssh")
+        .args(&args)
+        .status()
+        .map(|_| ())
+        .map_err(|e| anyhow::Error::new(e).context("Failed to spawn ssh command"))
+}
+
 // ─── helpers privés ──────────────────────────────────────────────────────────
 
 fn collect_target_args(args: &mut Vec<String>, user: &str, host_str: &str, server_port: u16) {

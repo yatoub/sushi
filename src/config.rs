@@ -174,6 +174,9 @@ pub struct Defaults {
     pub theme: Option<ThemeVariant>,
     /// Points de montage supplémentaires à interroger lors d'un probe.
     pub probe_filesystems: Option<Vec<String>>,
+    /// Si `true`, la TUI se rouvre automatiquement après la fermeture d'une connexion SSH.
+    /// Défaut : `false` (comportement historique : quitte l'application).
+    pub keep_open: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -661,6 +664,7 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
             .probe_filesystems
             .clone()
             .or_else(|| base.probe_filesystems.clone()),
+        keep_open: overrides.keep_open.or(base.keep_open),
     }
 }
 
@@ -699,6 +703,7 @@ pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
                     "use_system_ssh_config",
                     "theme",
                     "probe_filesystems",
+                    "keep_open",
                 ],
                 file_path,
                 "defaults",
@@ -1624,5 +1629,63 @@ groups: []
         let ns_srv = resolved.iter().find(|s| s.name == "ns_srv").unwrap();
         assert_eq!(ns_srv.namespace, "CRT");
         assert_eq!(ns_srv.group_name, "NS_G");
+    }
+
+    // ─── Tests keep_open ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_keep_open_absent_defaults_to_none() {
+        let yaml = r#"
+groups: []
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.defaults.is_none() || config.defaults.unwrap().keep_open.is_none());
+    }
+
+    #[test]
+    fn test_keep_open_true_parsed() {
+        let yaml = r#"
+defaults:
+  keep_open: true
+groups: []
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        let keep_open = config
+            .defaults
+            .as_ref()
+            .and_then(|d| d.keep_open)
+            .unwrap_or(false);
+        assert!(keep_open);
+    }
+
+    #[test]
+    fn test_keep_open_false_parsed() {
+        let yaml = r#"
+defaults:
+  keep_open: false
+groups: []
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        let keep_open = config
+            .defaults
+            .as_ref()
+            .and_then(|d| d.keep_open)
+            .unwrap_or(true); // on passe true pour détecter si false est bien parsé
+        assert!(!keep_open);
+    }
+
+    #[test]
+    fn test_keep_open_no_validation_warning() {
+        let yaml = r#"
+defaults:
+  keep_open: true
+groups: []
+"#;
+        let warnings = validate_yaml(yaml, "test.yaml");
+        assert!(
+            warnings.is_empty(),
+            "keep_open should not produce a ValidationWarning, got: {:?}",
+            warnings
+        );
     }
 }

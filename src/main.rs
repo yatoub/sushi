@@ -78,6 +78,18 @@ struct Cli {
     /// Afficher le résultat sans écrire de fichier (pour --import-ssh-config).
     #[arg(long, requires = "import_ssh_config")]
     dry_run: bool,
+
+    /// Exporter la configuration vers un format externe : "ansible".
+    #[arg(long, value_name = "FORMAT", conflicts_with_all = ["validate", "direct", "jump", "wallix", "import_ssh_config"])]
+    export: Option<String>,
+
+    /// Fichier de sortie pour --export (défaut : stdout).
+    #[arg(long = "export-output", value_name = "FILE", requires = "export")]
+    export_output: Option<String>,
+
+    /// Filtre pour --export : texte et/ou #tag (même syntaxe que la recherche TUI).
+    #[arg(long = "export-filter", value_name = "QUERY", requires = "export")]
+    export_filter: Option<String>,
 }
 
 // ─── Config par défaut ───────────────────────────────────────────────────────
@@ -231,6 +243,52 @@ fn run_import_ssh_config(cli: &Cli) {
     process::exit(0);
 }
 
+/// Exporte la configuration susshi vers un inventaire au format `format`.
+///
+/// Actuellement, seul `"ansible"` est supporté.
+fn run_export(cli: &Cli, config: &Config) {
+    use susshi::export::ansible;
+
+    let format = cli.export.as_deref().unwrap_or("");
+    if format != "ansible" {
+        eprintln!("Format d'export inconnu : {format}. Formats supportés : ansible");
+        process::exit(1);
+    }
+
+    let servers = match config.resolve() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Erreur lors de la résolution de la configuration : {e}");
+            process::exit(1);
+        }
+    };
+
+    let filter = cli.export_filter.as_deref().unwrap_or("");
+    let filtered = ansible::filter_servers(&servers, filter);
+
+    if filtered.is_empty() {
+        eprintln!("Aucun serveur ne correspond au filtre {:?}.", filter);
+        process::exit(1);
+    }
+
+    let yaml = ansible::to_ansible_yaml(&filtered);
+
+    match &cli.export_output {
+        Some(path) => {
+            if let Err(e) = std::fs::write(path, &yaml) {
+                eprintln!("Erreur écriture {path} : {e}");
+                process::exit(1);
+            }
+            eprintln!("{} serveur(s) exporté(s) → {path}", filtered.len());
+        }
+        None => {
+            print!("{yaml}");
+            eprintln!("{} serveur(s) exporté(s).", filtered.len());
+        }
+    }
+    process::exit(0);
+}
+
 /// Décompose `[user@]host[:port]` en ses parties.
 fn parse_target(s: &str) -> (Option<String>, String, Option<u16>) {
     let (user, rest) = if let Some((u, r)) = s.split_once('@') {
@@ -362,6 +420,11 @@ fn main() -> io::Result<()> {
         };
 
     // ── Connexion directe sans TUI ──────────────────────────────────────────
+    if cli.export.is_some() {
+        run_export(&cli, &config);
+        // run_export appelle process::exit()
+    }
+
     let cli_mode_target: Option<(ConnectionMode, String)> = cli
         .direct
         .as_deref()

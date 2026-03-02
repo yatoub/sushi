@@ -11,7 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.8.0] — 2026-03-01
+## [0.8.1] — 2026-03-02
+
+### Fixed
+
+- **Include inheritance**: servers in included files now automatically inherit the main file's `defaults` (user, ssh port, jump host, wallix, probe filesystems, etc.). Previously, inheritance only worked when `merge_defaults: true` was explicitly set on the include entry. The sub-file's own `defaults` still take precedence field-by-field.
+- **Test isolation**: `test_namespace_visibility_collapsed` and `test_namespace_expansion` now reset `expanded_items` after `App::new` to avoid interference from a real `~/.sushi_state.json` on the developer machine.
+- **i18n test race condition**: `with_env()` now correctly uses a `Mutex` (as its comment always claimed) to prevent concurrent environment variable mutation across parallel tests.
 
 ### Added
 

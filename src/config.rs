@@ -1506,10 +1506,7 @@ groups: []
         // Les defaults du principal doivent être hérités sans merge_defaults: true
         assert_eq!(sub_srv.user, "main_user");
         assert_eq!(sub_srv.port, 2222);
-        assert_eq!(
-            sub_srv.jump_host.as_deref(),
-            Some("juser@jump.example.com")
-        );
+        assert_eq!(sub_srv.jump_host.as_deref(), Some("juser@jump.example.com"));
     }
 
     #[test]

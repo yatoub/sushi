@@ -370,6 +370,10 @@ mod tests {
     /// Exécute `f` après avoir positionné les variables d'env, puis les restaure.
     /// Utilise un mutex pour éviter la concurrence entre tests.
     fn with_env<F: FnOnce()>(vars: &[(&str, Option<&str>)], f: F) {
+        use std::sync::Mutex;
+        static ENV_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
         // On retire d'abord toutes les variables pertinentes pour éviter les
         // interférences avec d'éventuelles valeurs déjà définies dans l'env de test.
         let saved: Vec<(&str, Option<String>)> =

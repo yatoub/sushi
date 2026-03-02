@@ -11,11 +11,12 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
-use susshi::app::{App, AppMode, CmdState, ConfigItem};
+use susshi::app::{App, AppMode, CmdState, ConfigItem, ScpState, TunnelOverlayState};
 use susshi::config::{Config, ConnectionMode, ResolvedServer};
 use susshi::handlers::{get_layout, handle_mouse_event, is_in_rect};
 use susshi::probe::ProbeState;
 use susshi::ssh::client::build_ssh_args;
+use susshi::ssh::scp::ScpDirection;
 use susshi::state;
 use susshi::ui;
 
@@ -162,6 +163,7 @@ fn build_adhoc_server(
         bastion_template,
         use_system_ssh_config: d.use_system_ssh_config.unwrap_or(false),
         probe_filesystems: vec![],
+        tunnels: vec![],
     }
 }
 
@@ -311,6 +313,12 @@ fn run_app(
         // Lit le résultat de la commande ad-hoc si un thread tourne
         app.poll_cmd();
 
+        // Sonde l'état des tunnels SSH actifs (détecte les fins inopinées)
+        app.poll_tunnel_events();
+
+        // Sonde les évènements du transfert SCP en cours
+        app.poll_scp_events();
+
         if event::poll(Duration::from_millis(250))? {
             match event::read()? {
                 Event::Key(key) => {
@@ -347,6 +355,61 @@ fn run_app(
                                     buf.pop();
                                 }
                             }
+                            _ => {}
+                        }
+                    } else if matches!(app.scp_state, ScpState::SelectingDirection) {
+                        // Sélection de la direction SCP
+                        match key.code {
+                            KeyCode::Up | KeyCode::Char('u') | KeyCode::Char('U') => {
+                                app.scp_select_direction(ScpDirection::Upload);
+                            }
+                            KeyCode::Down | KeyCode::Char('d') | KeyCode::Char('D') => {
+                                app.scp_select_direction(ScpDirection::Download);
+                            }
+                            KeyCode::Esc | KeyCode::Char('q') => {
+                                app.close_scp_overlay();
+                            }
+                            _ => {}
+                        }
+                    } else if matches!(app.scp_state, ScpState::FillingForm { .. }) {
+                        // Formulaire SCP
+                        match key.code {
+                            KeyCode::Char(c) => app.scp_form_char(c),
+                            KeyCode::Backspace => app.scp_form_backspace(),
+                            KeyCode::Tab | KeyCode::BackTab => app.scp_form_next_field(),
+                            KeyCode::Enter => app.scp_form_submit(),
+                            KeyCode::Esc => app.close_scp_overlay(),
+                            _ => {}
+                        }
+                    } else if matches!(app.scp_state, ScpState::Done { .. } | ScpState::Error(_)) {
+                        // Résultat SCP — n'importe quelle touche ferme
+                        match key.code {
+                            KeyCode::Enter | KeyCode::Esc | KeyCode::Char('q') => {
+                                app.dismiss_scp_result();
+                            }
+                            _ => {}
+                        }
+                    } else if matches!(&app.tunnel_overlay, Some(TunnelOverlayState::Form(_))) {
+                        // Mode formulaire d'édition / création de tunnel
+                        match key.code {
+                            KeyCode::Char(c) => app.tunnel_form_char(c),
+                            KeyCode::Backspace => app.tunnel_form_backspace(),
+                            KeyCode::Tab => app.tunnel_form_next_field(),
+                            KeyCode::BackTab => app.tunnel_form_prev_field(),
+                            KeyCode::Enter => app.tunnel_form_submit(),
+                            KeyCode::Esc => app.tunnel_form_cancel(),
+                            _ => {}
+                        }
+                    } else if matches!(&app.tunnel_overlay, Some(TunnelOverlayState::List { .. })) {
+                        // Mode liste de tunnels
+                        match key.code {
+                            KeyCode::Down | KeyCode::Char('j') => app.tunnel_overlay_next(),
+                            KeyCode::Up | KeyCode::Char('k') => app.tunnel_overlay_previous(),
+                            KeyCode::Enter => app.tunnel_overlay_toggle(),
+                            KeyCode::Delete => app.tunnel_overlay_delete(),
+                            KeyCode::Char('e') => app.open_tunnel_form_edit(),
+                            KeyCode::Char('a') => app.open_tunnel_form_add(),
+                            KeyCode::Char('q') | KeyCode::Esc => app.close_tunnel_overlay(),
                             _ => {}
                         }
                     } else if app.is_searching {
@@ -473,6 +536,26 @@ fn run_app(
                                     Some(ConfigItem::Server(_))
                                 ) {
                                     app.cmd_state = CmdState::Prompting(String::new());
+                                }
+                            }
+                            KeyCode::Char('T') => {
+                                // Ouvre l'overlay des tunnels SSH pour le serveur sélectionné
+                                let items = app.get_visible_items();
+                                if matches!(
+                                    items.get(app.selected_index),
+                                    Some(ConfigItem::Server(_))
+                                ) {
+                                    app.open_tunnel_overlay();
+                                }
+                            }
+                            KeyCode::Char('s') => {
+                                // Ouvre le transfert SCP pour le serveur sélectionné
+                                let items = app.get_visible_items();
+                                if matches!(
+                                    items.get(app.selected_index),
+                                    Some(ConfigItem::Server(_))
+                                ) {
+                                    app.open_scp_select_direction();
                                 }
                             }
                             KeyCode::Esc

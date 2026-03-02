@@ -11,6 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.10.0] — 2026-05-26
+
+### Added
+
+- **SSH Tunnels** (`T`): manage local SSH port-forwarding tunnels directly from the TUI.
+  - Define reusable tunnels per server in the config (`tunnels:` list with `label`, `local_port`, `remote_host`, `remote_port`).
+  - Press `T` to open the tunnel overlay for the selected server: start, stop, edit and delete tunnels interactively.
+  - Per-server tunnel overrides (add/edit/delete) are persisted in `~/.susshi_state.json` and restored across sessions.
+  - Active tunnels are tracked and displayed with a live `[KEY]` status badge in the status bar.
+  - All tunnels are stopped cleanly on application exit.
+- **SCP file transfer** (`s`): transfer files to/from the selected server without leaving the TUI.
+  - Press `s` to open the SCP form: choose upload or download, fill in local and remote paths, then confirm to start.
+  - Real-time progress display via a dedicated PTY (`setsid` + `TIOCSCTTY`) — percentage updates stream from OpenSSH as the transfer runs.
+  - The running SCP child process is terminated cleanly if the application exits mid-transfer.
+- **i18n**: all new tunnel and SCP UI strings are fully translated in French and English. Language is auto-detected from `LANG`/`LC_ALL`/`LC_MESSAGES`.
+
+---
+
 ## [0.9.1] — 2026-03-02
 
 ### Changed

@@ -40,6 +40,8 @@
 - **YAML Validation**: Unknown fields in any config file are detected and reported as non-blocking `ValidationWarning` entries at startup.
 - **State Persistence**: Expanded groups, favorites, last-seen timestamps, and sort mode are saved to `~/.susshi_state.json` and restored on next launch.
 - **Keep-Open Mode**: Set `keep_open: true` in `defaults` to automatically reopen the TUI after a connection closes — no need to relaunch susshi to switch to another server.
+- **SSH Tunnels** (`T`): Press `T` to open the tunnel overlay for the selected server. Start, stop, add, edit, and delete local SSH port-forwarding tunnels interactively. Tunnels can be predefined in the config (`tunnels:` key) or created on the fly as user overrides — both are persisted across sessions. Active tunnels are shown with live `[KEY]` status badges in the status bar.
+- **SCP File Transfer** (`s`): Press `s` to open the SCP form. Choose upload or download, fill in the local and remote paths, and watch real-time transfer progress directly in the TUI. The transfer runs via a PTY so OpenSSH streams percentage updates live.
 - **In-TUI Error Screen**: Connection errors are displayed as an overlay instead of crashing — press `Enter`/`Esc`/`q` to dismiss.
 - **Smart Sorting**: Automatically sorts groups and servers alphabetically.
 
@@ -219,6 +221,12 @@ jump:
 - **`servers`**: The actual connection endpoints.
   - Inherits all settings through the chain: defaults → group → environment → server.
   - `mode`: Connection mode inherits but can be overridden at server level.
+  - `tunnels` *(optional)*: List of predefined local SSH port-forwarding tunnels for this server. Each entry has:
+    - `label`: a short display name (e.g. `"PostgreSQL"`).
+    - `local_port`: local TCP port to listen on.
+    - `remote_host`: destination host reached through the tunnel (e.g. `"127.0.0.1"`).
+    - `remote_port`: destination port (e.g. `5432`).
+  - Tunnels can also be added, edited, or deleted interactively from the TUI — user overrides are stored in `~/.susshi_state.json`.
 
 ## ⌨️ Keybindings
 
@@ -244,6 +252,8 @@ jump:
 | `C` | Collapse all expanded groups / environments / namespaces |
 | `H` | Toggle recent-sort (flat list sorted by last connection) |
 | `x` | Run ad-hoc SSH command on selected server |
+| `T` | Open SSH tunnel manager for selected server |
+| `s` | Open SCP file transfer form for selected server |
 | `Esc` | Cancel search / close ad-hoc prompt / dismiss error overlay |
 
 ### Mouse Support

@@ -58,6 +58,24 @@ defaults:
     - "/var/log"
     - "/data"
 
+  # ─── SSH TUNNELS (optional) ───────────────────────────────────────────────
+  # Pre-configured SSH local-port-forwarding tunnels for a server.
+  # Press `T` in the TUI to open the tunnel manager and start/stop each tunnel.
+  #
+  # Semantics: REPLACE — a tunnels list defined at a lower level (group,
+  # environment, server) fully replaces the one inherited from above.
+  #
+  # Restriction: tunnels are NOT available in `wallix` mode (the bastion
+  # does not allow arbitrary port forwarding).
+  #
+  # Each entry produces: ssh -L local_port:remote_host:remote_port -N ...
+  #
+  # tunnels:
+  #   - local_port: 5432        # Port bound on localhost
+  #     remote_host: 127.0.0.1  # Host as seen from the remote server
+  #     remote_port: 5432       # Port on the remote side
+  #     label: "PostgreSQL"     # Optional — shown in the TUI tunnel list
+
 groups:
   # --- LEVEL 3 example: Group → Environment → Server ---
   - name: "Projet Alpha"
@@ -78,6 +96,17 @@ groups:
             # Appends /pg_data at server level: monitors /var/log, /data, /app_data AND /pg_data.
             probe_filesystems:
               - "/pg_data"
+            # SSH tunnels — press `T` in the TUI to start/stop them individually.
+            # Not available in wallix mode.
+            tunnels:
+              - local_port: 5432
+                remote_host: 127.0.0.1
+                remote_port: 5432
+                label: "PostgreSQL"
+              - local_port: 6379
+                remote_host: 127.0.0.1
+                remote_port: 6379
+                label: "Redis"
       - name: "Staging"
         servers:
           - name: "web-stg"

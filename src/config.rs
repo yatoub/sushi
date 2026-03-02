@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -179,6 +179,10 @@ pub struct Defaults {
     /// Si `true`, la TUI se rouvre automatiquement après la fermeture d'une connexion SSH.
     /// Défaut : `false` (comportement historique : quitte l'application).
     pub keep_open: Option<bool>,
+    /// Tunnels SSH préconfigurés (local-port-forwarding).
+    /// Sémantique : REPLACE — un niveau enfant remplace entièrement la liste parente.
+    /// Non disponible en mode Wallix.
+    pub tunnels: Option<Vec<TunnelConfig>>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -194,6 +198,20 @@ pub struct JumpConfig {
     pub user: Option<String>,
 }
 
+/// Configuration d'un tunnel SSH local-port-forwarding.
+/// Chaque entrée produit : `ssh -L local_port:remote_host:remote_port -N`
+///
+/// Non disponible en mode Wallix.
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
+pub struct TunnelConfig {
+    pub local_port: u16,
+    pub remote_host: String,
+    pub remote_port: u16,
+    /// Label affiché dans l'UI (optionnel — auto-généré si absent).
+    #[serde(default)]
+    pub label: String,
+}
+
 #[derive(Debug, Deserialize, Clone)]
 pub struct Group {
     pub name: String,
@@ -207,6 +225,7 @@ pub struct Group {
     pub environments: Option<Vec<Environment>>,
     pub servers: Option<Vec<Server>>,
     pub probe_filesystems: Option<Vec<String>>,
+    pub tunnels: Option<Vec<TunnelConfig>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -221,6 +240,7 @@ pub struct Environment {
     pub jump: Option<Vec<JumpConfig>>,
     pub servers: Vec<Server>,
     pub probe_filesystems: Option<Vec<String>>,
+    pub tunnels: Option<Vec<TunnelConfig>>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -235,6 +255,7 @@ pub struct Server {
     pub wallix: Option<BastionConfig>,
     pub jump: Option<Vec<JumpConfig>>,
     pub probe_filesystems: Option<Vec<String>>,
+    pub tunnels: Option<Vec<TunnelConfig>>,
 }
 
 #[derive(Debug, Clone)]
@@ -260,6 +281,8 @@ pub struct ResolvedServer {
     pub use_system_ssh_config: bool,
     /// Points de montage à interroger lors d'un probe (hérités en cascade).
     pub probe_filesystems: Vec<String>,
+    /// Tunnels SSH préconfigurés (fusion REPLACE depuis la hiérarchie config + overrides state).
+    pub tunnels: Vec<TunnelConfig>,
 }
 
 impl Config {
@@ -505,6 +528,7 @@ fn resolve_entries(
 
                 let g_bastion = merge_bastion(&d.wallix, &group.wallix);
                 let g_jump = merge_jump(&d.jump, &group.jump);
+                let g_tunnels = replace_tunnels(&d.tunnels, &group.tunnels);
 
                 if let Some(envs) = &group.environments {
                     for env in envs {
@@ -525,6 +549,7 @@ fn resolve_entries(
 
                         let e_bastion = merge_bastion(&g_bastion, &env.wallix);
                         let e_jump = merge_jump(&g_jump, &env.jump);
+                        let e_tunnels = replace_tunnels(&g_tunnels, &env.tunnels);
 
                         for server in &env.servers {
                             let r = resolve_server(
@@ -540,6 +565,7 @@ fn resolve_entries(
                                 &e_jump,
                                 use_sys_cfg,
                                 e_fs.clone(),
+                                e_tunnels.as_ref(),
                                 namespace,
                             )?;
                             resolved.push(r);
@@ -562,6 +588,7 @@ fn resolve_entries(
                             &g_jump,
                             use_sys_cfg,
                             g_fs.clone(),
+                            g_tunnels.as_ref(),
                             namespace,
                         )?;
                         resolved.push(r);
@@ -583,6 +610,7 @@ fn resolve_entries(
                     &d.jump,
                     use_sys_cfg,
                     d.probe_filesystems.clone(),
+                    d.tunnels.as_ref(),
                     namespace,
                 )?;
                 resolved.push(r);
@@ -617,6 +645,15 @@ fn merge_jump(
     parent: &Option<Vec<JumpConfig>>,
     child: &Option<Vec<JumpConfig>>,
 ) -> Option<Vec<JumpConfig>> {
+    child.clone().or_else(|| parent.clone())
+}
+
+/// Même sémantique que `merge_jump` : le niveau enfant remplace la liste parente en entier.
+/// Contrairement à `extend_filesystems`, les tunnels ne s'accumulent pas.
+fn replace_tunnels(
+    parent: &Option<Vec<TunnelConfig>>,
+    child: &Option<Vec<TunnelConfig>>,
+) -> Option<Vec<TunnelConfig>> {
     child.clone().or_else(|| parent.clone())
 }
 
@@ -667,6 +704,7 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
             .clone()
             .or_else(|| base.probe_filesystems.clone()),
         keep_open: overrides.keep_open.or(base.keep_open),
+        tunnels: overrides.tunnels.clone().or_else(|| base.tunnels.clone()),
     }
 }
 
@@ -706,6 +744,7 @@ pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
                     "theme",
                     "probe_filesystems",
                     "keep_open",
+                    "tunnels",
                 ],
                 file_path,
                 "defaults",
@@ -764,6 +803,7 @@ fn yaml_validate_entry(
                 "wallix",
                 "jump",
                 "probe_filesystems",
+                "tunnels",
             ],
             file,
             ctx,
@@ -785,6 +825,7 @@ fn yaml_validate_entry(
                 "environments",
                 "servers",
                 "probe_filesystems",
+                "tunnels",
             ],
             file,
             ctx,
@@ -809,6 +850,7 @@ fn yaml_validate_entry(
                             "jump",
                             "servers",
                             "probe_filesystems",
+                            "tunnels",
                         ],
                         file,
                         &format!("{ctx}.environments[{i}]"),
@@ -887,6 +929,7 @@ fn resolve_server(
     def_jump: &Option<Vec<JumpConfig>>,
     use_system_ssh_config: bool,
     def_fs: Option<Vec<String>>,
+    def_tunnels: Option<&Vec<TunnelConfig>>,
     namespace: &str,
 ) -> Result<ResolvedServer, ConfigError> {
     let user = s.user.as_deref().or(def_user).unwrap_or("root").to_string();
@@ -906,6 +949,13 @@ fn resolve_server(
 
     let probe_filesystems =
         extend_filesystems(def_fs.as_ref(), s.probe_filesystems.as_ref()).unwrap_or_default();
+
+    let tunnels = s
+        .tunnels
+        .as_ref()
+        .or(def_tunnels)
+        .cloned()
+        .unwrap_or_default();
 
     let final_bastion = merge_bastion(def_bastion, &s.wallix);
     let final_jump = merge_jump(def_jump, &s.jump);
@@ -946,6 +996,7 @@ fn resolve_server(
         bastion_template,
         use_system_ssh_config,
         probe_filesystems,
+        tunnels,
     })
 }
 
@@ -992,6 +1043,7 @@ mod tests {
                     environments: None,
                     servers: None,
                     probe_filesystems: None,
+                    tunnels: None,
                 }),
                 ConfigEntry::Server(Server {
                     name: "Alpha".to_string(),
@@ -1004,6 +1056,7 @@ mod tests {
                     wallix: None,
                     jump: None,
                     probe_filesystems: None,
+                    tunnels: None,
                 }),
                 ConfigEntry::Group(Group {
                     name: "Beta".to_string(),
@@ -1017,6 +1070,7 @@ mod tests {
                     environments: None,
                     servers: None,
                     probe_filesystems: None,
+                    tunnels: None,
                 }),
             ],
             includes: vec![],
@@ -1067,6 +1121,7 @@ mod tests {
                     wallix: None,
                     jump: None,
                     probe_filesystems: None,
+                    tunnels: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
                         host: "1.1.1.1".to_string(),
@@ -1078,9 +1133,11 @@ mod tests {
                         wallix: None,
                         jump: None,
                         probe_filesystems: None,
+                        tunnels: None,
                     }],
                 }]),
                 servers: None,
+                tunnels: None,
             })],
             includes: vec![],
         };
@@ -1111,6 +1168,7 @@ mod tests {
                 jump: None,
                 probe_filesystems: None, // hérite des defaults
                 environments: None,
+                tunnels: None,
                 servers: Some(vec![
                     Server {
                         name: "inherits".to_string(),
@@ -1123,6 +1181,7 @@ mod tests {
                         wallix: None,
                         jump: None,
                         probe_filesystems: None, // hérite du groupe → defaults
+                        tunnels: None,
                     },
                     Server {
                         name: "extends".to_string(),
@@ -1135,6 +1194,7 @@ mod tests {
                         wallix: None,
                         jump: None,
                         probe_filesystems: Some(vec!["/mnt/nas".to_string()]), // s'ajoute aux defaults
+                        tunnels: None,
                     },
                 ]),
             })],
@@ -1179,6 +1239,7 @@ mod tests {
                 jump: None,
                 probe_filesystems: Some(vec!["/kafka_data".to_string()]), // s'ajoute
                 environments: None,
+                tunnels: None,
                 servers: Some(vec![Server {
                     name: "kafka01".to_string(),
                     host: "10.0.0.1".to_string(),
@@ -1190,6 +1251,7 @@ mod tests {
                     wallix: None,
                     jump: None,
                     probe_filesystems: None,
+                    tunnels: None,
                 }]),
             })],
             includes: vec![],

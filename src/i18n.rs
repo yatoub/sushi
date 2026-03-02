@@ -148,6 +148,71 @@ pub struct Strings {
     pub validation_title: &'static str,
     /// `{}` = fichier, `{}` = contexte, `{}` = champ
     pub validation_unknown_field: &'static str,
+
+    // ── Tunnels SSH ──────────────────────────────────────────────────────────
+    pub tunnel_wallix_unavailable: &'static str,
+    /// `{}` = index
+    pub tunnel_not_found: &'static str,
+    /// `{}` = label, `{}` = port
+    pub tunnel_already_active: &'static str,
+    /// `{}` = label, `{}` = port
+    pub tunnel_started: &'static str,
+    /// `{}` = erreur
+    pub tunnel_error: &'static str,
+    /// `{}` = label, `{}` = port
+    pub tunnel_stopped: &'static str,
+    /// `{}` = label, `{}` = port, `{}` = raison
+    pub tunnel_died: &'static str,
+    pub tunnel_deleted: &'static str,
+    pub tunnel_updated: &'static str,
+    pub tunnel_added: &'static str,
+    pub tunnel_overlay_new: &'static str,
+    pub tunnel_overlay_hints1: &'static str,
+    pub tunnel_overlay_hints2: &'static str,
+    /// `{}` = serveur
+    pub tunnel_form_edit_title: &'static str,
+    /// `{}` = serveur
+    pub tunnel_form_new_title: &'static str,
+    pub tunnel_form_field_label: &'static str,
+    pub tunnel_form_field_local_port: &'static str,
+    pub tunnel_form_field_remote_host: &'static str,
+    pub tunnel_form_field_remote_port: &'static str,
+    pub tunnel_form_hint: &'static str,
+    pub tunnel_form_local_port_invalid: &'static str,
+    pub tunnel_form_remote_host_empty: &'static str,
+    pub tunnel_form_remote_port_invalid: &'static str,
+    pub tunnel_badge_label: &'static str,
+    /// `{}` = n_actif, `{}` = suffixe pluriel, `{}` = n_cfg, `{}` = suffixe pluriel
+    pub tunnel_badge_active: &'static str,
+    /// `{}` = n_cfg, `{}` = suffixe pluriel
+    pub tunnel_badge_none: &'static str,
+
+    // ── SCP ──────────────────────────────────────────────────────────────────
+    pub scp_wallix_unavailable: &'static str,
+    pub scp_done_ok: &'static str,
+    pub scp_done_err: &'static str,
+    /// `{}` = erreur
+    pub scp_failed: &'static str,
+    pub scp_form_local_required: &'static str,
+    pub scp_form_remote_required: &'static str,
+    /// `{}` = serveur
+    pub scp_direction_title: &'static str,
+    pub scp_direction_upload: &'static str,
+    pub scp_direction_download: &'static str,
+    pub scp_direction_hint: &'static str,
+    pub scp_form_field_local: &'static str,
+    pub scp_form_field_remote: &'static str,
+    pub scp_form_hint: &'static str,
+    pub scp_result_title: &'static str,
+    /// `{}` = direction.label()
+    pub scp_result_success: &'static str,
+    /// `{}` = direction.label()
+    pub scp_result_errors: &'static str,
+    /// `{}` = erreur
+    pub scp_result_fail: &'static str,
+    pub scp_result_hint: &'static str,
+    /// `{}` = direction.label()
+    pub scp_in_progress: &'static str,
 }
 
 // ─── Français ─────────────────────────────────────────────────────────────────
@@ -236,6 +301,53 @@ pub static STRINGS_FR: Strings = Strings {
 
     validation_title: " ⚠  Avertissements de configuration ",
     validation_unknown_field: "{} ({}): champ inconnu « {} »",
+
+    tunnel_wallix_unavailable: "Tunnels SSH non disponibles en mode Wallix",
+    tunnel_not_found: "Tunnel #{} introuvable pour ce serveur",
+    tunnel_already_active: "Tunnel « {} » déjà actif (port {})",
+    tunnel_started: "Tunnel « {} » démarré sur le port {}",
+    tunnel_error: "Erreur tunnel : {}",
+    tunnel_stopped: "Tunnel « {} » (port {}) arrêté",
+    tunnel_died: "Tunnel « {} » (port {}) s'est arrêté : {}",
+    tunnel_deleted: "Tunnel supprimé",
+    tunnel_updated: "Tunnel mis à jour",
+    tunnel_added: "Tunnel ajouté",
+    tunnel_overlay_new: "+ (nouveau tunnel)",
+    tunnel_overlay_hints1: "  ↑↓ naviguer   Enter démarrer/arrêter   Del supprimer",
+    tunnel_overlay_hints2: "  e éditer      a ajouter                q/Esc fermer",
+    tunnel_form_edit_title: " Modifier le tunnel — {} ",
+    tunnel_form_new_title: " Nouveau tunnel — {} ",
+    tunnel_form_field_label: "  Label        : ",
+    tunnel_form_field_local_port: "  Port local   : ",
+    tunnel_form_field_remote_host: "  Hôte distant : ",
+    tunnel_form_field_remote_port: "  Port distant : ",
+    tunnel_form_hint: "  Tab champ suivant   Enter valider   Esc annuler",
+    tunnel_form_local_port_invalid: "Port local invalide (entier 1\u{2013}65535 attendu)",
+    tunnel_form_remote_host_empty: "Hôte distant obligatoire",
+    tunnel_form_remote_port_invalid: "Port distant invalide (entier 1\u{2013}65535 attendu)",
+    tunnel_badge_label: "Tunnels : ",
+    tunnel_badge_active: "  {} actif{} / {} configuré{}",
+    tunnel_badge_none: "  {} configuré{}, aucun actif",
+
+    scp_wallix_unavailable: "SCP non disponible en mode Wallix",
+    scp_done_ok: "SCP terminé ✔",
+    scp_done_err: "SCP terminé avec des erreurs ✗",
+    scp_failed: "SCP échoué : {}",
+    scp_form_local_required: "Le chemin local est obligatoire",
+    scp_form_remote_required: "Le chemin distant est obligatoire",
+    scp_direction_title: " Transfert SCP — {} ",
+    scp_direction_upload: "(local → serveur)",
+    scp_direction_download: "(serveur → local)",
+    scp_direction_hint: "  Esc annuler",
+    scp_form_field_local: "  Local   : ",
+    scp_form_field_remote: "  Distant : ",
+    scp_form_hint: "  Tab changer de champ   Enter confirmer   Esc annuler",
+    scp_result_title: " Résultat SCP ",
+    scp_result_success: "SCP {} terminé avec succès",
+    scp_result_errors: "SCP {} terminé avec des erreurs",
+    scp_result_fail: "Erreur SCP : {}",
+    scp_result_hint: "  Enter / Esc  fermer",
+    scp_in_progress: "SCP {} en cours...",
 };
 
 // ─── Anglais ──────────────────────────────────────────────────────────────────
@@ -324,6 +436,53 @@ pub static STRINGS_EN: Strings = Strings {
 
     validation_title: " ⚠  Configuration warnings ",
     validation_unknown_field: "{} ({}): unknown field \"{}\"",
+
+    tunnel_wallix_unavailable: "SSH tunnels unavailable in Wallix mode",
+    tunnel_not_found: "Tunnel #{} not found for this server",
+    tunnel_already_active: "Tunnel '{}' already active (port {})",
+    tunnel_started: "Tunnel '{}' started on port {}",
+    tunnel_error: "Tunnel error: {}",
+    tunnel_stopped: "Tunnel '{}' (port {}) stopped",
+    tunnel_died: "Tunnel '{}' (port {}) died: {}",
+    tunnel_deleted: "Tunnel deleted",
+    tunnel_updated: "Tunnel updated",
+    tunnel_added: "Tunnel added",
+    tunnel_overlay_new: "+ (new tunnel)",
+    tunnel_overlay_hints1: "  ↑↓ navigate   Enter start/stop   Del delete",
+    tunnel_overlay_hints2: "  e edit        a add              q/Esc close",
+    tunnel_form_edit_title: " Edit tunnel — {} ",
+    tunnel_form_new_title: " New tunnel — {} ",
+    tunnel_form_field_label: "  Label       : ",
+    tunnel_form_field_local_port: "  Local port  : ",
+    tunnel_form_field_remote_host: "  Remote host : ",
+    tunnel_form_field_remote_port: "  Remote port : ",
+    tunnel_form_hint: "  Tab next field   Enter validate   Esc cancel",
+    tunnel_form_local_port_invalid: "Invalid local port (1\u{2013}65535 expected)",
+    tunnel_form_remote_host_empty: "Remote host required",
+    tunnel_form_remote_port_invalid: "Invalid remote port (1\u{2013}65535 expected)",
+    tunnel_badge_label: "Tunnels: ",
+    tunnel_badge_active: "  {} active{} / {} configured{}",
+    tunnel_badge_none: "  {} configured{}, none active",
+
+    scp_wallix_unavailable: "SCP unavailable in Wallix mode",
+    scp_done_ok: "SCP complete ✔",
+    scp_done_err: "SCP completed with errors ✗",
+    scp_failed: "SCP failed: {}",
+    scp_form_local_required: "Local path required",
+    scp_form_remote_required: "Remote path required",
+    scp_direction_title: " SCP Transfer — {} ",
+    scp_direction_upload: "(local → server)",
+    scp_direction_download: "(server → local)",
+    scp_direction_hint: "  Esc cancel",
+    scp_form_field_local: "  Local  : ",
+    scp_form_field_remote: "  Remote : ",
+    scp_form_hint: "  Tab switch field   Enter confirm   Esc cancel",
+    scp_result_title: " SCP Result ",
+    scp_result_success: "SCP {} completed successfully",
+    scp_result_errors: "SCP {} completed with errors",
+    scp_result_fail: "SCP error: {}",
+    scp_result_hint: "  Enter / Esc  close",
+    scp_in_progress: "SCP {} in progress...",
 };
 
 // ─── API publique ─────────────────────────────────────────────────────────────

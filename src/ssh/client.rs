@@ -43,6 +43,19 @@ pub fn build_ssh_args(
         }
     }
 
+    // ControlMaster SSH multiplexing (non supporté en mode Wallix).
+    if server.control_master && mode != ConnectionMode::Wallix && !server.control_path.is_empty() {
+        if let Some(parent) = std::path::Path::new(&server.control_path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        args.push("-o".into());
+        args.push("ControlMaster=auto".into());
+        args.push("-o".into());
+        args.push(format!("ControlPath={}", server.control_path));
+        args.push("-o".into());
+        args.push(format!("ControlPersist={}", server.control_persist));
+    }
+
     // Destination — toujours en dernier.
     match mode {
         ConnectionMode::Direct => {
@@ -171,6 +184,12 @@ mod tests {
             probe_filesystems: vec![],
             tunnels: vec![],
             tags: vec![],
+            control_master: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
         }
     }
 

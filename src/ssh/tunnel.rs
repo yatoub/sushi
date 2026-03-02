@@ -208,6 +208,12 @@ mod tests {
             probe_filesystems: vec![],
             tunnels: vec![],
             tags: vec![],
+            control_master: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
         }
     }
 

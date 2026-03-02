@@ -14,6 +14,7 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 use susshi::app::{App, AppMode, CmdState, ConfigItem, ScpState, TunnelOverlayState};
 use susshi::config::{Config, ConnectionMode, IncludeWarning, ResolvedServer, undefined_vars};
 use susshi::handlers::{get_layout, handle_mouse_event, is_in_rect};
+use susshi::import;
 use susshi::probe::ProbeState;
 use susshi::ssh::client::build_ssh_args;
 use susshi::ssh::sftp::ScpDirection;
@@ -61,6 +62,34 @@ struct Cli {
     /// Valider la configuration et quitter (code 0 = OK, 1 = erreur bloquante).
     #[arg(long)]
     validate: bool,
+
+    /// Importer ~/.ssh/config et générer un YAML susshi.
+    #[arg(long, conflicts_with_all = ["validate", "direct", "jump", "wallix"])]
+    import_ssh_config: bool,
+
+    /// Chemin du fichier ssh_config à importer (défaut : ~/.ssh/config).
+    #[arg(long, value_name = "FILE", requires = "import_ssh_config")]
+    ssh_config_path: Option<String>,
+
+    /// Fichier de sortie pour --import-ssh-config (défaut : stdout).
+    #[arg(long, value_name = "FILE", requires = "import_ssh_config")]
+    output: Option<String>,
+
+    /// Afficher le résultat sans écrire de fichier (pour --import-ssh-config).
+    #[arg(long, requires = "import_ssh_config")]
+    dry_run: bool,
+
+    /// Exporter la configuration vers un format externe : "ansible".
+    #[arg(long, value_name = "FORMAT", conflicts_with_all = ["validate", "direct", "jump", "wallix", "import_ssh_config"])]
+    export: Option<String>,
+
+    /// Fichier de sortie pour --export (défaut : stdout).
+    #[arg(long = "export-output", value_name = "FILE", requires = "export")]
+    export_output: Option<String>,
+
+    /// Filtre pour --export : texte et/ou #tag (même syntaxe que la recherche TUI).
+    #[arg(long = "export-filter", value_name = "QUERY", requires = "export")]
+    export_filter: Option<String>,
 }
 
 // ─── Config par défaut ───────────────────────────────────────────────────────
@@ -167,6 +196,99 @@ fn validate_config(config_path: &std::path::Path) {
     }
 }
 
+/// Importe `~/.ssh/config` et écrit (ou affiche) le YAML susshi généré.
+fn run_import_ssh_config(cli: &Cli) {
+    let default_path = shellexpand::tilde("~/.ssh/config").into_owned();
+    let path_str = cli.ssh_config_path.as_deref().unwrap_or(&default_path);
+    let path = std::path::Path::new(path_str);
+
+    let result = import::import_ssh_config(path);
+
+    for w in &result.warnings {
+        eprintln!("[WARN] {w}");
+    }
+
+    if result.entries.is_empty() {
+        eprintln!("Aucune entrée trouvée dans {path_str}");
+        process::exit(1);
+    }
+
+    let yaml = import::import_to_yaml(&result.entries);
+
+    if cli.dry_run {
+        print!("{yaml}");
+        eprintln!(
+            "{} entrée(s) importée(s) (dry-run, rien n\'a été écrit).",
+            result.entries.len()
+        );
+        process::exit(0);
+    }
+
+    match &cli.output {
+        Some(out_path) => {
+            if let Err(e) = std::fs::write(out_path, &yaml) {
+                eprintln!("Erreur écriture {out_path} : {e}");
+                process::exit(1);
+            }
+            println!(
+                "{} entrée(s) importée(s) → {out_path}",
+                result.entries.len()
+            );
+        }
+        None => {
+            print!("{yaml}");
+            eprintln!("{} entrée(s) importée(s).", result.entries.len());
+        }
+    }
+    process::exit(0);
+}
+
+/// Exporte la configuration susshi vers un inventaire au format `format`.
+///
+/// Actuellement, seul `"ansible"` est supporté.
+fn run_export(cli: &Cli, config: &Config) {
+    use susshi::export::ansible;
+
+    let format = cli.export.as_deref().unwrap_or("");
+    if format != "ansible" {
+        eprintln!("Format d'export inconnu : {format}. Formats supportés : ansible");
+        process::exit(1);
+    }
+
+    let servers = match config.resolve() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Erreur lors de la résolution de la configuration : {e}");
+            process::exit(1);
+        }
+    };
+
+    let filter = cli.export_filter.as_deref().unwrap_or("");
+    let filtered = ansible::filter_servers(&servers, filter);
+
+    if filtered.is_empty() {
+        eprintln!("Aucun serveur ne correspond au filtre {:?}.", filter);
+        process::exit(1);
+    }
+
+    let yaml = ansible::to_ansible_yaml(&filtered);
+
+    match &cli.export_output {
+        Some(path) => {
+            if let Err(e) = std::fs::write(path, &yaml) {
+                eprintln!("Erreur écriture {path} : {e}");
+                process::exit(1);
+            }
+            eprintln!("{} serveur(s) exporté(s) → {path}", filtered.len());
+        }
+        None => {
+            print!("{yaml}");
+            eprintln!("{} serveur(s) exporté(s).", filtered.len());
+        }
+    }
+    process::exit(0);
+}
+
 /// Décompose `[user@]host[:port]` en ses parties.
 fn parse_target(s: &str) -> (Option<String>, String, Option<u16>) {
     let (user, rest) = if let Some((u, r)) = s.split_once('@') {
@@ -244,6 +366,18 @@ fn build_adhoc_server(
         probe_filesystems: vec![],
         tunnels: vec![],
         tags: vec![],
+        control_master: false,
+        control_path: String::new(),
+        control_persist: "10m".to_string(),
+        pre_connect_hook: d
+            .pre_connect_hook
+            .as_deref()
+            .map(|h| shellexpand::tilde(h).into_owned()),
+        post_disconnect_hook: d
+            .post_disconnect_hook
+            .as_deref()
+            .map(|h| shellexpand::tilde(h).into_owned()),
+        hook_timeout_secs: d.hook_timeout_secs.unwrap_or(5),
     }
 }
 
@@ -264,7 +398,11 @@ fn main() -> io::Result<()> {
         validate_config(config_path);
         // validate_config appelle process::exit() — on ne revient jamais ici.
     }
-
+    // ── Mode import ssh_config ───────────────────────────────────────────────────
+    if cli.import_ssh_config {
+        run_import_ssh_config(&cli);
+        // run_import_ssh_config appelle process::exit()
+    }
     if !config_path.exists()
         && let Err(e) = std::fs::write(config_path, DEFAULT_CONFIG)
     {
@@ -282,6 +420,11 @@ fn main() -> io::Result<()> {
         };
 
     // ── Connexion directe sans TUI ──────────────────────────────────────────
+    if cli.export.is_some() {
+        run_export(&cli, &config);
+        // run_export appelle process::exit()
+    }
+
     let cli_mode_target: Option<(ConnectionMode, String)> = cli
         .direct
         .as_deref()
@@ -299,6 +442,13 @@ fn main() -> io::Result<()> {
 
     if let Some((mode, target)) = cli_mode_target {
         let server = build_adhoc_server(&target, mode, &cli, &config);
+        if let Err(e) =
+            susshi::hooks::run_hook(server.pre_connect_hook.as_deref().unwrap_or(""), &server)
+        {
+            eprintln!("Hook pre_connect a annulé la connexion : {e}");
+            return Err(io::Error::other(e.to_string()));
+        }
+        // post_disconnect_hook non supporté ici : exec() remplace le processus.
         if let Err(e) = susshi::ssh::client::connect(&server, mode, cli.verbose) {
             eprintln!("SSH Connection Error: {}", e);
             return Err(io::Error::other(e.to_string()));
@@ -336,14 +486,35 @@ fn main() -> io::Result<()> {
                 if app.keep_open {
                     // Connexion bloquante : SSH tourne comme sous-processus,
                     // la TUI redémarre automatiquement après la déconnexion.
-                    if let Err(e) = susshi::ssh::client::connect_blocking(&server, mode, verbose) {
-                        eprintln!("SSH Connection Error: {}", e);
+                    if let Err(e) = susshi::hooks::run_hook(
+                        server.pre_connect_hook.as_deref().unwrap_or(""),
+                        &server,
+                    ) {
+                        eprintln!("Hook pre_connect a annulé la connexion : {e}");
+                    } else {
+                        if let Err(e) =
+                            susshi::ssh::client::connect_blocking(&server, mode, verbose)
+                        {
+                            eprintln!("SSH Connection Error: {}", e);
+                        }
+                        let _ = susshi::hooks::run_hook(
+                            server.post_disconnect_hook.as_deref().unwrap_or(""),
+                            &server,
+                        );
                     }
                     // Boucle → ré-ouvre la TUI
                 } else {
                     // Comportement historique : exec() remplace le processus.
-                    if let Err(e) = susshi::ssh::client::connect(&server, mode, verbose) {
-                        eprintln!("SSH Connection Error: {}", e);
+                    if let Err(e) = susshi::hooks::run_hook(
+                        server.pre_connect_hook.as_deref().unwrap_or(""),
+                        &server,
+                    ) {
+                        eprintln!("Hook pre_connect a annulé la connexion : {e}");
+                    } else {
+                        // post_disconnect_hook non supporté ici : exec() remplace le processus.
+                        if let Err(e) = susshi::ssh::client::connect(&server, mode, verbose) {
+                            eprintln!("SSH Connection Error: {}", e);
+                        }
                     }
                     break;
                 }

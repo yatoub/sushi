@@ -1974,6 +1974,7 @@ mod tests {
                         probe_filesystems: None,
                         tunnels: None,
                         tags: None,
+                        ..Default::default()
                     }],
                 }]),
                 servers: Some(vec![Server {
@@ -1989,6 +1990,7 @@ mod tests {
                     probe_filesystems: None,
                     tunnels: None,
                     tags: None,
+                    ..Default::default()
                 }]),
                 tunnels: None,
                 tags: None,
@@ -2062,6 +2064,7 @@ mod tests {
                         probe_filesystems: None,
                         tunnels: None,
                         tags: Some(vec!["prod".to_string(), "web".to_string()]),
+                        ..Default::default()
                     },
                     Server {
                         name: "staging-db".to_string(),
@@ -2076,6 +2079,7 @@ mod tests {
                         probe_filesystems: None,
                         tunnels: None,
                         tags: Some(vec!["staging".to_string(), "db".to_string()]),
+                        ..Default::default()
                     },
                 ]),
             })],
@@ -2277,6 +2281,7 @@ mod tests {
                         probe_filesystems: None,
                         tunnels: None,
                         tags: None,
+                        ..Default::default()
                     }]),
                 }),
                 ConfigEntry::Namespace(NamespaceEntry {
@@ -2310,6 +2315,7 @@ mod tests {
                             probe_filesystems: None,
                             tunnels: None,
                             tags: None,
+                            ..Default::default()
                         }]),
                     })],
                 }),

@@ -51,7 +51,7 @@
 ### Build from Source
 
 ```bash
-git clone https://github.com/yatoub/sushi.git
+git clone https://github.com/yatoub/susshi.git
 cd sushi
 cargo build --release
 sudo cp target/release/sushi /usr/local/bin/

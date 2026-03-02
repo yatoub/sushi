@@ -10,6 +10,7 @@ use crate::state::{self, TunnelOverride};
 use crate::ui::theme::{Theme, get_theme};
 use ratatui::widgets::ListState;
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::Instant;
@@ -281,6 +282,10 @@ pub struct App {
     /// Chemin du fichier de configuration principal (pour le rechargement).
     pub config_path: PathBuf,
 
+    /// Hash (DefaultHasher) du contenu lu sur disque — permet de détecter
+    /// un rechargement inutile lorsque le fichier n'a pas été modifié.
+    pub config_hash: u64,
+
     /// Si true, seuls les favoris sont affichés dans la liste.
     pub favorites_only: bool,
 
@@ -322,6 +327,23 @@ pub struct App {
     pub scp_rx: Option<mpsc::Receiver<ScpEvent>>,
 }
 
+// ─── Helpers internes ─────────────────────────────────────────────────────────
+
+/// Calcule un hash u64 du contenu du fichier de configuration.
+/// Utilise `DefaultHasher` (non-cryptographique, suffisant pour la détection de changement).
+/// Retourne 0 en cas d'erreur de lecture (force un rechargement).
+fn hash_config_file(path: &PathBuf) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    match std::fs::read(path) {
+        Ok(bytes) => {
+            let mut hasher = DefaultHasher::new();
+            bytes.hash(&mut hasher);
+            hasher.finish()
+        }
+        Err(_) => 0,
+    }
+}
+
 impl App {
     pub fn new(
         config: Config,
@@ -330,6 +352,7 @@ impl App {
         validation_warnings: Vec<ValidationWarning>,
     ) -> Result<Self, ConfigError> {
         let resolved = config.resolve()?;
+        let config_hash = hash_config_file(&config_path);
 
         // Résout le thème avant de déplacer config dans le struct
         let theme_variant = config
@@ -365,6 +388,7 @@ impl App {
             lang: crate::i18n::get_strings(crate::i18n::detect_lang()),
             warnings,
             config_path,
+            config_hash,
             favorites_only: false,
             sort_by_recent: false,
             last_seen: HashMap::new(),
@@ -1497,6 +1521,14 @@ impl App {
 
     /// Recharge la configuration depuis le disque sans quitter.
     pub fn reload(&mut self) -> Result<(), ConfigError> {
+        // Rechargement sélectif : si le contenu du fichier n'a pas changé, on n'a rien à faire.
+        let new_hash = hash_config_file(&self.config_path);
+        if new_hash == self.config_hash {
+            self.set_status_message(self.lang.config_reloaded);
+            return Ok(());
+        }
+        self.config_hash = new_hash;
+
         let mut stack = std::collections::HashSet::new();
         let (new_config, new_warnings, new_val_warnings) =
             Config::load_merged(&self.config_path, &mut stack)?;

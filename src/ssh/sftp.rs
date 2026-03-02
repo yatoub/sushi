@@ -116,7 +116,30 @@ fn transfer_inner(
     let sftp = sess.sftp()?;
 
     // ── 3. Résolution du chemin distant (tilde → chemin absolu) ──────────────
-    let remote_path: PathBuf = resolve_remote_path(&sftp, remote);
+    let raw_remote: PathBuf = resolve_remote_path(&sftp, remote);
+
+    // Si le chemin distant se termine par '/' ou pointe vers un répertoire
+    // existant, on y ajoute le nom du fichier local (comportement scp).
+    let remote_path: PathBuf =
+        if remote.ends_with('/') || remote.ends_with('\\') || raw_remote.as_os_str().is_empty() {
+            // Chemin explicitement terminé par slash → c'est forcément un dossier.
+            let filename = Path::new(local)
+                .file_name()
+                .unwrap_or_else(|| std::ffi::OsStr::new("transfer"));
+            raw_remote.join(filename)
+        } else {
+            // On tente un stat() : si le chemin distant est un répertoire existant,
+            // on y ajoute le nom du fichier local.
+            match sftp.stat(&raw_remote) {
+                Ok(stat) if stat.is_dir() => {
+                    let filename = Path::new(local)
+                        .file_name()
+                        .unwrap_or_else(|| std::ffi::OsStr::new("transfer"));
+                    raw_remote.join(filename)
+                }
+                _ => raw_remote,
+            }
+        };
 
     // ── 4. Transfert avec progression ────────────────────────────────────────
     match direction {

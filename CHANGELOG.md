@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.10.2] — 2026-03-02
+
+### Fixed
+
+- **Cargo.toml**: `ratatui`, `serde`, `serde_json`, `serde_yaml`, `shellexpand`, `thiserror` were accidentally placed under `[target.'cfg(unix)'.dependencies]` instead of `[dependencies]`, causing the Windows build to fail with unresolved crates. Only `nix` belongs under the unix-target section.
+
+---
+
 ## [0.10.1] — 2026-03-02
 
 ### Fixed

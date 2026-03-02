@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.3] — 2026-03-02
+
+### Fixed
+
+- **AUR package**: fix b2sum mismatch caused by re-tagging v0.8.2 after updating `Cargo.lock`.
+
+---
+
 ## [0.8.2] — 2026-03-02
 
 ### Fixed

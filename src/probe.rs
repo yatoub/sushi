@@ -13,7 +13,7 @@ use std::process::Command;
 /// 1. kernel (`uname -r`)
 /// 2. modèle CPU (première entrée `/proc/cpuinfo`)
 /// 3. nombre de cœurs logiques (`nproc`)
-/// 4. nom et version de l'OS (`/etc/os-release`)
+/// 4. nom et version de l'OS (`PRETTY_NAME` dans `/etc/os-release`)
 /// 5. load average 1/5/15m
 /// 6. RAM : `<pct_used> <total_bytes>`
 /// 7. Disque `/` : `<pct_used> <total_bytes>`
@@ -21,7 +21,7 @@ const PROBE_BASE: &str = concat!(
     "uname -r; ",
     "awk '/^model name/{sub(/.*: /,\"\"); print; exit}' /proc/cpuinfo; ",
     "nproc; ",
-    "awk -F= '/^NAME=/{gsub(/\"/,\"\",$2);n=$2}/^VERSION_ID=/{gsub(/\"/,\"\",$2);v=$2}END{print n(v?\" \"v:\"\")}' /etc/os-release 2>/dev/null||echo unknown; ",
+    "awk -F= '/^PRETTY_NAME=/{gsub(/\"/,\"\",$2); print $2; exit}' /etc/os-release 2>/dev/null || echo unknown; ",
     "uptime | awk -F'load average:' '{print $2}' | xargs; ",
     "free -b | awk '/^Mem/{printf \"%.0f %.0f\\n\", $3/$2*100, $2}'; ",
     "df -B1 / | awk 'NR==2{printf \"%.0f %.0f\\n\", $3/$2*100, $2}'",
@@ -231,7 +231,7 @@ mod tests {
     const SAMPLE: &str = "6.1.0-28-amd64\n\
         Intel(R) Xeon(R) CPU E5-2670 0 @ 2.60GHz\n\
         8\n\
-        Debian GNU/Linux 12\n\
+        Debian GNU/Linux 12 (bookworm)\n\
         0.42, 0.38, 0.31\n\
         67 16106127360\n\
         23 499963174912\n";
@@ -242,7 +242,7 @@ mod tests {
         assert_eq!(r.kernel, "6.1.0-28-amd64");
         assert_eq!(r.cpu_model, "Intel(R) Xeon(R) CPU E5-2670 0 @ 2.60GHz");
         assert_eq!(r.cpu_cores, 8);
-        assert_eq!(r.os_name, "Debian GNU/Linux 12");
+        assert_eq!(r.os_name, "Debian GNU/Linux 12 (bookworm)");
         assert_eq!(r.load, "0.42, 0.38, 0.31");
         assert_eq!(r.ram_pct, 67);
         assert!((r.ram_total_gb - 15.0).abs() < 1.0, "ram ~15 GB");

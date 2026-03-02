@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.8.5] — 2026-03-02
+
+### Fixed
+
+- **OS detection in diag**: use `PRETTY_NAME` from `/etc/os-release` instead of assembling `NAME` + `VERSION_ID` with awk. The previous awk expression (`print n(v?...)`) was treated as a function call on some implementations (RHEL/gawk), causing the field to always return `unknown`.
+
+---
+
 ## [0.8.4] — 2026-03-02
 
 ### Added

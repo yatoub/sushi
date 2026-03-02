@@ -187,7 +187,7 @@ pub fn spawn_scp(
                 return Err(std::io::Error::last_os_error());
             }
             // fd 1 est déjà le slave PTY (Command::spawn fait les dup2 avant pre_exec)
-            if libc::ioctl(1, libc::TIOCSCTTY, 0i32) == -1 {
+            if libc::ioctl(1, libc::TIOCSCTTY as libc::c_ulong, 0i32) == -1 {
                 return Err(std::io::Error::last_os_error());
             }
             Ok(())

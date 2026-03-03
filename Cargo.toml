@@ -1,6 +1,6 @@
 [package]
 name = "susshi"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2024"
 description = "A modern terminal-based SSH connection manager with a beautiful Catppuccin TUI"
 license = "MIT"

@@ -29,14 +29,20 @@ body = """
 """
 
 commit_parsers = [
+  # Commits purement opérationnels : pas de release utilisateur déclenchée.
+  { message = "^fix\\(ci\\)", skip = true },
+  { message = "^chore\\(roadmap\\)", skip = true },
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^chore\\(deps\\)", skip = true },
+  { message = "^chore", skip = true },
+  { message = "^ci", skip = true },
+  { message = "^test", skip = true },
+  { message = "^docs", skip = true },
+  # Commits visibles dans le changelog.
   { message = "^feat", group = "Added" },
   { message = "^fix", group = "Fixed" },
   { message = "^perf", group = "Changed" },
   { message = "^refactor", group = "Changed" },
-  { message = "^docs", group = "Documentation" },
-  { message = "^chore\\(roadmap\\)", skip = true },
-  { message = "^chore", group = "Miscellaneous" },
-  { message = "^test", group = "Testing" },
 ]
 
 protect_breaking_commits = false

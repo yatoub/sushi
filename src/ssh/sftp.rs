@@ -354,16 +354,16 @@ fn open_session_via_jump(jump_str: &str, server: &ResolvedServer) -> Result<ssh2
 
     // ── 3. Socketpair Unix : relie le bridge à la session cible sans TCP local ────
     let mut pair_fds: [libc::c_int; 2] = [-1; 2];
-    if unsafe {
-        libc::socketpair(
-            libc::AF_UNIX,
-            libc::SOCK_STREAM | libc::SOCK_CLOEXEC,
-            0,
-            pair_fds.as_mut_ptr(),
-        )
-    } != 0
+    // SOCK_CLOEXEC n'est pas défini par le crate libc sur macOS (libc ≤ 0.2.182).
+    // On l'applique via fcntl après creation pour garder la portabilité.
+    if unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, pair_fds.as_mut_ptr()) } != 0
     {
         anyhow::bail!("socketpair: {}", std::io::Error::last_os_error());
+    }
+    // Marquer les deux fds comme close-on-exec pour éviter toute fuite vers
+    // d'éventuels processus enfants (portabilité Linux + macOS).
+    for &fd in &pair_fds {
+        unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
     }
     // Safety : les deux fds sont valides, on en transfère l'ownership immédiatement.
     let local_stream = unsafe { UnixStream::from_raw_fd(pair_fds[0]) };

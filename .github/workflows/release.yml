@@ -43,7 +43,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary_name: susshi
             asset_name: susshi-linux-amd64
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
             binary_name: susshi
             asset_name: susshi-macos-amd64
@@ -75,6 +75,7 @@ jobs:
         if: matrix.target == 'x86_64-apple-darwin'
         run: |
           brew install openssl@3
+          rustup target add x86_64-apple-darwin
           echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
 
       - name: Build release

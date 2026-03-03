@@ -28,6 +28,7 @@ jobs:
 
       - name: Publish to crates.io
         run: cargo publish --no-verify --allow-dirty
+        continue-on-error: true
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
@@ -99,5 +100,5 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: ${{ matrix.asset_name }}
           asset_name: ${{ matrix.asset_name }}
-          tag: ${{ github.ref }}
+          tag: ${{ github.event.inputs.tag || github.ref }}
           overwrite: true

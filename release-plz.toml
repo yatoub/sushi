@@ -3,8 +3,6 @@
 git_release_enable = true
 # Use the [Unreleased] section content as release notes
 git_release_body = "{{ changelog }}"
-# Do not publish to crates.io
-publish = false
 
 [changelog]
 # Keep a Changelog-compatible format

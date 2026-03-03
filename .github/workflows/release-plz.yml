@@ -31,5 +31,8 @@ jobs:
       - name: Run release-plz
         uses: release-plz/action@v0.5
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # A PAT is required here (not GITHUB_TOKEN) so that the tag pushed by
+          # release-plz triggers the release.yml workflow. GitHub does not fire
+          # workflow events for actions performed by the built-in GITHUB_TOKEN.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

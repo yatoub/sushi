@@ -5,10 +5,6 @@ git_release_enable = true
 git_release_body = "{{ changelog }}"
 # Do not publish to crates.io
 publish = false
-# Always create a release PR even when no file changes are detected
-# (needed for projects not published to crates.io — version bump is driven
-# solely by conventional commits since the last git tag)
-release_always = true
 
 [changelog]
 # Keep a Changelog-compatible format

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.12.0] — 2026-03-03
+
+### Changed
+
+- Replace SFTP data transfer with SCP protocol
+
+
 ## [0.11.0] — 2026-03-03
 
 ### Added

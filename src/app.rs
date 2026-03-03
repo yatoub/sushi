@@ -215,6 +215,10 @@ pub enum ScpState {
         label: String,
         /// Progression 0–100.
         progress: u8,
+        /// Instant de début du transfert (pour calculer vitesse et ETA).
+        started_at: std::time::Instant,
+        /// Taille totale du fichier en octets (0 si inconnue).
+        file_size: u64,
     },
     /// Transfert terminé.
     Done {
@@ -1847,10 +1851,19 @@ impl App {
 
         match ssh_sftp::spawn_sftp(&server, mode, direction.clone(), &local, &remote_path) {
             Ok(rx) => {
+                // Taille du fichier local pour l'upload ; pour le download,
+                // on recevra la taille via ScpEvent::FileSize (sinon reste 0).
+                let file_size = if direction == ScpDirection::Upload {
+                    std::fs::metadata(&local).map(|m| m.len()).unwrap_or(0)
+                } else {
+                    0
+                };
                 self.scp_state = ScpState::Running {
                     direction,
                     label,
                     progress: 0,
+                    started_at: std::time::Instant::now(),
+                    file_size,
                 };
                 self.scp_rx = Some(rx);
             }
@@ -1876,6 +1889,14 @@ impl App {
                     } = self.scp_state
                     {
                         *progress = pct;
+                    }
+                }
+                Ok(ScpEvent::FileSize(sz)) => {
+                    if let ScpState::Running {
+                        ref mut file_size, ..
+                    } = self.scp_state
+                    {
+                        *file_size = sz;
                     }
                 }
                 Ok(ScpEvent::Done(ok)) => {

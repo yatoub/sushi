@@ -62,6 +62,9 @@ fn upload_random_data_to_192_168_1_13() {
 
     loop {
         match rx.recv_timeout(Duration::from_secs(30)) {
+            Ok(ScpEvent::FileSize(sz)) => {
+                println!("FileSize: {sz} bytes");
+            }
             Ok(ScpEvent::Progress(pct)) => {
                 println!("Progress: {pct}%");
                 assert!(
@@ -111,6 +114,9 @@ fn download_random_data_from_192_168_1_13() {
 
     loop {
         match rx.recv_timeout(Duration::from_secs(30)) {
+            Ok(ScpEvent::FileSize(sz)) => {
+                println!("FileSize: {sz} bytes");
+            }
             Ok(ScpEvent::Progress(pct)) => {
                 println!("Progress: {pct}%");
                 assert!(pct as i64 >= last_pct, "progression régressive");

@@ -4,11 +4,18 @@ on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to re-publish (e.g. v0.12.0)"
+        required: true
 
 jobs:
   aur-publish:
     name: Publish to AUR
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
     steps:
       - name: Checkout repository
@@ -16,12 +23,12 @@ jobs:
 
       - name: Extract version from tag
         id: ver
-        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        run: echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Compute b2sum of release archive
         id: b2sum
         run: |
-          curl -fsSL "https://github.com/yatoub/susshi/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" -o archive.tar.gz
+          curl -fsSL "https://github.com/yatoub/susshi/archive/refs/tags/${TAG}.tar.gz" -o archive.tar.gz
           echo "sum=$(b2sum archive.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
 
       - name: Update PKGBUILD
@@ -38,7 +45,7 @@ jobs:
           commit_username: ${{ secrets.AUR_USERNAME }}
           commit_email: ${{ secrets.AUR_EMAIL }}
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "chore: update to ${{ github.ref_name }}"
+          commit_message: "chore: update to ${{ github.event.inputs.tag || github.ref_name }}"
           ssh_keyscan_types: rsa,ecdsa,ed25519
           allow_empty_commits: false
 
@@ -46,6 +53,8 @@ jobs:
     name: Publish susshi-bin to AUR
     runs-on: ubuntu-latest
     # Tourne en parallèle de aur-publish ; le step de polling attend
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
     steps:
       - name: Checkout repository
@@ -53,13 +62,13 @@ jobs:
 
       - name: Extract version from tag
         id: ver
-        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        run: echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Wait for Linux binary to appear in the release
         run: |
           for i in $(seq 1 20); do
             code=$(curl -sL -o /dev/null -w "%{http_code}" \
-              "https://github.com/yatoub/susshi/releases/download/${GITHUB_REF_NAME}/susshi-linux-amd64")
+              "https://github.com/yatoub/susshi/releases/download/${TAG}/susshi-linux-amd64")
             if [ "$code" = "200" ]; then echo "Binary available"; exit 0; fi
             echo "Attempt $i: HTTP $code, retrying in 30s…"
             sleep 30
@@ -69,8 +78,8 @@ jobs:
       - name: Compute b2sums for susshi-bin
         id: b2sums
         run: |
-          curl -fsSL "https://github.com/yatoub/susshi/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" -o archive.tar.gz
-          curl -fsSL "https://github.com/yatoub/susshi/releases/download/${GITHUB_REF_NAME}/susshi-linux-amd64" -o susshi-linux-amd64
+          curl -fsSL "https://github.com/yatoub/susshi/archive/refs/tags/${TAG}.tar.gz" -o archive.tar.gz
+          curl -fsSL "https://github.com/yatoub/susshi/releases/download/${TAG}/susshi-linux-amd64" -o susshi-linux-amd64
           echo "src=$(b2sum archive.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
           echo "bin=$(b2sum susshi-linux-amd64 | cut -d' ' -f1)" >> $GITHUB_OUTPUT
 
@@ -90,6 +99,6 @@ jobs:
           commit_username: ${{ secrets.AUR_USERNAME }}
           commit_email: ${{ secrets.AUR_EMAIL }}
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "chore: update to ${{ github.ref_name }}"
+          commit_message: "chore: update to ${{ github.event.inputs.tag || github.ref_name }}"
           ssh_keyscan_types: rsa,ecdsa,ed25519
           allow_empty_commits: false

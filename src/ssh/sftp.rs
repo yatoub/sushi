@@ -25,7 +25,7 @@
 //! | Mode     | Support |
 //! |----------|---------|
 //! | Direct   | ✔ session SSH2 directe |
-//! | Jump     | ✔ `direct-tcpip` via loopback bridge |
+//! | Jump     | ✔ `ssh -W` comme `scp -J` — un seul chiffrement |
 //! | Wallix   | ✖ retourne une erreur |
 
 use crate::config::{ConnectionMode, ResolvedServer};
@@ -56,6 +56,8 @@ impl ScpDirection {
 /// Évènement émis par le thread de transfert SFTP.
 #[derive(Debug)]
 pub enum ScpEvent {
+    /// Taille totale du fichier (envoyé une seule fois à l'ouverture).
+    FileSize(u64),
     /// Progression (0–100).
     Progress(u8),
     /// Transfert terminé — `true` = succès.
@@ -134,58 +136,57 @@ fn transfer_inner(
     remote: &str,
     tx: &mpsc::Sender<ScpEvent>,
 ) -> Result<()> {
-    use ssh2::Session;
     use std::fs::File;
     use std::path::{Path, PathBuf};
 
     // ── 1. Ouvre la session SSH ───────────────────────────────────────────────
-    let sess: Session = open_session(server, mode)?;
+    let sess = open_session(server, mode)?;
 
-    // ── 2. Ouvre le sous-système SFTP ────────────────────────────────────────
-    let sftp = sess.sftp()?;
+    // ── 2. Résolution du chemin distant via SFTP (stat + realpath) ───────────
+    //
+    // SFTP est utilisé UNIQUEMENT pour la résolution de chemin.
+    // Le transfert lui-même utilise le protocole SCP (streaming pur, sans
+    // request/ACK par paquet) pour éviter la limitation MAX_SFTP_OUTGOING_SIZE
+    // de libssh2 (30 KB), qui plafonne le débit à ~1–3 MB/s sur liens à latence.
+    let remote_path: PathBuf = {
+        let sftp = sess.sftp()?;
+        let raw = resolve_remote_path(&sftp, remote);
 
-    // ── 3. Résolution du chemin distant (tilde → chemin absolu) ──────────────
-    let raw_remote: PathBuf = resolve_remote_path(&sftp, remote);
-
-    // Si le chemin distant se termine par '/' ou pointe vers un répertoire
-    // existant, on y ajoute le nom du fichier local (comportement scp).
-    let remote_path: PathBuf =
-        if remote.ends_with('/') || remote.ends_with('\\') || raw_remote.as_os_str().is_empty() {
-            // Chemin explicitement terminé par slash → c'est forcément un dossier.
+        if remote.ends_with('/') || remote.ends_with('\\') || raw.as_os_str().is_empty() {
             let filename = Path::new(local)
                 .file_name()
                 .unwrap_or_else(|| std::ffi::OsStr::new("transfer"));
-            raw_remote.join(filename)
+            raw.join(filename)
         } else {
-            // On tente un stat() : si le chemin distant est un répertoire existant,
-            // on y ajoute le nom du fichier local.
-            match sftp.stat(&raw_remote) {
+            match sftp.stat(&raw) {
                 Ok(stat) if stat.is_dir() => {
                     let filename = Path::new(local)
                         .file_name()
                         .unwrap_or_else(|| std::ffi::OsStr::new("transfer"));
-                    raw_remote.join(filename)
+                    raw.join(filename)
                 }
-                _ => raw_remote,
+                _ => raw,
             }
-        };
+        }
+        // `sftp` est droppé ici — le canal SFTP est fermé avant d'ouvrir SCP.
+    };
 
-    // ── 4. Transfert avec progression ────────────────────────────────────────
+    // ── 3. Transfert SCP (streaming, fenêtre SSH classique, plein débit) ─────
     match direction {
         ScpDirection::Upload => {
             let local_path = Path::new(local);
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
+            let _ = tx.send(ScpEvent::FileSize(file_size));
             let mut src = File::open(local_path)?;
-            let mut dst = sftp.create(&remote_path)?;
-            copy_with_progress(&mut src, &mut dst, file_size, tx)?;
+            let mut channel = sess.scp_send(&remote_path, 0o644, file_size, None)?;
+            copy_with_progress(&mut src, &mut channel, file_size, tx)?;
+            // Fermeture propre du canal SCP (envoi du signal EOF au serveur).
+            channel.send_eof()?;
+            channel.wait_eof()?;
+            channel.close()?;
+            channel.wait_close()?;
         }
         ScpDirection::Download => {
-            let file_size = sftp
-                .stat(&remote_path)
-                .map(|s| s.size.unwrap_or(0))
-                .unwrap_or(0);
-            // Si la cible locale est un répertoire (ou se termine par '/'),
-            // on y ajoute le nom du fichier distant — comportement symétrique à l'upload.
             let local_path = {
                 let p = Path::new(local);
                 if local.ends_with('/') || local.ends_with('\\') || p.is_dir() {
@@ -197,9 +198,12 @@ fn transfer_inner(
                     p.to_path_buf()
                 }
             };
-            let mut src = sftp.open(&remote_path)?;
+            // scp_recv fournit directement la taille du fichier dans le header SCP.
+            let (mut channel, scp_stat) = sess.scp_recv(&remote_path)?;
+            let file_size = scp_stat.size();
+            let _ = tx.send(ScpEvent::FileSize(file_size));
             let mut dst = File::create(&local_path)?;
-            copy_with_progress(&mut src, &mut dst, file_size, tx)?;
+            copy_with_progress(&mut channel, &mut dst, file_size, tx)?;
         }
     }
 
@@ -301,18 +305,21 @@ fn auth_session(sess: &mut ssh2::Session, username: &str, ssh_key: &str) -> Resu
 ///
 /// ## Principe
 ///
-/// 1. Connexion TCP → jump host, session SSH2, authentification.
+/// 1. Connexion TCP → jump host, session SSH2 **avec compression** (réduit les données
+///    chiffrées 2× sur le réseau), authentification.
 /// 2. Ouverture d'un channel `direct-tcpip` vers la cible.
-/// 3. Création d'un listener loopback éphémère sur `127.0.0.1:0`.
-/// 4. Thread bridge : accepte la connexion loopback et copie bidirectionnellement
-///    entre le socket loopback et le channel `direct-tcpip`.
-/// 5. La session cible se connecte au listener loopback (qui voit un TcpStream normal).
+/// 3. Création d'une paire de sockets Unix (`socketpair`) — pas de stack TCP locale,
+///    latence quasi-nulle entre le thread bridge et la session cible.
+/// 4. Thread bridge : relaie bidirectionnellement entre le socketpair et le channel.
+/// 5. La session cible utilise l'extrémité locale du socketpair comme transport.
 ///
 /// La session du jump host et le channel restent vivants dans le thread bridge
 /// pour toute la durée du transfert.
 #[cfg(unix)]
 fn open_session_via_jump(jump_str: &str, server: &ResolvedServer) -> Result<ssh2::Session> {
-    use std::net::{TcpListener, TcpStream};
+    use std::net::TcpStream;
+    use std::os::unix::io::FromRawFd;
+    use std::os::unix::net::UnixStream;
 
     // ── Parse le premier saut (multi-hop : seul le premier est utilisé en v0.11) ──
     let first = jump_str.split(',').next().unwrap_or(jump_str);
@@ -327,8 +334,17 @@ fn open_session_via_jump(jump_str: &str, server: &ResolvedServer) -> Result<ssh2
 
     // ── 1. Session SSH vers le jump host ──────────────────────────────────────
     let jump_tcp = TcpStream::connect(format!("{}:{}", jump_host, jump_port))?;
+    // Sauvegarder le fd brut AVANT que la session en prenne ownership :
+    // on l'utilisera dans le bridge pour poll() sans toucher aux données.
+    let jump_raw_fd = {
+        use std::os::unix::io::AsRawFd;
+        jump_tcp.as_raw_fd()
+    };
     let mut jump_sess = ssh2::Session::new()?;
     jump_sess.set_tcp_stream(jump_tcp);
+    // Compression SSH : le CSV est très compressible ; moins de données à chiffrer
+    // deux fois sur le réseau (double-encryption est le principal goulot d'étranglement).
+    jump_sess.set_compress(true);
     jump_sess.handshake()?;
     auth_session(&mut jump_sess, jump_user, &server.ssh_key)?;
 
@@ -336,80 +352,132 @@ fn open_session_via_jump(jump_str: &str, server: &ResolvedServer) -> Result<ssh2
     let (target_host, target_port) = resolve_host_port(server);
     let channel = jump_sess.channel_direct_tcpip(&target_host, target_port, None)?;
 
-    // ── 3. Listener loopback éphémère ─────────────────────────────────────────
-    let listener = TcpListener::bind("127.0.0.1:0")?;
-    let local_addr = listener.local_addr()?;
+    // ── 3. Socketpair Unix : relie le bridge à la session cible sans TCP local ────
+    let mut pair_fds: [libc::c_int; 2] = [-1; 2];
+    if unsafe {
+        libc::socketpair(
+            libc::AF_UNIX,
+            libc::SOCK_STREAM | libc::SOCK_CLOEXEC,
+            0,
+            pair_fds.as_mut_ptr(),
+        )
+    } != 0
+    {
+        anyhow::bail!("socketpair: {}", std::io::Error::last_os_error());
+    }
+    // Safety : les deux fds sont valides, on en transfère l'ownership immédiatement.
+    let local_stream = unsafe { UnixStream::from_raw_fd(pair_fds[0]) };
+    let bridge_stream = unsafe { UnixStream::from_raw_fd(pair_fds[1]) };
 
     // ── 4. Thread bridge ──────────────────────────────────────────────────────
     std::thread::spawn(move || {
-        // `jump_sess` et `channel` sont déplacés dans `bridge_bidirectional`
-        // qui les garde vivants pour toute la durée du transfert.
-        if let Ok((stream, _)) = listener.accept() {
-            bridge_bidirectional(jump_sess, channel, stream);
-        }
+        // `jump_sess` et `channel` sont déplacés ici et restent vivants
+        // pour toute la durée du transfert.
+        bridge_bidirectional(jump_sess, channel, bridge_stream, jump_raw_fd);
     });
 
-    // ── 5. Session cible via le loopback ──────────────────────────────────────
-    let target_tcp = TcpStream::connect(local_addr)?;
+    // ── 5. Session cible via le socketpair ────────────────────────────────────
     let mut target_sess = ssh2::Session::new()?;
-    target_sess.set_tcp_stream(target_tcp);
+    target_sess.set_tcp_stream(local_stream);
     target_sess.handshake()?;
     auth_session(&mut target_sess, &server.user, &server.ssh_key)?;
 
     Ok(target_sess)
 }
 
-/// Copie bidirectionnelle non-bloquante entre un channel SSH2 et un TcpStream.
+/// Copie bidirectionnelle entre un channel SSH2 et un socket Unix (bridge socketpair).
 ///
 /// Utilisé par le thread bridge dans [`open_session_via_jump`].
-/// Utilise un polling non-bloquant avec sleep de 1 ms quand aucun octet n'est
-/// disponible dans les deux sens (acceptable pour des transferts SFTP).
+///
+/// Utilise `libc::poll()` sur le fd TCP du jump host et l'extrémité bridge du
+/// socketpair pour se réveiller uniquement quand des données sont disponibles.
+/// Aucun `sleep` — latence limitée au réseau.
+///
+/// - `jump_raw_fd` : fd brut du socket TCP vers le jump host (sauvegardé avant
+///   que `Session::set_tcp_stream` n'en prenne ownership). Utilisé uniquement
+///   pour `poll()`, jamais pour lire/écrire directement.
 #[cfg(unix)]
 fn bridge_bidirectional(
     sess: ssh2::Session,
     mut channel: ssh2::Channel,
-    mut stream: std::net::TcpStream,
+    mut stream: std::os::unix::net::UnixStream,
+    jump_raw_fd: libc::c_int,
 ) {
     use std::io::{ErrorKind, Read, Write};
-    use std::time::Duration;
+    use std::os::unix::io::AsRawFd;
 
+    let stream_fd = stream.as_raw_fd();
+
+    // Channel : non-bloquant — libssh2 retourne WouldBlock quand son buffer
+    // interne est vide.
     sess.set_blocking(false);
-    stream.set_nonblocking(true).ok();
-    stream.set_nodelay(true).ok();
+    // stream : socket Unix bloquant (pas de Nagle, pas de stack TCP).
 
-    let mut buf = vec![0u8; 4096];
+    let mut buf = vec![0u8; 32 * 1024]; // 32 KiB — taille max paquet SFTP
 
-    loop {
-        let mut idle = true;
-
-        // channel → stream
-        match channel.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                idle = false;
-                if stream.write_all(&buf[..n]).is_err() {
-                    break;
-                }
-            }
-            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
-            Err(_) => break,
+    'outer: loop {
+        // Bloquer jusqu'à activité sur l'un des deux fds.
+        // Timeout 50 ms pour détecter les EOF / fermetures propres sans latence perceptible.
+        let mut fds = [
+            libc::pollfd {
+                fd: jump_raw_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: stream_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+        ];
+        let ret = unsafe { libc::poll(fds.as_mut_ptr(), 2, 50) };
+        if ret < 0 {
+            break; // EINTR ou autre erreur fatale
         }
 
-        // stream → channel
-        match stream.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                idle = false;
-                if channel.write_all(&buf[..n]).is_err() {
-                    break;
+        // ── channel → stream (remote → session SFTP locale) ──────────────────
+        // On vide systématiquement le buffer interne de libssh2 même si poll
+        // n'a pas signalé le jump_fd : libssh2 peut avoir des données en attente
+        // déjà décryptées dans son buffer interne.
+        loop {
+            match channel.read(&mut buf) {
+                Ok(0) => break 'outer, // EOF distant
+                Ok(n) => {
+                    if stream.write_all(&buf[..n]).is_err() {
+                        break 'outer;
+                    }
                 }
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => break,
+                Err(_) => break 'outer,
             }
-            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
-            Err(_) => break,
         }
 
-        if idle {
-            std::thread::sleep(Duration::from_millis(1));
+        // ── stream → channel (session SFTP locale → remote) ──────────────────
+        if fds[1].revents & libc::POLLIN != 0 {
+            match stream.read(&mut buf) {
+                Ok(0) => break, // session SFTP locale fermée
+                Ok(n) => {
+                    // Réécriture avec retry sur WouldBlock (fenêtre SSH pleine).
+                    let mut pos = 0;
+                    while pos < n {
+                        match channel.write(&buf[pos..n]) {
+                            Ok(k) if k > 0 => pos += k,
+                            Ok(_) => std::thread::yield_now(),
+                            Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                                std::thread::yield_now();
+                            }
+                            Err(_) => break 'outer,
+                        }
+                    }
+                }
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {} // spurious
+                Err(_) => break,
+            }
+        }
+
+        // EOF propre du channel (ex : serveur SFTP fermé)
+        if channel.eof() {
+            break;
         }
     }
 
@@ -454,7 +522,9 @@ fn copy_with_progress(
     total: u64,
     tx: &mpsc::Sender<ScpEvent>,
 ) -> Result<()> {
-    let mut buf = vec![0u8; 65536];
+    // 256 KiB : donne à libssh2 suffisamment de données pour pipeliner plusieurs
+    // paquets SFTP (max 32 KiB chacun) sans attendre des ACKs intermédiaires.
+    let mut buf = vec![0u8; 262144];
     let mut transferred: u64 = 0;
     let mut last_pct: u8 = 0;
 

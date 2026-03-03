@@ -505,6 +505,9 @@ fn draw_scp_form(f: &mut Frame, app: &mut App, area: Rect) {
         ),
     ];
 
+    // Largeur disponible pour la valeur = intérieur popup − largeur label − curseur (1)
+    let inner_w = popup_area.width.saturating_sub(2) as usize; // -2 bordures
+
     for (i, (label, value, field)) in fields.iter().enumerate() {
         let focused = *field == focus;
         let (label_fg, value_bg, cursor) = if focused {
@@ -512,10 +515,24 @@ fn draw_scp_form(f: &mut Frame, app: &mut App, area: Rect) {
         } else {
             (app.theme.subtext0, app.theme.bg, "")
         };
+
+        // Tronque le chemin par le début pour garder le nom de fichier visible.
+        let label_w = label.chars().count();
+        let cursor_w = if focused { 1 } else { 0 };
+        let max_value_w = inner_w.saturating_sub(label_w + cursor_w);
+        let display_value: String = if value.len() > max_value_w && max_value_w > 1 {
+            format!(
+                "\u{2026}{}",
+                &value[value.len().saturating_sub(max_value_w.saturating_sub(1))..]
+            )
+        } else {
+            value.to_string()
+        };
+
         let line = Line::from(vec![
             Span::styled(*label, Style::default().fg(label_fg)),
             Span::styled(
-                format!("{}{}", value, cursor),
+                format!("{}{}", display_value, cursor),
                 Style::default().fg(app.theme.fg).bg(value_bg),
             ),
         ]);
@@ -1089,6 +1106,8 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     direction,
                     label,
                     progress,
+                    started_at,
+                    file_size,
                 } = &app.scp_state
                 {
                     const BAR_W: usize = 20;
@@ -1106,10 +1125,60 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                             .fg(app.theme.sapphire)
                             .add_modifier(Modifier::BOLD),
                     )]));
+                    // Tronque le chemin par le début pour garder le nom de
+                    // fichier visible sur les paths longs (ex : …/long/path/file.txt).
+                    let max_w = area.width.saturating_sub(4) as usize;
+                    let display_label = if label.len() > max_w && max_w > 1 {
+                        format!(
+                            "\u{2026}{}",
+                            &label[label.len().saturating_sub(max_w.saturating_sub(1))..]
+                        )
+                    } else {
+                        label.clone()
+                    };
                     lines.push(Line::from(vec![
                         Span::styled("  ", Style::default()),
-                        Span::styled(label.clone(), Style::default().fg(app.theme.fg)),
+                        Span::styled(display_label, Style::default().fg(app.theme.fg)),
                     ]));
+
+                    // ── Calcul vitesse + ETA ──────────────────────────────────────
+                    let elapsed_secs = started_at.elapsed().as_secs_f64();
+                    let transferred = if *file_size > 0 {
+                        (*progress as u64 * file_size) / 100
+                    } else {
+                        0
+                    };
+                    let speed_str = if elapsed_secs >= 1.0 && transferred > 0 {
+                        let bps = transferred as f64 / elapsed_secs;
+                        if bps >= 1_000_000.0 {
+                            format!("{:.1} MB/s", bps / 1_000_000.0)
+                        } else if bps >= 1_000.0 {
+                            format!("{:.0} KB/s", bps / 1_000.0)
+                        } else {
+                            format!("{:.0} B/s", bps)
+                        }
+                    } else {
+                        "-".to_string()
+                    };
+                    let eta_str = if elapsed_secs >= 1.0
+                        && *progress > 0
+                        && *progress < 100
+                        && transferred > 0
+                    {
+                        let remaining = file_size.saturating_sub(transferred);
+                        let bps = transferred as f64 / elapsed_secs;
+                        let eta_secs = (remaining as f64 / bps) as u64;
+                        if eta_secs >= 3600 {
+                            format!("ETA {}h{:02}m", eta_secs / 3600, (eta_secs % 3600) / 60)
+                        } else if eta_secs >= 60 {
+                            format!("ETA {}m{:02}s", eta_secs / 60, eta_secs % 60)
+                        } else {
+                            format!("ETA {}s", eta_secs)
+                        }
+                    } else {
+                        String::new()
+                    };
+
                     lines.push(Line::from(vec![
                         Span::styled("  [", Style::default().fg(app.theme.subtext0)),
                         Span::styled("█".repeat(filled), Style::default().fg(bar_color)),
@@ -1118,8 +1187,20 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                             Style::default().fg(app.theme.subtext0),
                         ),
                         Span::styled(
-                            format!("] {:>3}%", progress),
+                            format!("]{:>4}%", progress),
                             Style::default().fg(app.theme.fg),
+                        ),
+                        Span::styled(
+                            format!("  {}", speed_str),
+                            Style::default().fg(app.theme.sky),
+                        ),
+                        Span::styled(
+                            if eta_str.is_empty() {
+                                String::new()
+                            } else {
+                                format!("  {}", eta_str)
+                            },
+                            Style::default().fg(app.theme.subtext0),
                         ),
                     ]));
                 }

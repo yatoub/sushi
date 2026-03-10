@@ -27,7 +27,7 @@ ssh2 = "0.9"
 thiserror = "2.0.18"
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", features = ["term", "process"] }
+nix = { version = "0.31", features = ["term", "process"] }
 
 [dev-dependencies]
 tempfile = "3.26.0"

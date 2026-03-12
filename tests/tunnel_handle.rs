@@ -36,6 +36,12 @@ fn base_server() -> ResolvedServer {
         pre_connect_hook: None,
         post_disconnect_hook: None,
         hook_timeout_secs: 5,
+        wallix_group: None,
+        wallix_account: "default".to_string(),
+        wallix_protocol: "SSH".to_string(),
+        wallix_auto_select: true,
+        wallix_fail_if_menu_match_error: true,
+        wallix_selection_timeout_secs: 8,
     }
 }
 

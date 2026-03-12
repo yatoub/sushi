@@ -378,6 +378,32 @@ fn build_adhoc_server(
             .as_deref()
             .map(|h| shellexpand::tilde(h).into_owned()),
         hook_timeout_secs: d.hook_timeout_secs.unwrap_or(5),
+        wallix_group: None,
+        wallix_account: d
+            .wallix
+            .as_ref()
+            .and_then(|b| b.account.clone())
+            .unwrap_or_else(|| "default".to_string()),
+        wallix_protocol: d
+            .wallix
+            .as_ref()
+            .and_then(|b| b.protocol.clone())
+            .unwrap_or_else(|| "SSH".to_string()),
+        wallix_auto_select: d
+            .wallix
+            .as_ref()
+            .and_then(|b| b.auto_select)
+            .unwrap_or(true),
+        wallix_fail_if_menu_match_error: d
+            .wallix
+            .as_ref()
+            .and_then(|b| b.fail_if_menu_match_error)
+            .unwrap_or(true),
+        wallix_selection_timeout_secs: d
+            .wallix
+            .as_ref()
+            .and_then(|b| b.selection_timeout_secs)
+            .unwrap_or(8),
     }
 }
 

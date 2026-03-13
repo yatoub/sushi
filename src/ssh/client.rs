@@ -1,5 +1,5 @@
 use crate::config::{ConnectionMode, ResolvedServer};
-use crate::wallix::{parse_wallix_menu, select_id_for_server};
+use crate::wallix::{WallixMenuEntry, parse_wallix_menu, select_id_for_server};
 use anyhow::Result;
 #[cfg(unix)]
 use nix::pty::{ForkptyResult, Winsize, forkpty};
@@ -112,7 +112,7 @@ pub fn build_ssh_args(
 pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> Result<()> {
     #[cfg(unix)]
     if should_use_wallix_menu_automation(server, mode) {
-        return connect_wallix_via_pty(server, verbose);
+        return connect_wallix_via_pty_with_selection(server, verbose, None);
     }
 
     let args = build_ssh_args(server, mode, verbose)?;
@@ -142,7 +142,7 @@ pub fn connect_blocking(
 ) -> Result<()> {
     #[cfg(unix)]
     if should_use_wallix_menu_automation(server, mode) {
-        return connect_wallix_via_pty(server, verbose);
+        return connect_wallix_via_pty_with_selection(server, verbose, None);
     }
 
     let args = build_ssh_args(server, mode, verbose)?;
@@ -151,6 +151,56 @@ pub fn connect_blocking(
         .status()
         .map(|_| ())
         .map_err(|e| anyhow::Error::new(e).context("Failed to spawn ssh command"))
+}
+
+/// Récupère les entrées du menu Wallix affichées par le bastion sans ouvrir de shell distant.
+#[cfg(unix)]
+pub fn fetch_wallix_menu_entries(
+    server: &ResolvedServer,
+    verbose: bool,
+) -> Result<Vec<WallixMenuEntry>> {
+    let args = build_wallix_bastion_args(server, verbose)?;
+    let (child, mut master_reader, _master_writer) = spawn_wallix_pty(&args)?;
+    let transcript = read_until_wallix_prompt(&mut master_reader)?;
+    unsafe {
+        libc::kill(child.as_raw(), libc::SIGTERM);
+    }
+    let _ = waitpid(child, Some(WaitPidFlag::WNOHANG));
+    parse_wallix_menu(&transcript)
+}
+
+#[cfg(not(unix))]
+pub fn fetch_wallix_menu_entries(
+    _server: &ResolvedServer,
+    _verbose: bool,
+) -> Result<Vec<WallixMenuEntry>> {
+    anyhow::bail!("Wallix menu fetching is only supported on Unix")
+}
+
+/// Lance une session Wallix en forçant un ID déjà choisi côté TUI.
+pub fn connect_wallix_with_selection(
+    server: &ResolvedServer,
+    verbose: bool,
+    selected_id: &str,
+) -> Result<()> {
+    #[cfg(unix)]
+    {
+        connect_wallix_via_pty_with_selection(server, verbose, Some(selected_id))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (server, verbose, selected_id);
+        anyhow::bail!("Wallix menu automation is only supported on Unix")
+    }
+}
+
+/// Variante bloquante de [`connect_wallix_with_selection`].
+pub fn connect_blocking_wallix_with_selection(
+    server: &ResolvedServer,
+    verbose: bool,
+    selected_id: &str,
+) -> Result<()> {
+    connect_wallix_with_selection(server, verbose, selected_id)
 }
 
 // ─── helpers privés ──────────────────────────────────────────────────────────
@@ -229,11 +279,10 @@ fn contains_wallix_prompt(buffer: &str) -> bool {
 }
 
 #[cfg(unix)]
-fn connect_wallix_via_pty(server: &ResolvedServer, verbose: bool) -> Result<()> {
-    let args = build_wallix_bastion_args(server, verbose)?;
+fn spawn_wallix_pty(args: &[String]) -> Result<(nix::unistd::Pid, std::fs::File, std::fs::File)> {
     let mut argv = Vec::with_capacity(args.len() + 2);
     argv.push(CString::new("ssh")?);
-    for arg in &args {
+    for arg in args {
         argv.push(CString::new(arg.as_str())?);
     }
     let mut argv_ptrs: Vec<*const libc::c_char> = argv.iter().map(|arg| arg.as_ptr()).collect();
@@ -249,111 +298,158 @@ fn connect_wallix_via_pty(server: &ResolvedServer, verbose: bool) -> Result<()> 
             libc::_exit(127);
         },
         ForkptyResult::Parent { child, master } => {
-            let mut master_reader = std::fs::File::from(master);
-            let mut master_writer = master_reader.try_clone()?;
-            let mut stdout = std::io::stdout().lock();
-            let mut stdin = std::io::stdin().lock();
-            let mut transcript = String::new();
-            let mut selection_completed = false;
-            let mut stdin_closed = false;
-            let master_fd = master_reader.as_raw_fd();
-            let stdin_fd = std::io::stdin().as_raw_fd();
-
-            loop {
-                let mut pollfds = [
-                    libc::pollfd {
-                        fd: master_fd,
-                        events: libc::POLLIN,
-                        revents: 0,
-                    },
-                    libc::pollfd {
-                        fd: if stdin_closed || !selection_completed { -1 } else { stdin_fd },
-                        events: libc::POLLIN,
-                        revents: 0,
-                    },
-                ];
-
-                let rc = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as _, 100) };
-                if rc < 0 {
-                    let err = std::io::Error::last_os_error();
-                    if err.kind() == std::io::ErrorKind::Interrupted {
-                        continue;
-                    }
-                    return Err(err.into());
-                }
-
-                if pollfds[0].revents & libc::POLLIN != 0 {
-                    let mut buf = [0_u8; 4096];
-                    let read = master_reader.read(&mut buf)?;
-                    if read == 0 {
-                        break;
-                    }
-
-                    stdout.write_all(&buf[..read])?;
-                    stdout.flush()?;
-
-                    if !selection_completed {
-                        let chunk = String::from_utf8_lossy(&buf[..read]);
-                        transcript.push_str(&chunk);
-                        if transcript.len() > 64 * 1024 {
-                            let drain = transcript.len().saturating_sub(64 * 1024);
-                            transcript.drain(..drain);
-                        }
-
-                        if contains_wallix_prompt(&transcript) {
-                            match parse_wallix_menu(&transcript)
-                                .and_then(|entries| select_id_for_server(&entries, server))
-                            {
-                                Ok(id) => {
-                                    master_writer.write_all(id.as_bytes())?;
-                                    master_writer.write_all(b"\n")?;
-                                    master_writer.flush()?;
-                                    selection_completed = true;
-                                }
-                                Err(err) if server.wallix_fail_if_menu_match_error => {
-                                    unsafe {
-                                        libc::kill(child.as_raw(), libc::SIGTERM);
-                                    }
-                                    let _ = waitpid(child, Some(WaitPidFlag::WNOHANG));
-                                    return Err(err);
-                                }
-                                Err(_) => {
-                                    selection_completed = true;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if pollfds[1].revents & libc::POLLIN != 0 {
-                    let mut buf = [0_u8; 4096];
-                    let read = stdin.read(&mut buf)?;
-                    if read == 0 {
-                        stdin_closed = true;
-                    } else {
-                        master_writer.write_all(&buf[..read])?;
-                        master_writer.flush()?;
-                    }
-                }
-
-                match waitpid(child, Some(WaitPidFlag::WNOHANG)) {
-                    Ok(WaitStatus::StillAlive) => {}
-                    Ok(_) => return Ok(()),
-                    Err(err) => {
-                        return Err(anyhow::anyhow!("Failed to wait for Wallix session: {err}"));
-                    }
-                }
-            }
-
-            if !selection_completed {
-                return Err(anyhow::anyhow!(
-                    "Wallix session exited before menu auto-selection completed"
-                ));
-            }
-
-            Ok(())
+            let master_reader = std::fs::File::from(master);
+            let master_writer = master_reader.try_clone()?;
+            Ok((child, master_reader, master_writer))
         }
     }
+}
+
+#[cfg(unix)]
+fn read_until_wallix_prompt(master_reader: &mut std::fs::File) -> Result<String> {
+    let mut transcript = String::new();
+    loop {
+        let mut buf = [0_u8; 4096];
+        let read = master_reader.read(&mut buf)?;
+        if read == 0 {
+            break;
+        }
+
+        let chunk = String::from_utf8_lossy(&buf[..read]);
+        transcript.push_str(&chunk);
+        if transcript.len() > 64 * 1024 {
+            let drain = transcript.len().saturating_sub(64 * 1024);
+            transcript.drain(..drain);
+        }
+
+        if contains_wallix_prompt(&transcript) {
+            return Ok(transcript);
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        "Wallix session exited before the selection prompt was displayed"
+    ))
+}
+
+#[cfg(unix)]
+fn connect_wallix_via_pty_with_selection(
+    server: &ResolvedServer,
+    verbose: bool,
+    selected_id: Option<&str>,
+) -> Result<()> {
+    let args = build_wallix_bastion_args(server, verbose)?;
+    let (child, mut master_reader, mut master_writer) = spawn_wallix_pty(&args)?;
+    let mut stdout = std::io::stdout().lock();
+    let mut stdin = std::io::stdin().lock();
+    let mut transcript = String::new();
+    let mut selection_completed = false;
+    let mut stdin_closed = false;
+    let master_fd = master_reader.as_raw_fd();
+    let stdin_fd = std::io::stdin().as_raw_fd();
+
+    loop {
+        let mut pollfds = [
+            libc::pollfd {
+                fd: master_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            },
+            libc::pollfd {
+                fd: if stdin_closed || !selection_completed {
+                    -1
+                } else {
+                    stdin_fd
+                },
+                events: libc::POLLIN,
+                revents: 0,
+            },
+        ];
+
+        let rc = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as _, 100) };
+        if rc < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(err.into());
+        }
+
+        if pollfds[0].revents & libc::POLLIN != 0 {
+            let mut buf = [0_u8; 4096];
+            let read = master_reader.read(&mut buf)?;
+            if read == 0 {
+                break;
+            }
+
+            stdout.write_all(&buf[..read])?;
+            stdout.flush()?;
+
+            if !selection_completed {
+                let chunk = String::from_utf8_lossy(&buf[..read]);
+                transcript.push_str(&chunk);
+                if transcript.len() > 64 * 1024 {
+                    let drain = transcript.len().saturating_sub(64 * 1024);
+                    transcript.drain(..drain);
+                }
+
+                if contains_wallix_prompt(&transcript) {
+                    let selection = if let Some(id) = selected_id {
+                        Ok(id.to_string())
+                    } else {
+                        parse_wallix_menu(&transcript)
+                            .and_then(|entries| select_id_for_server(&entries, server))
+                    };
+
+                    match selection {
+                        Ok(id) => {
+                            master_writer.write_all(id.as_bytes())?;
+                            master_writer.write_all(b"\n")?;
+                            master_writer.flush()?;
+                            selection_completed = true;
+                        }
+                        Err(err) if server.wallix_fail_if_menu_match_error => {
+                            unsafe {
+                                libc::kill(child.as_raw(), libc::SIGTERM);
+                            }
+                            let _ = waitpid(child, Some(WaitPidFlag::WNOHANG));
+                            return Err(err);
+                        }
+                        Err(_) => {
+                            selection_completed = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if pollfds[1].revents & libc::POLLIN != 0 {
+            let mut buf = [0_u8; 4096];
+            let read = stdin.read(&mut buf)?;
+            if read == 0 {
+                stdin_closed = true;
+            } else {
+                master_writer.write_all(&buf[..read])?;
+                master_writer.flush()?;
+            }
+        }
+
+        match waitpid(child, Some(WaitPidFlag::WNOHANG)) {
+            Ok(WaitStatus::StillAlive) => {}
+            Ok(_) => return Ok(()),
+            Err(err) => {
+                return Err(anyhow::anyhow!("Failed to wait for Wallix session: {err}"));
+            }
+        }
+    }
+
+    if !selection_completed {
+        return Err(anyhow::anyhow!(
+            "Wallix session exited before menu auto-selection completed"
+        ));
+    }
+
+    Ok(())
 }
 
 fn collect_target_args(args: &mut Vec<String>, user: &str, host_str: &str, server_port: u16) {

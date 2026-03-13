@@ -11,7 +11,9 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 
-use susshi::app::{App, AppMode, CmdState, ConfigItem, ScpState, TunnelOverlayState};
+use susshi::app::{
+    App, AppMode, CmdState, ConfigItem, ScpState, TunnelOverlayState, WallixSelectorState,
+};
 use susshi::config::{Config, ConnectionMode, IncludeWarning, ResolvedServer, undefined_vars};
 use susshi::handlers::{get_layout, handle_mouse_event, is_in_rect};
 use susshi::import;
@@ -545,6 +547,44 @@ fn main() -> io::Result<()> {
                     break;
                 }
             }
+            Ok(AppResult::ConnectWallixSelected(server, verbose, selected_id)) => {
+                if app.keep_open {
+                    if let Err(e) = susshi::hooks::run_hook(
+                        server.pre_connect_hook.as_deref().unwrap_or(""),
+                        &server,
+                    ) {
+                        eprintln!("Hook pre_connect a annulé la connexion : {e}");
+                    } else {
+                        if let Err(e) =
+                            susshi::ssh::client::connect_blocking_wallix_with_selection(
+                                &server,
+                                verbose,
+                                &selected_id,
+                            )
+                        {
+                            eprintln!("SSH Connection Error: {}", e);
+                        }
+                        let _ = susshi::hooks::run_hook(
+                            server.post_disconnect_hook.as_deref().unwrap_or(""),
+                            &server,
+                        );
+                    }
+                } else {
+                    if let Err(e) = susshi::hooks::run_hook(
+                        server.pre_connect_hook.as_deref().unwrap_or(""),
+                        &server,
+                    ) {
+                        eprintln!("Hook pre_connect a annulé la connexion : {e}");
+                    } else if let Err(e) = susshi::ssh::client::connect_wallix_with_selection(
+                        &server,
+                        verbose,
+                        &selected_id,
+                    ) {
+                        eprintln!("SSH Connection Error: {}", e);
+                    }
+                    break;
+                }
+            }
             Err(err) => {
                 eprintln!("Application Error: {:?}", err);
                 break;
@@ -560,6 +600,7 @@ fn main() -> io::Result<()> {
 pub enum AppResult {
     Exit,
     Connect(Box<susshi::config::ResolvedServer>, ConnectionMode, bool),
+    ConnectWallixSelected(Box<susshi::config::ResolvedServer>, bool, String),
 }
 
 fn run_app(
@@ -595,6 +636,9 @@ fn run_app(
 
         // Lit le résultat de la commande ad-hoc si un thread tourne
         app.poll_cmd();
+
+        // Lit le résultat du chargement du menu Wallix si un thread tourne
+        app.poll_wallix_selector();
 
         // Sonde l'état des tunnels SSH actifs (détecte les fins inopinées)
         app.poll_tunnel_events();
@@ -669,6 +713,32 @@ fn run_app(
                         match key.code {
                             KeyCode::Enter | KeyCode::Esc | KeyCode::Char('q') => {
                                 app.dismiss_scp_result();
+                            }
+                            _ => {}
+                        }
+                    } else if matches!(&app.wallix_selector, Some(WallixSelectorState::Loading { .. })) {
+                        if matches!(key.code, KeyCode::Esc | KeyCode::Char('q')) {
+                            app.close_wallix_selector();
+                        }
+                    } else if matches!(&app.wallix_selector, Some(WallixSelectorState::Error { .. })) {
+                        if matches!(key.code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q')) {
+                            app.close_wallix_selector();
+                        }
+                    } else if matches!(&app.wallix_selector, Some(WallixSelectorState::List { .. })) {
+                        match key.code {
+                            KeyCode::Down | KeyCode::Char('j') => app.wallix_selector_next(),
+                            KeyCode::Up | KeyCode::Char('k') => app.wallix_selector_previous(),
+                            KeyCode::Esc | KeyCode::Char('q') => app.close_wallix_selector(),
+                            KeyCode::Enter => {
+                                if let Some((server, selected_id)) = app.wallix_selector_selected_id() {
+                                    app.close_wallix_selector();
+                                    app.record_connection(&server);
+                                    return Ok(AppResult::ConnectWallixSelected(
+                                        Box::new(server),
+                                        app.verbose_mode,
+                                        selected_id,
+                                    ));
+                                }
                             }
                             _ => {}
                         }
@@ -856,20 +926,14 @@ fn run_app(
                                 {
                                     let server_clone = (**server).clone();
                                     let mode = app.connection_mode;
-                                    if mode == ConnectionMode::Wallix {
-                                        app.set_status_message(
-                                            app.lang.probe_wallix_error.to_string(),
-                                        );
-                                    } else {
-                                        let (tx, rx) = std::sync::mpsc::channel();
-                                        app.probe_rx = Some(rx);
-                                        app.probe_state = ProbeState::Running;
-                                        std::thread::spawn(move || {
-                                            let result = susshi::probe::probe(&server_clone, mode)
-                                                .map_err(|e| e.to_string());
-                                            let _ = tx.send(result);
-                                        });
-                                    }
+                                    let (tx, rx) = std::sync::mpsc::channel();
+                                    app.probe_rx = Some(rx);
+                                    app.probe_state = ProbeState::Running;
+                                    std::thread::spawn(move || {
+                                        let result = susshi::probe::probe(&server_clone, mode)
+                                            .map_err(|e| e.to_string());
+                                        let _ = tx.send(result);
+                                    });
                                 }
                             }
                             KeyCode::Char(' ') => {
@@ -894,12 +958,16 @@ fn run_app(
                                 };
                                 match action {
                                     Some(Ok(server)) => {
-                                        app.record_connection(&server);
-                                        return Ok(AppResult::Connect(
-                                            server,
-                                            app.connection_mode,
-                                            app.verbose_mode,
-                                        ));
+                                        if app.should_open_wallix_selector(&server) {
+                                            app.open_wallix_selector((*server).clone(), app.verbose_mode);
+                                        } else {
+                                            app.record_connection(&server);
+                                            return Ok(AppResult::Connect(
+                                                server,
+                                                app.connection_mode,
+                                                app.verbose_mode,
+                                            ));
+                                        }
                                     }
                                     Some(Err(msg)) => app.set_error(msg),
                                     None => app.toggle_expansion(),
@@ -938,12 +1006,16 @@ fn run_app(
                                 };
                                 match action {
                                     Some(Ok(server)) => {
-                                        app.record_connection(&server);
-                                        return Ok(AppResult::Connect(
-                                            server,
-                                            app.connection_mode,
-                                            app.verbose_mode,
-                                        ));
+                                        if app.should_open_wallix_selector(&server) {
+                                            app.open_wallix_selector((*server).clone(), app.verbose_mode);
+                                        } else {
+                                            app.record_connection(&server);
+                                            return Ok(AppResult::Connect(
+                                                server,
+                                                app.connection_mode,
+                                                app.verbose_mode,
+                                            ));
+                                        }
                                     }
                                     Some(Err(msg)) => app.set_error(msg),
                                     None => {}

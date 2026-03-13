@@ -108,12 +108,7 @@ pub fn build_expected_targets(server: &ResolvedServer) -> Vec<String> {
         if !env.is_empty() && !project.is_empty() && !role.is_empty() {
             candidates.push(format!(
                 "{}@{}@{}-{}-{}:{}",
-                server.user,
-                server.wallix_account,
-                env,
-                project,
-                role,
-                server.wallix_protocol
+                server.user, server.wallix_account, env, project, role, server.wallix_protocol
             ));
         }
     }
@@ -203,7 +198,6 @@ pub fn select_id_by_target_and_group(
     target: &str,
     group: &str,
 ) -> Result<String> {
-    // Filter by target first
     let target_matches: Vec<_> = entries.iter().filter(|e| e.target == target).collect();
 
     if target_matches.is_empty() {
@@ -218,7 +212,6 @@ pub fn select_id_by_target_and_group(
         ));
     }
 
-    // Filter by group
     let group_matches: Vec<_> = target_matches.iter().filter(|e| e.group == group).collect();
 
     match group_matches.len() {
@@ -235,7 +228,9 @@ pub fn select_id_by_target_and_group(
         1 => Ok(group_matches[0].id.clone()),
         n => Err(anyhow!(
             "Multiple menu entries ({}) found for target '{}' and group '{}'. Cannot auto-select.",
-            n, target, group
+            n,
+            target,
+            group
         )),
     }
 }
@@ -288,32 +283,116 @@ pub fn build_expected_groups(server: &ResolvedServer) -> Result<Vec<String>> {
     Ok(candidates)
 }
 
+fn group_suffix_matches(entry_group: &str, configured_group: &str) -> bool {
+    entry_group == configured_group || entry_group.ends_with(&format!("_{configured_group}"))
+}
+
 /// Select a Wallix menu entry directly from a resolved server configuration.
 pub fn select_id_for_server(entries: &[WallixMenuEntry], server: &ResolvedServer) -> Result<String> {
     let targets = build_expected_targets(server);
     let groups = build_expected_groups(server)?;
-    let mut last_error = None;
+    let configured_group = server
+        .wallix_group
+        .as_deref()
+        .ok_or_else(|| anyhow!("wallix.group is not configured for server '{}'", server.name))?;
 
-    for target in targets {
-        for group in &groups {
-            match select_id_by_target_and_group(entries, &target, group) {
-                Ok(id) => return Ok(id),
-                Err(err) => last_error = Some(err),
+    let mut had_target_match = false;
+    let mut available_groups_for_matching_targets: Vec<String> = Vec::new();
+
+    for target in &targets {
+        let target_entries: Vec<&WallixMenuEntry> = entries.iter().filter(|e| &e.target == target).collect();
+        if target_entries.is_empty() {
+            continue;
+        }
+
+        had_target_match = true;
+
+        for entry in &target_entries {
+            if !available_groups_for_matching_targets.contains(&entry.group) {
+                available_groups_for_matching_targets.push(entry.group.clone());
             }
+        }
+
+        for group in &groups {
+            let exact: Vec<_> = target_entries
+                .iter()
+                .filter(|entry| entry.group == *group)
+                .collect();
+            match exact.len() {
+                1 => return Ok(exact[0].id.clone()),
+                n if n > 1 => {
+                    return Err(anyhow!(
+                        "Multiple menu entries ({}) found for target '{}' and group '{}'. Cannot auto-select.",
+                        n,
+                        target,
+                        group
+                    ));
+                }
+                _ => {}
+            }
+        }
+
+        let suffix_matches: Vec<_> = target_entries
+            .iter()
+            .filter(|entry| group_suffix_matches(&entry.group, configured_group))
+            .collect();
+        match suffix_matches.len() {
+            1 => return Ok(suffix_matches[0].id.clone()),
+            n if n > 1 => {
+                return Err(anyhow!(
+                    "Multiple menu entries ({}) found for target '{}' matching group suffix '{}'. Cannot auto-select.",
+                    n,
+                    target,
+                    configured_group
+                ));
+            }
+            _ => {}
         }
     }
 
-    Err(last_error.unwrap_or_else(|| {
-        anyhow!(
-            "No Wallix authorization candidate matched for server '{}'",
-            server.name
-        )
-    }))
+    if had_target_match {
+        return Err(anyhow!(
+            "No menu entry found for matching targets with group '{}'. Available groups for these targets: {}",
+            configured_group,
+            available_groups_for_matching_targets.join(", ")
+        ));
+    }
+
+    Err(anyhow!(
+        "No menu entry found with target '{}'. Available targets: {}",
+        targets.last().cloned().unwrap_or_else(|| build_expected_target(server)),
+        entries
+            .iter()
+            .map(|e| e.target.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_group_suffix_matches_short_group() {
+        assert!(group_suffix_matches(
+            "STI-ANSCORE_crtech-admins",
+            "crtech-admins"
+        ));
+    }
+
+    #[test]
+    fn test_group_suffix_matches_exact_group() {
+        assert!(group_suffix_matches("crtech-admins", "crtech-admins"));
+    }
+
+    #[test]
+    fn test_group_suffix_does_not_match_unrelated_group() {
+        assert!(!group_suffix_matches(
+            "STI-ANSCORE_ces3s-admins",
+            "crtech-admins"
+        ));
+    }
 
     #[test]
     fn test_parse_simple_menu() {
@@ -607,7 +686,13 @@ mod tests {
         };
 
         let groups = build_expected_groups(&server).unwrap();
-        assert_eq!(groups, vec!["crtech-admins".to_string(), "PP-ONDE_crtech-admins".to_string()]);
+        assert_eq!(
+            groups,
+            vec![
+                "crtech-admins".to_string(),
+                "PP-ONDE_crtech-admins".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -646,7 +731,10 @@ mod tests {
         };
 
         let targets = build_expected_targets(&server);
-        assert!(targets.contains(&"pcollin@default@pp-ond-bdd01.onde.hp.in.phm.education.gouv.fr:SSH".to_string()));
+        assert!(
+            targets
+                .contains(&"pcollin@default@pp-ond-bdd01.onde.hp.in.phm.education.gouv.fr:SSH".to_string())
+        );
         assert!(targets.contains(&"pcollin@default@PP-OND-BDD01:SSH".to_string()));
         assert!(targets.contains(&"pcollin@default@PP-ONDE-BD:SSH".to_string()));
     }
@@ -693,6 +781,51 @@ mod tests {
         };
 
         assert_eq!(select_id_for_server(&entries, &server).unwrap(), "1");
+    }
+
+    #[test]
+    fn test_select_id_for_server_accepts_prefixed_group_suffix() {
+        let entries = vec![WallixMenuEntry {
+            id: "640".to_string(),
+            target: "pcollin@default@pr-aut-anscore02.ste.in.phm.education.gouv.fr:SSH"
+                .to_string(),
+            group: "STI-ANSCORE_crtech-admins".to_string(),
+        }];
+
+        let server = ResolvedServer {
+            namespace: String::new(),
+            group_name: "Anscore 2".to_string(),
+            env_name: String::new(),
+            name: "Anscore 2".to_string(),
+            host: "pr-aut-anscore02.ste.in.phm.education.gouv.fr".to_string(),
+            user: "pcollin".to_string(),
+            port: 22,
+            ssh_key: String::new(),
+            ssh_options: vec![],
+            default_mode: crate::config::ConnectionMode::Wallix,
+            jump_host: None,
+            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
+            bastion_user: Some("pcollin".to_string()),
+            bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
+            wallix_group: Some("crtech-admins".to_string()),
+            wallix_account: "default".to_string(),
+            wallix_protocol: "SSH".to_string(),
+            wallix_auto_select: true,
+            wallix_fail_if_menu_match_error: true,
+            wallix_selection_timeout_secs: 8,
+            use_system_ssh_config: false,
+            probe_filesystems: vec![],
+            tunnels: vec![],
+            tags: vec![],
+            control_master: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
+        };
+
+        assert_eq!(select_id_for_server(&entries, &server).unwrap(), "640");
     }
 
     #[test]

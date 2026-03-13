@@ -333,6 +333,14 @@ fn parse_wallix_page_position(buffer: &str) -> Option<(u32, u32)> {
 }
 
 #[cfg(unix)]
+fn is_wallix_menu_matching_error(err: &anyhow::Error) -> bool {
+    let message = err.to_string();
+    message.contains("No menu entry found with target")
+        || message.contains("No menu entry found for matching targets")
+        || message.contains("No menu entry found for target")
+}
+
+#[cfg(unix)]
 fn spawn_wallix_pty(args: &[String]) -> Result<(nix::unistd::Pid, std::fs::File, std::fs::File)> {
     let mut argv = Vec::with_capacity(args.len() + 2);
     argv.push(CString::new("ssh")?);
@@ -464,9 +472,7 @@ fn connect_wallix_via_pty_with_selection(
                             selection_completed = true;
                         }
                         Err(err) if server.wallix_fail_if_menu_match_error => {
-                            if err
-                                .to_string()
-                                .contains("No menu entry found with target")
+                            if is_wallix_menu_matching_error(&err)
                                 && let Some((current, total)) =
                                     parse_wallix_page_position(&transcript)
                                 && current < total
@@ -474,6 +480,12 @@ fn connect_wallix_via_pty_with_selection(
                                 master_writer.write_all(b"n\n")?;
                                 master_writer.flush()?;
                                 transcript.clear();
+                                continue;
+                            }
+
+                            if is_wallix_menu_matching_error(&err) {
+                                // Fallback manuel: l'utilisateur choisit lui-même dans le menu.
+                                selection_completed = true;
                                 continue;
                             }
 

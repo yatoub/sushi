@@ -9,7 +9,7 @@
 - **Connection Modes**:
   - **Direct**: Standard SSH connection.
   - **Jump**: Connect via one or more jump hosts (`-J`). Supports multi-hop chains.
-  - **Wallix**: Connect via a Wallix server using custom login string.
+  - **Wallix**: Connect via a Wallix bastion with menu auto-selection and manual fallback.
   - **Mode Inheritance**: Connection mode inherits from defaults → group → environment → server.
 - **Configuration Inheritance**: Define defaults globally or at the group/environment level to avoid repetition.
   - Full cascading support for user, ssh_key, mode, port, options, and connection configs.
@@ -159,6 +159,12 @@ defaults:
   wallix:
     host: "bastion.example.com"
     user: "bastion"
+    group: "devops-admins" # short group is allowed
+    account: "default"
+    protocol: "SSH"
+    auto_select: true
+    fail_if_menu_match_error: true
+    selection_timeout_secs: 8
 
 groups:
   # Level 3: Group → Environment → Server
@@ -224,6 +230,12 @@ jump:
   - `theme`: UI color theme — `latte`, `frappe`, `macchiato`, or `mocha` (default).
   - `jump`: Jump host chain — a **list** of `{ host, user }` entries. SSH receives `-J user1@host1,user2@host2`. Even a single hop must be written as a list item.
   - `wallix`: Wallix bastion configuration (required when using `wallix` mode). The YAML key `bastion` is accepted as a backward-compatible alias.
+    - `host`, `user`: bastion endpoint and login user.
+    - `group`: authorization group used for menu matching. This is the canonical key (legacy `wallix_group` is still accepted).
+    - `account` / `protocol`: target rendering parts (defaults: `default` / `SSH`).
+    - `auto_select`: try to auto-pick a menu entry before handing control to the user (default: `true`).
+    - `fail_if_menu_match_error`: if `true`, keep trying auto-selection (including pagination) and only fallback to manual selection when no reliable match is found.
+    - `selection_timeout_secs`: timeout budget for menu parsing.
   - `use_system_ssh_config`: Set to `true` to honour `~/.ssh/config` instead of passing `-F /dev/null`. Defaults to `false`.
   - `probe_filesystems`: List of extra mount points to inspect during the quick diagnostic (`d`). Uses **additive inheritance**: each level appends its paths to the parent list (unlike `user` or `ssh_key` which replace). If a path is not mounted on the target server a yellow `⚠` warning is shown instead of a progress bar.
   - `keep_open`: Set to `true` to reopen the TUI automatically after a connection closes. Defaults to `false` (historical behaviour: susshi exits after connecting).
@@ -246,6 +258,17 @@ jump:
     - `remote_host`: destination host reached through the tunnel (e.g. `"127.0.0.1"`).
     - `remote_port`: destination port (e.g. `5432`).
   - Tunnels can also be added, edited, or deleted interactively from the TUI — user overrides are stored in `~/.susshi_state.json`.
+
+### Wallix Selection Behavior
+
+When `mode: wallix` is active, susshi resolves multiple target and group candidates before selecting an ID in the Wallix menu:
+
+- Target candidates include FQDN, short host, and inferred aliases from YAML structure (env/group/role).
+- Group candidates include the configured `wallix.group` and structure-derived variants.
+- Prefixed authorizations (for example `ST-ANSIBLE_devops-admins`) match a short configured group like `devops-admins`.
+- Paginated menus are scanned automatically (`page X/Y` with `n`) before declaring failure.
+- If Wallix asks for a second prompt such as `Adresse cible`, susshi auto-fills it with the configured server `host`.
+- If no reliable auto-match is found, susshi falls back to manual Wallix selection in-session instead of hard failing.
 
 ## ⌨️ Keybindings
 

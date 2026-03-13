@@ -4,6 +4,7 @@
 //! and automatically select an entry based on target (user@account@host:protocol)
 //! and group matching.
 
+use crate::config::ResolvedServer;
 use anyhow::{anyhow, Result};
 
 /// Represents a single entry from a Wallix menu.
@@ -15,6 +16,16 @@ pub struct WallixMenuEntry {
     pub target: String,
     /// Authorization group name.
     pub group: String,
+}
+
+/// Build the expected Wallix target string from a resolved server.
+///
+/// Format: `user@account@host:protocol`
+pub fn build_expected_target(server: &ResolvedServer) -> String {
+    format!(
+        "{}@{}@{}:{}",
+        server.user, server.wallix_account, server.host, server.wallix_protocol
+    )
 }
 
 /// Parse Wallix menu output into structured entries.
@@ -44,7 +55,18 @@ pub fn parse_wallix_menu(output: &str) -> Result<Vec<WallixMenuEntry>> {
             continue;
         }
 
-        let mut columns = trimmed.split('│').map(str::trim);
+        let separator = if trimmed.contains('│') {
+            '│'
+        } else if trimmed.contains('|') {
+            '|'
+        } else {
+            continue;
+        };
+
+        let mut columns = trimmed
+            .split(separator)
+            .map(str::trim)
+            .filter(|column| !column.is_empty());
         let Some(id) = columns.next() else {
             continue;
         };
@@ -122,6 +144,19 @@ pub fn select_id_by_target_and_group(
             n, target, group
         )),
     }
+}
+
+/// Select a Wallix menu entry directly from a resolved server configuration.
+pub fn select_id_for_server(entries: &[WallixMenuEntry], server: &ResolvedServer) -> Result<String> {
+    let group = server.wallix_group.as_deref().ok_or_else(|| {
+        anyhow!(
+            "wallix_group is not configured for server '{}'",
+            server.name
+        )
+    })?;
+
+    let target = build_expected_target(server);
+    select_id_by_target_and_group(entries, &target, group)
 }
 
 #[cfg(test)]
@@ -255,6 +290,133 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Multiple menu entries"));
+    }
+
+    #[test]
+    fn test_build_expected_target_from_resolved_server() {
+        let server = ResolvedServer {
+            namespace: String::new(),
+            group_name: String::new(),
+            env_name: String::new(),
+            name: "pp-ond-ces3s".to_string(),
+            host: "PP-ONDE-BD".to_string(),
+            user: "pcollin".to_string(),
+            port: 22,
+            ssh_key: String::new(),
+            ssh_options: vec![],
+            default_mode: crate::config::ConnectionMode::Wallix,
+            jump_host: None,
+            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
+            bastion_user: Some("pcollin".to_string()),
+            bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
+            wallix_group: Some("PP-ONDE_ces3s-admins".to_string()),
+            wallix_account: "default".to_string(),
+            wallix_protocol: "SSH".to_string(),
+            wallix_auto_select: true,
+            wallix_fail_if_menu_match_error: true,
+            wallix_selection_timeout_secs: 8,
+            use_system_ssh_config: false,
+            probe_filesystems: vec![],
+            tunnels: vec![],
+            tags: vec![],
+            control_master: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
+        };
+
+        assert_eq!(build_expected_target(&server), "pcollin@default@PP-ONDE-BD:SSH");
+    }
+
+    #[test]
+    fn test_select_id_for_server_uses_resolved_server_fields() {
+        let entries = vec![WallixMenuEntry {
+            id: "0".to_string(),
+            target: "pcollin@default@PP-ONDE-BD:SSH".to_string(),
+            group: "PP-ONDE_ces3s-admins".to_string(),
+        }];
+
+        let server = ResolvedServer {
+            namespace: String::new(),
+            group_name: String::new(),
+            env_name: String::new(),
+            name: "pp-ond-ces3s".to_string(),
+            host: "PP-ONDE-BD".to_string(),
+            user: "pcollin".to_string(),
+            port: 22,
+            ssh_key: String::new(),
+            ssh_options: vec![],
+            default_mode: crate::config::ConnectionMode::Wallix,
+            jump_host: None,
+            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
+            bastion_user: Some("pcollin".to_string()),
+            bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
+            wallix_group: Some("PP-ONDE_ces3s-admins".to_string()),
+            wallix_account: "default".to_string(),
+            wallix_protocol: "SSH".to_string(),
+            wallix_auto_select: true,
+            wallix_fail_if_menu_match_error: true,
+            wallix_selection_timeout_secs: 8,
+            use_system_ssh_config: false,
+            probe_filesystems: vec![],
+            tunnels: vec![],
+            tags: vec![],
+            control_master: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
+        };
+
+        assert_eq!(select_id_for_server(&entries, &server).unwrap(), "0");
+    }
+
+    #[test]
+    fn test_select_id_for_server_requires_group() {
+        let entries = vec![WallixMenuEntry {
+            id: "0".to_string(),
+            target: "pcollin@default@PP-ONDE-BD:SSH".to_string(),
+            group: "PP-ONDE_ces3s-admins".to_string(),
+        }];
+
+        let server = ResolvedServer {
+            namespace: String::new(),
+            group_name: String::new(),
+            env_name: String::new(),
+            name: "pp-ond-missing-group".to_string(),
+            host: "PP-ONDE-BD".to_string(),
+            user: "pcollin".to_string(),
+            port: 22,
+            ssh_key: String::new(),
+            ssh_options: vec![],
+            default_mode: crate::config::ConnectionMode::Wallix,
+            jump_host: None,
+            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
+            bastion_user: Some("pcollin".to_string()),
+            bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
+            wallix_group: None,
+            wallix_account: "default".to_string(),
+            wallix_protocol: "SSH".to_string(),
+            wallix_auto_select: true,
+            wallix_fail_if_menu_match_error: true,
+            wallix_selection_timeout_secs: 8,
+            use_system_ssh_config: false,
+            probe_filesystems: vec![],
+            tunnels: vec![],
+            tags: vec![],
+            control_master: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
+        };
+
+        let error = select_id_for_server(&entries, &server).unwrap_err();
+        assert!(error.to_string().contains("wallix_group is not configured"));
     }
 
     #[test]

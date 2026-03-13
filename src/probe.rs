@@ -5,7 +5,7 @@
 
 use crate::config::{ConnectionMode, ResolvedServer};
 use crate::ssh::client::build_ssh_args;
-use crate::wallix::{build_expected_groups, build_expected_target};
+use crate::wallix::{build_expected_groups, build_expected_target, build_expected_targets};
 use anyhow::Result;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::process::Command;
@@ -237,6 +237,7 @@ pub fn probe(server: &ResolvedServer, mode: ConnectionMode) -> Result<ProbeResul
 
 fn probe_wallix(server: &ResolvedServer) -> ProbeResult {
     let expected_target = build_expected_target(server);
+    let targets = build_expected_targets(server);
     let groups = build_expected_groups(server).unwrap_or_else(|_| vec!["<missing>".to_string()]);
     let bastion = server
         .bastion_host
@@ -247,6 +248,7 @@ fn probe_wallix(server: &ResolvedServer) -> ProbeResult {
     let mut notes = vec![
         "profile: wallix".to_string(),
         format!("target: {}", expected_target),
+        format!("target candidates: {}", targets.join(" | ")),
         format!("group candidates: {}", groups.join(" | ")),
         format!("bastion: {}:{}", bastion_host, bastion_port),
     ];

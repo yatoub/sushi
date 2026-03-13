@@ -28,6 +28,100 @@ pub fn build_expected_target(server: &ResolvedServer) -> String {
     )
 }
 
+fn normalize_target_segment(value: &str) -> String {
+    let mut normalized = String::new();
+    let mut previous_was_dash = false;
+
+    for character in value.trim().chars() {
+        if character.is_ascii_alphanumeric() {
+            normalized.push(character.to_ascii_uppercase());
+            previous_was_dash = false;
+        } else if !previous_was_dash {
+            normalized.push('-');
+            previous_was_dash = true;
+        }
+    }
+
+    normalized.trim_matches('-').to_string()
+}
+
+fn infer_wallix_role(server: &ResolvedServer) -> Option<String> {
+    let first_host_label = server.host.split('.').next().unwrap_or(server.host.as_str());
+    let host_last_token = first_host_label.rsplit('-').next().unwrap_or(first_host_label);
+    let source = if !server.name.trim().is_empty() {
+        server.name.as_str()
+    } else {
+        host_last_token
+    };
+
+    let role_key: String = source
+        .chars()
+        .take_while(|character| !character.is_ascii_digit())
+        .collect::<String>()
+        .to_ascii_lowercase();
+
+    let role = match role_key.as_str() {
+        "bdd" | "bd" | "db" => "BD",
+        "apps" | "app" | "appli" => "APPLI",
+        "adm" | "admin" => "ADMIN",
+        "web" => "WEB",
+        "kafka" => "KAFKA",
+        "els" => "ELS",
+        "mig" => "MIG",
+        "idp" => "IDP",
+        "frt" | "frtrac" => "FRTRAC",
+        other if !other.is_empty() => return Some(normalize_target_segment(other)),
+        _ => return None,
+    };
+
+    Some(role.to_string())
+}
+
+pub fn build_expected_targets(server: &ResolvedServer) -> Vec<String> {
+    let mut candidates = vec![build_expected_target(server)];
+
+    let first_host_label = server.host.split('.').next().unwrap_or(server.host.as_str());
+    let short_host = normalize_target_segment(first_host_label);
+    if !short_host.is_empty() {
+        candidates.push(format!(
+            "{}@{}@{}:{}",
+            server.user, server.wallix_account, short_host, server.wallix_protocol
+        ));
+    }
+
+    let env = if !server.env_name.trim().is_empty() {
+        normalize_target_segment(&server.env_name)
+    } else {
+        normalize_target_segment(first_host_label.split('-').next().unwrap_or_default())
+    };
+
+    let project_from_domain = server.host.split('.').nth(1).map(normalize_target_segment);
+    let project_from_group = if server.group_name.trim().is_empty() {
+        String::new()
+    } else {
+        normalize_target_segment(&server.group_name)
+    };
+
+    let role = infer_wallix_role(server).unwrap_or_default();
+
+    for project in [project_from_domain.unwrap_or_default(), project_from_group] {
+        if !env.is_empty() && !project.is_empty() && !role.is_empty() {
+            candidates.push(format!(
+                "{}@{}@{}-{}-{}:{}",
+                server.user,
+                server.wallix_account,
+                env,
+                project,
+                role,
+                server.wallix_protocol
+            ));
+        }
+    }
+
+    candidates.dedup();
+    candidates
+}
+
 /// Parse Wallix menu output into structured entries.
 ///
 /// The Wallix menu typically looks like:
@@ -196,14 +290,16 @@ pub fn build_expected_groups(server: &ResolvedServer) -> Result<Vec<String>> {
 
 /// Select a Wallix menu entry directly from a resolved server configuration.
 pub fn select_id_for_server(entries: &[WallixMenuEntry], server: &ResolvedServer) -> Result<String> {
-    let target = build_expected_target(server);
+    let targets = build_expected_targets(server);
     let groups = build_expected_groups(server)?;
     let mut last_error = None;
 
-    for group in groups {
-        match select_id_by_target_and_group(entries, &target, &group) {
-            Ok(id) => return Ok(id),
-            Err(err) => last_error = Some(err),
+    for target in targets {
+        for group in &groups {
+            match select_id_by_target_and_group(entries, &target, group) {
+                Ok(id) => return Ok(id),
+                Err(err) => last_error = Some(err),
+            }
         }
     }
 
@@ -515,6 +611,47 @@ mod tests {
     }
 
     #[test]
+    fn test_build_expected_targets_adds_wallix_alias_from_fqdn_and_yaml() {
+        let server = ResolvedServer {
+            namespace: String::new(),
+            group_name: "ONDE".to_string(),
+            env_name: "PP".to_string(),
+            name: "bdd01".to_string(),
+            host: "pp-ond-bdd01.onde.hp.in.phm.education.gouv.fr".to_string(),
+            user: "pcollin".to_string(),
+            port: 22,
+            ssh_key: String::new(),
+            ssh_options: vec![],
+            default_mode: crate::config::ConnectionMode::Wallix,
+            jump_host: None,
+            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
+            bastion_user: Some("pcollin".to_string()),
+            bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
+            wallix_group: Some("crtech-admins".to_string()),
+            wallix_account: "default".to_string(),
+            wallix_protocol: "SSH".to_string(),
+            wallix_auto_select: true,
+            wallix_fail_if_menu_match_error: true,
+            wallix_selection_timeout_secs: 8,
+            use_system_ssh_config: false,
+            probe_filesystems: vec![],
+            tunnels: vec![],
+            tags: vec![],
+            control_master: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
+        };
+
+        let targets = build_expected_targets(&server);
+        assert!(targets.contains(&"pcollin@default@pp-ond-bdd01.onde.hp.in.phm.education.gouv.fr:SSH".to_string()));
+        assert!(targets.contains(&"pcollin@default@PP-OND-BDD01:SSH".to_string()));
+        assert!(targets.contains(&"pcollin@default@PP-ONDE-BD:SSH".to_string()));
+    }
+
+    #[test]
     fn test_select_id_for_server_accepts_short_group_and_yaml_structure() {
         let entries = vec![WallixMenuEntry {
             id: "1".to_string(),
@@ -526,8 +663,8 @@ mod tests {
             namespace: String::new(),
             group_name: "ONDE".to_string(),
             env_name: "PP".to_string(),
-            name: "pp-ond-crtech".to_string(),
-            host: "PP-ONDE-BD".to_string(),
+            name: "bdd01".to_string(),
+            host: "pp-ond-bdd01.onde.hp.in.phm.education.gouv.fr".to_string(),
             user: "pcollin".to_string(),
             port: 22,
             ssh_key: String::new(),

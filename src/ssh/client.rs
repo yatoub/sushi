@@ -1,8 +1,17 @@
 use crate::config::{ConnectionMode, ResolvedServer};
+use crate::wallix::{parse_wallix_menu, select_id_for_server};
 use anyhow::Result;
 #[cfg(unix)]
+use nix::pty::{ForkptyResult, Winsize, forkpty};
+#[cfg(unix)]
+use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
+#[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(unix)]
+use std::os::unix::io::AsRawFd;
 use std::process::Command;
+#[cfg(unix)]
+use std::{ffi::CString, io::{Read, Write}};
 
 /// Construit la liste complète des arguments SSH sans lancer de processus.
 /// Séparé de `connect()` pour être testable unitairement.
@@ -101,6 +110,11 @@ pub fn build_ssh_args(
 
 /// Lance la connexion SSH en remplaçant le processus courant (`exec`).
 pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> Result<()> {
+    #[cfg(unix)]
+    if should_use_wallix_menu_automation(server, mode) {
+        return connect_wallix_via_pty(server, verbose);
+    }
+
     let args = build_ssh_args(server, mode, verbose)?;
     let mut command = Command::new("ssh");
     command.args(&args);
@@ -126,6 +140,11 @@ pub fn connect_blocking(
     mode: ConnectionMode,
     verbose: bool,
 ) -> Result<()> {
+    #[cfg(unix)]
+    if should_use_wallix_menu_automation(server, mode) {
+        return connect_wallix_via_pty(server, verbose);
+    }
+
     let args = build_ssh_args(server, mode, verbose)?;
     Command::new("ssh")
         .args(&args)
@@ -135,6 +154,207 @@ pub fn connect_blocking(
 }
 
 // ─── helpers privés ──────────────────────────────────────────────────────────
+
+fn should_use_wallix_menu_automation(server: &ResolvedServer, mode: ConnectionMode) -> bool {
+    mode == ConnectionMode::Wallix && server.wallix_auto_select
+}
+
+fn build_wallix_bastion_args(server: &ResolvedServer, verbose: bool) -> Result<Vec<String>> {
+    let mut args: Vec<String> = Vec::new();
+
+    if !server.use_system_ssh_config {
+        args.push("-F".into());
+        args.push("/dev/null".into());
+    }
+
+    if verbose {
+        args.push("-v".into());
+    }
+
+    if !server.ssh_key.is_empty() {
+        let expanded = shellexpand::tilde(&server.ssh_key);
+        args.push("-i".into());
+        args.push(expanded.into_owned());
+    }
+
+    for opt in &server.ssh_options {
+        if opt.starts_with('-') {
+            args.push(opt.clone());
+        } else {
+            args.push("-o".into());
+            args.push(opt.clone());
+        }
+    }
+
+    let bastion_host_str = server.bastion_host.as_deref().unwrap_or("");
+    if bastion_host_str.is_empty() {
+        return Err(anyhow::anyhow!(
+            "Wallix host not configured for this server"
+        ));
+    }
+
+    let bastion_user = server.bastion_user.as_deref().unwrap_or("root");
+    args.push("-l".into());
+    args.push(bastion_user.to_string());
+
+    let (b_host, b_port) = parse_host_port(bastion_host_str);
+    if let Some(p) = b_port {
+        args.push("-p".into());
+        args.push(p.to_string());
+    }
+    args.push(b_host.to_string());
+
+    Ok(args)
+}
+
+#[cfg(unix)]
+fn current_winsize() -> Option<Winsize> {
+    let mut winsize = Winsize {
+        ws_row: 0,
+        ws_col: 0,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+
+    let rc = unsafe { libc::ioctl(libc::STDIN_FILENO, libc::TIOCGWINSZ, &mut winsize) };
+    if rc == 0 { Some(winsize) } else { None }
+}
+
+#[cfg(unix)]
+fn contains_wallix_prompt(buffer: &str) -> bool {
+    let trimmed = buffer.trim_end();
+    trimmed.ends_with(" >")
+        || trimmed.ends_with(">")
+        || trimmed.lines().rev().find(|line| !line.trim().is_empty()) == Some(">")
+}
+
+#[cfg(unix)]
+fn connect_wallix_via_pty(server: &ResolvedServer, verbose: bool) -> Result<()> {
+    let args = build_wallix_bastion_args(server, verbose)?;
+    let mut argv = Vec::with_capacity(args.len() + 2);
+    argv.push(CString::new("ssh")?);
+    for arg in &args {
+        argv.push(CString::new(arg.as_str())?);
+    }
+    let mut argv_ptrs: Vec<*const libc::c_char> = argv.iter().map(|arg| arg.as_ptr()).collect();
+    argv_ptrs.push(std::ptr::null());
+
+    let winsize = current_winsize();
+    let fork = unsafe { forkpty(winsize.as_ref(), None) }
+        .map_err(|err| anyhow::anyhow!("Failed to create PTY for Wallix session: {err}"))?;
+
+    match fork {
+        ForkptyResult::Child => unsafe {
+            libc::execvp(argv[0].as_ptr(), argv_ptrs.as_ptr());
+            libc::_exit(127);
+        },
+        ForkptyResult::Parent { child, master } => {
+            let mut master_reader = std::fs::File::from(master);
+            let mut master_writer = master_reader.try_clone()?;
+            let mut stdout = std::io::stdout().lock();
+            let mut stdin = std::io::stdin().lock();
+            let mut transcript = String::new();
+            let mut selection_completed = false;
+            let mut stdin_closed = false;
+            let master_fd = master_reader.as_raw_fd();
+            let stdin_fd = std::io::stdin().as_raw_fd();
+
+            loop {
+                let mut pollfds = [
+                    libc::pollfd {
+                        fd: master_fd,
+                        events: libc::POLLIN,
+                        revents: 0,
+                    },
+                    libc::pollfd {
+                        fd: if stdin_closed || !selection_completed { -1 } else { stdin_fd },
+                        events: libc::POLLIN,
+                        revents: 0,
+                    },
+                ];
+
+                let rc = unsafe { libc::poll(pollfds.as_mut_ptr(), pollfds.len() as _, 100) };
+                if rc < 0 {
+                    let err = std::io::Error::last_os_error();
+                    if err.kind() == std::io::ErrorKind::Interrupted {
+                        continue;
+                    }
+                    return Err(err.into());
+                }
+
+                if pollfds[0].revents & libc::POLLIN != 0 {
+                    let mut buf = [0_u8; 4096];
+                    let read = master_reader.read(&mut buf)?;
+                    if read == 0 {
+                        break;
+                    }
+
+                    stdout.write_all(&buf[..read])?;
+                    stdout.flush()?;
+
+                    if !selection_completed {
+                        let chunk = String::from_utf8_lossy(&buf[..read]);
+                        transcript.push_str(&chunk);
+                        if transcript.len() > 64 * 1024 {
+                            let drain = transcript.len().saturating_sub(64 * 1024);
+                            transcript.drain(..drain);
+                        }
+
+                        if contains_wallix_prompt(&transcript) {
+                            match parse_wallix_menu(&transcript)
+                                .and_then(|entries| select_id_for_server(&entries, server))
+                            {
+                                Ok(id) => {
+                                    master_writer.write_all(id.as_bytes())?;
+                                    master_writer.write_all(b"\n")?;
+                                    master_writer.flush()?;
+                                    selection_completed = true;
+                                }
+                                Err(err) if server.wallix_fail_if_menu_match_error => {
+                                    unsafe {
+                                        libc::kill(child.as_raw(), libc::SIGTERM);
+                                    }
+                                    let _ = waitpid(child, Some(WaitPidFlag::WNOHANG));
+                                    return Err(err);
+                                }
+                                Err(_) => {
+                                    selection_completed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if pollfds[1].revents & libc::POLLIN != 0 {
+                    let mut buf = [0_u8; 4096];
+                    let read = stdin.read(&mut buf)?;
+                    if read == 0 {
+                        stdin_closed = true;
+                    } else {
+                        master_writer.write_all(&buf[..read])?;
+                        master_writer.flush()?;
+                    }
+                }
+
+                match waitpid(child, Some(WaitPidFlag::WNOHANG)) {
+                    Ok(WaitStatus::StillAlive) => {}
+                    Ok(_) => return Ok(()),
+                    Err(err) => {
+                        return Err(anyhow::anyhow!("Failed to wait for Wallix session: {err}"));
+                    }
+                }
+            }
+
+            if !selection_completed {
+                return Err(anyhow::anyhow!(
+                    "Wallix session exited before menu auto-selection completed"
+                ));
+            }
+
+            Ok(())
+        }
+    }
+}
 
 fn collect_target_args(args: &mut Vec<String>, user: &str, host_str: &str, server_port: u16) {
     let (host, embedded_port) = parse_host_port(host_str);
@@ -373,6 +593,27 @@ mod tests {
         let args = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap();
         let l_pos = args.iter().position(|a| a == "-l").expect("-l present");
         assert_eq!(args[l_pos + 1], "buser+admin@10.0.0.1");
+    }
+
+    #[test]
+    fn wallix_bastion_args_use_bastion_identity_only_for_menu_automation() {
+        let mut s = base_server();
+        s.bastion_host = Some("bastion.example.com:8022".into());
+        s.bastion_user = Some("pcollin".into());
+        let args = build_wallix_bastion_args(&s, false).unwrap();
+
+        assert!(args.contains(&"-l".to_string()));
+        assert!(args.contains(&"pcollin".to_string()));
+        assert!(args.contains(&"-p".to_string()));
+        assert!(args.contains(&"8022".to_string()));
+        assert_eq!(args.last().unwrap(), "bastion.example.com");
+    }
+
+    #[test]
+    fn wallix_menu_prompt_detection_supports_ascii_prompt() {
+        assert!(contains_wallix_prompt(
+            "Tapez h pour l'aide, ctrl-D pour quitter\n > "
+        ));
     }
 
     // ── invariant destination ─────────────────────────────────────────────────

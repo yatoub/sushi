@@ -278,6 +278,14 @@ fn contains_wallix_prompt(buffer: &str) -> bool {
         || trimmed.lines().rev().find(|line| !line.trim().is_empty()) == Some(">")
 }
 
+    #[cfg(unix)]
+    fn contains_wallix_target_address_prompt(buffer: &str) -> bool {
+        let lowered = buffer.to_ascii_lowercase();
+        lowered.contains("adresse cible")
+        || lowered.contains("target address")
+        || lowered.contains("destination address")
+    }
+
 #[cfg(unix)]
 fn spawn_wallix_pty(args: &[String]) -> Result<(nix::unistd::Pid, std::fs::File, std::fs::File)> {
     let mut argv = Vec::with_capacity(args.len() + 2);
@@ -344,6 +352,7 @@ fn connect_wallix_via_pty_with_selection(
     let mut stdin = std::io::stdin().lock();
     let mut transcript = String::new();
     let mut selection_completed = false;
+    let mut target_address_sent = false;
     let mut stdin_closed = false;
     let master_fd = master_reader.as_raw_fd();
     let stdin_fd = std::io::stdin().as_raw_fd();
@@ -419,6 +428,20 @@ fn connect_wallix_via_pty_with_selection(
                             selection_completed = true;
                         }
                     }
+                }
+            } else if !target_address_sent {
+                let chunk = String::from_utf8_lossy(&buf[..read]);
+                transcript.push_str(&chunk);
+                if transcript.len() > 64 * 1024 {
+                    let drain = transcript.len().saturating_sub(64 * 1024);
+                    transcript.drain(..drain);
+                }
+
+                if contains_wallix_target_address_prompt(&transcript) {
+                    master_writer.write_all(server.host.as_bytes())?;
+                    master_writer.write_all(b"\n")?;
+                    master_writer.flush()?;
+                    target_address_sent = true;
                 }
             }
         }
@@ -709,6 +732,13 @@ mod tests {
     fn wallix_menu_prompt_detection_supports_ascii_prompt() {
         assert!(contains_wallix_prompt(
             "Tapez h pour l'aide, ctrl-D pour quitter\n > "
+        ));
+    }
+
+    #[test]
+    fn wallix_target_address_prompt_detection_supports_french_prompt() {
+        assert!(contains_wallix_target_address_prompt(
+            "Account successfully checked out\nAdresse cible (dans 10.242.23.24/29): "
         ));
     }
 

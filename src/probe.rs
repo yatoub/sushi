@@ -444,17 +444,17 @@ mod tests {
             group_name: String::new(),
             env_name: String::new(),
             name: "wallix-srv".to_string(),
-            host: "PP-ONDE-BD".to_string(),
-            user: "pcollin".to_string(),
+            host: "APP-ALPHA-BD".to_string(),
+            user: "demo_user".to_string(),
             port: 22,
             ssh_key: String::new(),
             ssh_options: vec![],
             default_mode: ConnectionMode::Wallix,
             jump_host: None,
             bastion_host: Some("127.0.0.1:65535".to_string()),
-            bastion_user: Some("pcollin".to_string()),
+            bastion_user: Some("demo_user".to_string()),
             bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
-            wallix_group: Some("PP-ONDE_ces3s-admins".to_string()),
+            wallix_group: Some("APP-ALPHA_ops-admins".to_string()),
             wallix_account: "default".to_string(),
             wallix_protocol: "SSH".to_string(),
             wallix_auto_select: true,
@@ -474,13 +474,17 @@ mod tests {
 
         let result = probe(&server, ConnectionMode::Wallix).unwrap();
         assert_eq!(result.profile, ProbeProfile::Wallix);
-        assert!(result
-            .notes
-            .iter()
-            .any(|line| line.contains("target: pcollin@default@PP-ONDE-BD:SSH")));
-        assert!(result
-            .notes
-            .iter()
-            .any(|line| line.contains("group candidates: PP-ONDE_ces3s-admins")));
+        assert!(
+            result
+                .notes
+                .iter()
+                .any(|line| line.contains("target: demo_user@default@APP-ALPHA-BD:SSH"))
+        );
+        assert!(
+            result
+                .notes
+                .iter()
+                .any(|line| line.contains("group candidates: APP-ALPHA_ops-admins"))
+        );
     }
 }

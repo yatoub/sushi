@@ -1385,9 +1385,9 @@ mod tests {
             defaults: Some(Defaults {
                 mode: Some(ConnectionMode::Wallix),
                 wallix: Some(BastionConfig {
-                    host: Some("ssh.in.phm.education.gouv.fr".to_string()),
-                    user: Some("pcollin".to_string()),
-                    group: Some("crtech-admins".to_string()),
+                    host: Some("bastion.example.test".to_string()),
+                    user: Some("demo_user".to_string()),
+                    group: Some("dev-admins".to_string()),
                     template: None,
                     account: None,
                     protocol: None,
@@ -1398,7 +1398,7 @@ mod tests {
                 ..Default::default()
             }),
             groups: vec![ConfigEntry::Group(Group {
-                name: "ONDE-BD".to_string(),
+                name: "ALPHA-BD".to_string(),
                 user: None,
                 ssh_key: None,
                 mode: None,
@@ -1409,8 +1409,8 @@ mod tests {
                 jump: None,
                 environments: None,
                 servers: Some(vec![Server {
-                    name: "pp-ond".to_string(),
-                    host: "PP-ONDE-BD".to_string(),
+                    name: "app-alpha".to_string(),
+                    host: "APP-ALPHA-BD".to_string(),
                     user: None,
                     ssh_key: None,
                     ssh_port: None,
@@ -1434,7 +1434,7 @@ mod tests {
         };
 
         let resolved = config.resolve().unwrap();
-        assert_eq!(resolved[0].wallix_group.as_deref(), Some("crtech-admins"));
+        assert_eq!(resolved[0].wallix_group.as_deref(), Some("dev-admins"));
     }
 
     #[test]
@@ -1661,7 +1661,7 @@ mod tests {
                 ..Default::default()
             }),
             groups: vec![ConfigEntry::Group(Group {
-                name: "ONDE".to_string(),
+                name: "ALPHA".to_string(),
                 user: None,
                 ssh_key: None,
                 mode: None,

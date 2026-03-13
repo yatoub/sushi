@@ -555,13 +555,11 @@ fn main() -> io::Result<()> {
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
                     } else {
-                        if let Err(e) =
-                            susshi::ssh::client::connect_blocking_wallix_with_selection(
-                                &server,
-                                verbose,
-                                &selected_id,
-                            )
-                        {
+                        if let Err(e) = susshi::ssh::client::connect_blocking_wallix_with_selection(
+                            &server,
+                            verbose,
+                            &selected_id,
+                        ) {
                             eprintln!("SSH Connection Error: {}", e);
                         }
                         let _ = susshi::hooks::run_hook(
@@ -716,21 +714,30 @@ fn run_app(
                             }
                             _ => {}
                         }
-                    } else if matches!(&app.wallix_selector, Some(WallixSelectorState::Loading { .. })) {
+                    } else if matches!(
+                        &app.wallix_selector,
+                        Some(WallixSelectorState::Loading { .. })
+                    ) {
                         if matches!(key.code, KeyCode::Esc | KeyCode::Char('q')) {
                             app.close_wallix_selector();
                         }
-                    } else if matches!(&app.wallix_selector, Some(WallixSelectorState::Error { .. })) {
+                    } else if matches!(
+                        &app.wallix_selector,
+                        Some(WallixSelectorState::Error { .. })
+                    ) {
                         if matches!(key.code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q')) {
                             app.close_wallix_selector();
                         }
-                    } else if matches!(&app.wallix_selector, Some(WallixSelectorState::List { .. })) {
+                    } else if matches!(&app.wallix_selector, Some(WallixSelectorState::List { .. }))
+                    {
                         match key.code {
                             KeyCode::Down | KeyCode::Char('j') => app.wallix_selector_next(),
                             KeyCode::Up | KeyCode::Char('k') => app.wallix_selector_previous(),
                             KeyCode::Esc | KeyCode::Char('q') => app.close_wallix_selector(),
                             KeyCode::Enter => {
-                                if let Some((server, selected_id)) = app.wallix_selector_selected_id() {
+                                if let Some((server, selected_id)) =
+                                    app.wallix_selector_selected_id()
+                                {
                                     app.close_wallix_selector();
                                     app.record_connection(&server);
                                     return Ok(AppResult::ConnectWallixSelected(
@@ -959,7 +966,10 @@ fn run_app(
                                 match action {
                                     Some(Ok(server)) => {
                                         if app.should_open_wallix_selector(&server) {
-                                            app.open_wallix_selector((*server).clone(), app.verbose_mode);
+                                            app.open_wallix_selector(
+                                                (*server).clone(),
+                                                app.verbose_mode,
+                                            );
                                         } else {
                                             app.record_connection(&server);
                                             return Ok(AppResult::Connect(
@@ -1007,7 +1017,10 @@ fn run_app(
                                 match action {
                                     Some(Ok(server)) => {
                                         if app.should_open_wallix_selector(&server) {
-                                            app.open_wallix_selector((*server).clone(), app.verbose_mode);
+                                            app.open_wallix_selector(
+                                                (*server).clone(),
+                                                app.verbose_mode,
+                                            );
                                         } else {
                                             app.record_connection(&server);
                                             return Ok(AppResult::Connect(

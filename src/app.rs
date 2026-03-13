@@ -174,9 +174,7 @@ pub enum TunnelOverlayState {
 #[derive(Debug, Clone)]
 pub enum WallixSelectorState {
     /// Récupération des entrées depuis le bastion.
-    Loading {
-        server: Box<ResolvedServer>,
-    },
+    Loading { server: Box<ResolvedServer> },
     /// Liste des entrées Wallix disponibles.
     List {
         server: Box<ResolvedServer>,
@@ -353,9 +351,10 @@ pub struct App {
     /// État de l'overlay de sélection manuelle Wallix.
     pub wallix_selector: Option<WallixSelectorState>,
     /// Récepteur du chargement asynchrone du menu Wallix.
-    pub wallix_selector_rx:
-        Option<mpsc::Receiver<(ResolvedServer, Result<Vec<WallixMenuEntry>, String>)>>,
+    pub wallix_selector_rx: Option<mpsc::Receiver<WallixMenuLoadResult>>,
 }
+
+type WallixMenuLoadResult = (ResolvedServer, Result<Vec<WallixMenuEntry>, String>);
 
 /// Sépare la requête de recherche en tokens texte et tokens `#tag`.
 /// Exemple : `"web #prod DB"` → `(["web", "DB"], ["prod"])`
@@ -2627,8 +2626,13 @@ mod tests {
 
     #[test]
     fn wallix_selector_required_when_auto_select_disabled() {
-        let mut app = App::new(make_namespace_config(), vec![], std::path::PathBuf::new(), vec![])
-            .unwrap();
+        let mut app = App::new(
+            make_namespace_config(),
+            vec![],
+            std::path::PathBuf::new(),
+            vec![],
+        )
+        .unwrap();
         app.connection_mode = ConnectionMode::Wallix;
 
         let mut server = app.resolved_servers[0].clone();
@@ -2640,8 +2644,13 @@ mod tests {
 
     #[test]
     fn wallix_selector_required_when_manual_fallback_enabled() {
-        let mut app = App::new(make_namespace_config(), vec![], std::path::PathBuf::new(), vec![])
-            .unwrap();
+        let mut app = App::new(
+            make_namespace_config(),
+            vec![],
+            std::path::PathBuf::new(),
+            vec![],
+        )
+        .unwrap();
         app.connection_mode = ConnectionMode::Wallix;
 
         let mut server = app.resolved_servers[0].clone();

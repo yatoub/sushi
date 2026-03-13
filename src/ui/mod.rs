@@ -137,7 +137,11 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
         WallixSelectorState::Loading { server } => {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(2), Constraint::Min(1), Constraint::Length(1)])
+                .constraints([
+                    Constraint::Length(2),
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                ])
                 .split(inner);
             f.render_widget(
                 Paragraph::new(format!("Loading Wallix entries for {}…", server.name))
@@ -151,19 +155,25 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
                 chunks[1],
             );
             f.render_widget(
-                Paragraph::new("Esc/q: cancel")
-                    .style(Style::default().fg(app.theme.subtext0)),
+                Paragraph::new("Esc/q: cancel").style(Style::default().fg(app.theme.subtext0)),
                 chunks[2],
             );
         }
         WallixSelectorState::Error { server, message } => {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Length(2), Constraint::Min(1), Constraint::Length(1)])
+                .constraints([
+                    Constraint::Length(2),
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                ])
                 .split(inner);
             f.render_widget(
-                Paragraph::new(format!("Wallix selector error for {}", server.name))
-                    .style(Style::default().fg(app.theme.red).add_modifier(Modifier::BOLD)),
+                Paragraph::new(format!("Wallix selector error for {}", server.name)).style(
+                    Style::default()
+                        .fg(app.theme.red)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 chunks[0],
             );
             f.render_widget(
@@ -173,8 +183,7 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
                 chunks[1],
             );
             f.render_widget(
-                Paragraph::new("Enter/Esc/q: close")
-                    .style(Style::default().fg(app.theme.subtext0)),
+                Paragraph::new("Enter/Esc/q: close").style(Style::default().fg(app.theme.subtext0)),
                 chunks[2],
             );
         }
@@ -195,8 +204,7 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_widget(
                 Paragraph::new(format!(
                     "Select the Wallix entry for {} ({})",
-                    server.name,
-                    server.host
+                    server.name, server.host
                 ))
                 .style(Style::default().fg(app.theme.fg)),
                 chunks[0],
@@ -218,7 +226,10 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
                         app.theme.fg
                     };
                     ListItem::new(Line::from(vec![
-                        Span::styled(format!("#{:<3} ", entry.id), Style::default().fg(app.theme.sapphire).bg(bg)),
+                        Span::styled(
+                            format!("#{:<3} ", entry.id),
+                            Style::default().fg(app.theme.sapphire).bg(bg),
+                        ),
                         Span::styled(entry.target.clone(), Style::default().fg(fg).bg(bg)),
                         Span::styled("  →  ", Style::default().fg(app.theme.subtext0).bg(bg)),
                         Span::styled(entry.group.clone(), Style::default().fg(fg).bg(bg)),
@@ -1424,7 +1435,9 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                 )]));
                                 if r.profile == ProbeProfile::Wallix {
                                     for note in &r.notes {
-                                        let style = if note.contains("error") || note.contains("<missing>") {
+                                        let style = if note.contains("error")
+                                            || note.contains("<missing>")
+                                        {
                                             Style::default().fg(theme.red)
                                         } else if note.contains("skipped") {
                                             Style::default().fg(theme.yellow)
@@ -1442,35 +1455,45 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                     lines.push(Line::from(vec![
                                         Span::styled(
                                             app.lang.probe_kernel,
-                                            Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .fg(theme.fg),
                                         ),
                                         Span::raw(r.kernel.clone()),
                                     ]));
                                     lines.push(Line::from(vec![
                                         Span::styled(
                                             app.lang.probe_os,
-                                            Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .fg(theme.fg),
                                         ),
                                         Span::raw(r.os_name.clone()),
                                     ]));
                                     lines.push(Line::from(vec![
                                         Span::styled(
                                             app.lang.probe_cpu,
-                                            Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .fg(theme.fg),
                                         ),
                                         Span::raw(r.cpu_model.clone()),
                                     ]));
                                     lines.push(Line::from(vec![
                                         Span::styled(
                                             app.lang.probe_cpu_cores,
-                                            Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .fg(theme.fg),
                                         ),
                                         Span::raw(r.cpu_cores.to_string()),
                                     ]));
                                     lines.push(Line::from(vec![
                                         Span::styled(
                                             app.lang.probe_load,
-                                            Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .fg(theme.fg),
                                         ),
                                         Span::raw(r.load.clone()),
                                     ]));

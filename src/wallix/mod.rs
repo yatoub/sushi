@@ -5,7 +5,7 @@
 //! and group matching.
 
 use crate::config::ResolvedServer;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 /// Represents a single entry from a Wallix menu.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,8 +46,15 @@ fn normalize_target_segment(value: &str) -> String {
 }
 
 fn infer_wallix_role(server: &ResolvedServer) -> Option<String> {
-    let first_host_label = server.host.split('.').next().unwrap_or(server.host.as_str());
-    let host_last_token = first_host_label.rsplit('-').next().unwrap_or(first_host_label);
+    let first_host_label = server
+        .host
+        .split('.')
+        .next()
+        .unwrap_or(server.host.as_str());
+    let host_last_token = first_host_label
+        .rsplit('-')
+        .next()
+        .unwrap_or(first_host_label);
     let source = if !server.name.trim().is_empty() {
         server.name.as_str()
     } else {
@@ -80,7 +87,11 @@ fn infer_wallix_role(server: &ResolvedServer) -> Option<String> {
 pub fn build_expected_targets(server: &ResolvedServer) -> Vec<String> {
     let mut candidates = vec![build_expected_target(server)];
 
-    let first_host_label = server.host.split('.').next().unwrap_or(server.host.as_str());
+    let first_host_label = server
+        .host
+        .split('.')
+        .next()
+        .unwrap_or(server.host.as_str());
     let short_host = normalize_target_segment(first_host_label);
     if !short_host.is_empty() {
         candidates.push(format!(
@@ -123,8 +134,8 @@ pub fn build_expected_targets(server: &ResolvedServer) -> Vec<String> {
 /// ```text
 ///    ID │ Cible                              │ Autorisation
 /// ───────┼────────────────────────────────────┼──────────────────────
-///  1234  │ pcollin@default@PP-ONDE-BD:SSH    │ PP-ONDE_ces3s-admins
-///  5678  │ pcollin@default@PP-ONDE-BD:SSH    │ PP-ONDE_crtech-admins
+///  1234  │ demo_user@default@APP-ALPHA-BD:SSH    │ APP-ALPHA_ops-admins
+///  5678  │ demo_user@default@APP-ALPHA-BD:SSH    │ APP-ALPHA_dev-admins
 /// ```
 ///
 /// This function extracts the ID, target (Cible), and group (Autorisation) columns.
@@ -139,7 +150,9 @@ pub fn parse_wallix_menu(output: &str) -> Result<Vec<WallixMenuEntry>> {
             || trimmed.contains("ID")
             || trimmed.contains("Cible")
             || trimmed.contains("Autorisation")
-            || trimmed.chars().all(|c| matches!(c, '─' | '┼' | '│' | '-' | '+'))
+            || trimmed
+                .chars()
+                .all(|c| matches!(c, '─' | '┼' | '│' | '-' | '+'))
         {
             continue;
         }
@@ -254,7 +267,10 @@ fn normalize_authorization_segment(value: &str) -> String {
 
 pub fn build_expected_groups(server: &ResolvedServer) -> Result<Vec<String>> {
     let configured_group = server.wallix_group.as_deref().ok_or_else(|| {
-        anyhow!("wallix.group is not configured for server '{}'", server.name)
+        anyhow!(
+            "wallix.group is not configured for server '{}'",
+            server.name
+        )
     })?;
 
     let mut candidates = vec![configured_group.to_string()];
@@ -288,19 +304,25 @@ fn group_suffix_matches(entry_group: &str, configured_group: &str) -> bool {
 }
 
 /// Select a Wallix menu entry directly from a resolved server configuration.
-pub fn select_id_for_server(entries: &[WallixMenuEntry], server: &ResolvedServer) -> Result<String> {
+pub fn select_id_for_server(
+    entries: &[WallixMenuEntry],
+    server: &ResolvedServer,
+) -> Result<String> {
     let targets = build_expected_targets(server);
     let groups = build_expected_groups(server)?;
-    let configured_group = server
-        .wallix_group
-        .as_deref()
-        .ok_or_else(|| anyhow!("wallix.group is not configured for server '{}'", server.name))?;
+    let configured_group = server.wallix_group.as_deref().ok_or_else(|| {
+        anyhow!(
+            "wallix.group is not configured for server '{}'",
+            server.name
+        )
+    })?;
 
     let mut had_target_match = false;
     let mut available_groups_for_matching_targets: Vec<String> = Vec::new();
 
     for target in &targets {
-        let target_entries: Vec<&WallixMenuEntry> = entries.iter().filter(|e| &e.target == target).collect();
+        let target_entries: Vec<&WallixMenuEntry> =
+            entries.iter().filter(|e| &e.target == target).collect();
         if target_entries.is_empty() {
             continue;
         }
@@ -360,7 +382,10 @@ pub fn select_id_for_server(entries: &[WallixMenuEntry], server: &ResolvedServer
 
     Err(anyhow!(
         "No menu entry found with target '{}'. Available targets: {}",
-        targets.last().cloned().unwrap_or_else(|| build_expected_target(server)),
+        targets
+            .last()
+            .cloned()
+            .unwrap_or_else(|| build_expected_target(server)),
         entries
             .iter()
             .map(|e| e.target.as_str())
@@ -375,22 +400,19 @@ mod tests {
 
     #[test]
     fn test_group_suffix_matches_short_group() {
-        assert!(group_suffix_matches(
-            "STI-ANSCORE_crtech-admins",
-            "crtech-admins"
-        ));
+        assert!(group_suffix_matches("APP-ANSCORE_dev-admins", "dev-admins"));
     }
 
     #[test]
     fn test_group_suffix_matches_exact_group() {
-        assert!(group_suffix_matches("crtech-admins", "crtech-admins"));
+        assert!(group_suffix_matches("dev-admins", "dev-admins"));
     }
 
     #[test]
     fn test_group_suffix_does_not_match_unrelated_group() {
         assert!(!group_suffix_matches(
-            "STI-ANSCORE_ces3s-admins",
-            "crtech-admins"
+            "APP-ANSCORE_ops-admins",
+            "dev-admins"
         ));
     }
 
@@ -399,18 +421,18 @@ mod tests {
         let output = r#"
    ID │ Cible                              │ Autorisation
 ───────┼────────────────────────────────────┼──────────────────────
- 1234  │ pcollin@default@PP-ONDE-BD:SSH    │ PP-ONDE_ces3s-admins
- 5678  │ pcollin@default@PP-ONDE-BD:SSH    │ PP-ONDE_crtech-admins
+ 1234  │ demo_user@default@APP-ALPHA-BD:SSH    │ APP-ALPHA_ops-admins
+ 5678  │ demo_user@default@APP-ALPHA-BD:SSH    │ APP-ALPHA_dev-admins
 "#;
         let entries = parse_wallix_menu(output).expect("Should parse menu");
         assert_eq!(entries.len(), 2);
 
         assert_eq!(entries[0].id, "1234");
-        assert_eq!(entries[0].target, "pcollin@default@PP-ONDE-BD:SSH");
-        assert_eq!(entries[0].group, "PP-ONDE_ces3s-admins");
+        assert_eq!(entries[0].target, "demo_user@default@APP-ALPHA-BD:SSH");
+        assert_eq!(entries[0].group, "APP-ALPHA_ops-admins");
 
         assert_eq!(entries[1].id, "5678");
-        assert_eq!(entries[1].group, "PP-ONDE_crtech-admins");
+        assert_eq!(entries[1].group, "APP-ALPHA_dev-admins");
     }
 
     #[test]
@@ -438,7 +460,12 @@ mod tests {
 "#;
         let result = parse_wallix_menu(output);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("No valid menu entries"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No valid menu entries")
+        );
     }
 
     #[test]
@@ -471,10 +498,12 @@ mod tests {
 
         let result = select_id_by_target_and_group(&entries, "other@default@host:SSH", "admins");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("No menu entry found with target"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No menu entry found with target")
+        );
     }
 
     #[test]
@@ -494,10 +523,12 @@ mod tests {
 
         let result = select_id_by_target_and_group(&entries, "user@default@host:SSH", "users");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("No menu entry found for target"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No menu entry found for target")
+        );
     }
 
     #[test]
@@ -517,10 +548,12 @@ mod tests {
 
         let result = select_id_by_target_and_group(&entries, "user@default@host:SSH", "admins");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Multiple menu entries"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Multiple menu entries")
+        );
     }
 
     #[test]
@@ -529,18 +562,18 @@ mod tests {
             namespace: String::new(),
             group_name: String::new(),
             env_name: String::new(),
-            name: "pp-ond-ces3s".to_string(),
-            host: "PP-ONDE-BD".to_string(),
-            user: "pcollin".to_string(),
+            name: "alpha-ops".to_string(),
+            host: "APP-ALPHA-BD".to_string(),
+            user: "demo_user".to_string(),
             port: 22,
             ssh_key: String::new(),
             ssh_options: vec![],
             default_mode: crate::config::ConnectionMode::Wallix,
             jump_host: None,
-            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
-            bastion_user: Some("pcollin".to_string()),
+            bastion_host: Some("bastion.example.test".to_string()),
+            bastion_user: Some("demo_user".to_string()),
             bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
-            wallix_group: Some("PP-ONDE_ces3s-admins".to_string()),
+            wallix_group: Some("APP-ALPHA_ops-admins".to_string()),
             wallix_account: "default".to_string(),
             wallix_protocol: "SSH".to_string(),
             wallix_auto_select: true,
@@ -558,33 +591,36 @@ mod tests {
             hook_timeout_secs: 5,
         };
 
-        assert_eq!(build_expected_target(&server), "pcollin@default@PP-ONDE-BD:SSH");
+        assert_eq!(
+            build_expected_target(&server),
+            "demo_user@default@APP-ALPHA-BD:SSH"
+        );
     }
 
     #[test]
     fn test_select_id_for_server_uses_resolved_server_fields() {
         let entries = vec![WallixMenuEntry {
             id: "0".to_string(),
-            target: "pcollin@default@PP-ONDE-BD:SSH".to_string(),
-            group: "PP-ONDE_ces3s-admins".to_string(),
+            target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+            group: "APP-ALPHA_ops-admins".to_string(),
         }];
 
         let server = ResolvedServer {
             namespace: String::new(),
             group_name: String::new(),
             env_name: String::new(),
-            name: "pp-ond-ces3s".to_string(),
-            host: "PP-ONDE-BD".to_string(),
-            user: "pcollin".to_string(),
+            name: "alpha-ops".to_string(),
+            host: "APP-ALPHA-BD".to_string(),
+            user: "demo_user".to_string(),
             port: 22,
             ssh_key: String::new(),
             ssh_options: vec![],
             default_mode: crate::config::ConnectionMode::Wallix,
             jump_host: None,
-            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
-            bastion_user: Some("pcollin".to_string()),
+            bastion_host: Some("bastion.example.test".to_string()),
+            bastion_user: Some("demo_user".to_string()),
             bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
-            wallix_group: Some("PP-ONDE_ces3s-admins".to_string()),
+            wallix_group: Some("APP-ALPHA_ops-admins".to_string()),
             wallix_account: "default".to_string(),
             wallix_protocol: "SSH".to_string(),
             wallix_auto_select: true,
@@ -609,24 +645,24 @@ mod tests {
     fn test_select_id_for_server_requires_group() {
         let entries = vec![WallixMenuEntry {
             id: "0".to_string(),
-            target: "pcollin@default@PP-ONDE-BD:SSH".to_string(),
-            group: "PP-ONDE_ces3s-admins".to_string(),
+            target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+            group: "APP-ALPHA_ops-admins".to_string(),
         }];
 
         let server = ResolvedServer {
             namespace: String::new(),
             group_name: String::new(),
             env_name: String::new(),
-            name: "pp-ond-missing-group".to_string(),
-            host: "PP-ONDE-BD".to_string(),
-            user: "pcollin".to_string(),
+            name: "app-alpha-missing-group".to_string(),
+            host: "APP-ALPHA-BD".to_string(),
+            user: "demo_user".to_string(),
             port: 22,
             ssh_key: String::new(),
             ssh_options: vec![],
             default_mode: crate::config::ConnectionMode::Wallix,
             jump_host: None,
-            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
-            bastion_user: Some("pcollin".to_string()),
+            bastion_host: Some("bastion.example.test".to_string()),
+            bastion_user: Some("demo_user".to_string()),
             bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
             wallix_group: None,
             wallix_account: "default".to_string(),
@@ -654,20 +690,20 @@ mod tests {
     fn test_build_expected_groups_adds_yaml_structure_prefix() {
         let server = ResolvedServer {
             namespace: String::new(),
-            group_name: "ONDE".to_string(),
+            group_name: "ALPHA".to_string(),
             env_name: "PP".to_string(),
-            name: "pp-ond-crtech".to_string(),
-            host: "PP-ONDE-BD".to_string(),
-            user: "pcollin".to_string(),
+            name: "alpha-dev".to_string(),
+            host: "APP-ALPHA-BD".to_string(),
+            user: "demo_user".to_string(),
             port: 22,
             ssh_key: String::new(),
             ssh_options: vec![],
             default_mode: crate::config::ConnectionMode::Wallix,
             jump_host: None,
-            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
-            bastion_user: Some("pcollin".to_string()),
+            bastion_host: Some("bastion.example.test".to_string()),
+            bastion_user: Some("demo_user".to_string()),
             bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
-            wallix_group: Some("crtech-admins".to_string()),
+            wallix_group: Some("dev-admins".to_string()),
             wallix_account: "default".to_string(),
             wallix_protocol: "SSH".to_string(),
             wallix_auto_select: true,
@@ -688,10 +724,7 @@ mod tests {
         let groups = build_expected_groups(&server).unwrap();
         assert_eq!(
             groups,
-            vec![
-                "crtech-admins".to_string(),
-                "PP-ONDE_crtech-admins".to_string()
-            ]
+            vec!["dev-admins".to_string(), "PP-ALPHA_dev-admins".to_string()]
         );
     }
 
@@ -699,20 +732,20 @@ mod tests {
     fn test_build_expected_targets_adds_wallix_alias_from_fqdn_and_yaml() {
         let server = ResolvedServer {
             namespace: String::new(),
-            group_name: "ONDE".to_string(),
+            group_name: "ALPHA".to_string(),
             env_name: "PP".to_string(),
             name: "bdd01".to_string(),
-            host: "pp-ond-bdd01.onde.hp.in.phm.education.gouv.fr".to_string(),
-            user: "pcollin".to_string(),
+            host: "app-db01.alpha.example.test".to_string(),
+            user: "demo_user".to_string(),
             port: 22,
             ssh_key: String::new(),
             ssh_options: vec![],
             default_mode: crate::config::ConnectionMode::Wallix,
             jump_host: None,
-            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
-            bastion_user: Some("pcollin".to_string()),
+            bastion_host: Some("bastion.example.test".to_string()),
+            bastion_user: Some("demo_user".to_string()),
             bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
-            wallix_group: Some("crtech-admins".to_string()),
+            wallix_group: Some("dev-admins".to_string()),
             wallix_account: "default".to_string(),
             wallix_protocol: "SSH".to_string(),
             wallix_auto_select: true,
@@ -731,38 +764,35 @@ mod tests {
         };
 
         let targets = build_expected_targets(&server);
-        assert!(
-            targets
-                .contains(&"pcollin@default@pp-ond-bdd01.onde.hp.in.phm.education.gouv.fr:SSH".to_string())
-        );
-        assert!(targets.contains(&"pcollin@default@PP-OND-BDD01:SSH".to_string()));
-        assert!(targets.contains(&"pcollin@default@PP-ONDE-BD:SSH".to_string()));
+        assert!(targets.contains(&"demo_user@default@app-db01.alpha.example.test:SSH".to_string()));
+        assert!(targets.contains(&"demo_user@default@APP-DB01:SSH".to_string()));
+        assert!(targets.contains(&"demo_user@default@PP-ALPHA-BD:SSH".to_string()));
     }
 
     #[test]
     fn test_select_id_for_server_accepts_short_group_and_yaml_structure() {
         let entries = vec![WallixMenuEntry {
             id: "1".to_string(),
-            target: "pcollin@default@PP-ONDE-BD:SSH".to_string(),
-            group: "PP-ONDE_crtech-admins".to_string(),
+            target: "demo_user@default@PP-ALPHA-BD:SSH".to_string(),
+            group: "APP-ALPHA_dev-admins".to_string(),
         }];
 
         let server = ResolvedServer {
             namespace: String::new(),
-            group_name: "ONDE".to_string(),
+            group_name: "ALPHA".to_string(),
             env_name: "PP".to_string(),
             name: "bdd01".to_string(),
-            host: "pp-ond-bdd01.onde.hp.in.phm.education.gouv.fr".to_string(),
-            user: "pcollin".to_string(),
+            host: "app-db01.alpha.example.test".to_string(),
+            user: "demo_user".to_string(),
             port: 22,
             ssh_key: String::new(),
             ssh_options: vec![],
             default_mode: crate::config::ConnectionMode::Wallix,
             jump_host: None,
-            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
-            bastion_user: Some("pcollin".to_string()),
+            bastion_host: Some("bastion.example.test".to_string()),
+            bastion_user: Some("demo_user".to_string()),
             bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
-            wallix_group: Some("crtech-admins".to_string()),
+            wallix_group: Some("dev-admins".to_string()),
             wallix_account: "default".to_string(),
             wallix_protocol: "SSH".to_string(),
             wallix_auto_select: true,
@@ -787,27 +817,26 @@ mod tests {
     fn test_select_id_for_server_accepts_prefixed_group_suffix() {
         let entries = vec![WallixMenuEntry {
             id: "640".to_string(),
-            target: "pcollin@default@pr-aut-anscore02.ste.in.phm.education.gouv.fr:SSH"
-                .to_string(),
-            group: "STI-ANSCORE_crtech-admins".to_string(),
+            target: "demo_user@default@app-anscore02.example.test:SSH".to_string(),
+            group: "APP-ANSCORE_dev-admins".to_string(),
         }];
 
         let server = ResolvedServer {
             namespace: String::new(),
-            group_name: "Anscore 2".to_string(),
+            group_name: "Service Beta".to_string(),
             env_name: String::new(),
-            name: "Anscore 2".to_string(),
-            host: "pr-aut-anscore02.ste.in.phm.education.gouv.fr".to_string(),
-            user: "pcollin".to_string(),
+            name: "Service Beta".to_string(),
+            host: "app-anscore02.example.test".to_string(),
+            user: "demo_user".to_string(),
             port: 22,
             ssh_key: String::new(),
             ssh_options: vec![],
             default_mode: crate::config::ConnectionMode::Wallix,
             jump_host: None,
-            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
-            bastion_user: Some("pcollin".to_string()),
+            bastion_host: Some("bastion.example.test".to_string()),
+            bastion_user: Some("demo_user".to_string()),
             bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
-            wallix_group: Some("crtech-admins".to_string()),
+            wallix_group: Some("dev-admins".to_string()),
             wallix_account: "default".to_string(),
             wallix_protocol: "SSH".to_string(),
             wallix_auto_select: true,
@@ -837,13 +866,13 @@ mod tests {
 
    ID │ Cible                                │ Autorisation
 ───────┼──────────────────────────────────────┼────────────────────────
- 0001  │ pcollin@default@PP-ONDE-BD:SSH      │ PP-ONDE_ces3s-admins
- 0002  │ pcollin@default@PP-ONDE-BD:SSH      │ PP-ONDE_crtech-admins
- 0003  │ pcollin@default@OTHER-SERVER:SSH    │ PP-ONDE_ces3s-admins
+ 0001  │ demo_user@default@APP-ALPHA-BD:SSH      │ APP-ALPHA_ops-admins
+ 0002  │ demo_user@default@APP-ALPHA-BD:SSH      │ APP-ALPHA_dev-admins
+ 0003  │ demo_user@default@OTHER-SERVER:SSH    │ APP-ALPHA_ops-admins
 "#;
         let entries = parse_wallix_menu(output).expect("Should parse realistic output");
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].id, "0001");
-        assert_eq!(entries[2].group, "PP-ONDE_ces3s-admins");
+        assert_eq!(entries[2].group, "APP-ALPHA_ops-admins");
     }
 }

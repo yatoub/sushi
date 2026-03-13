@@ -6,12 +6,15 @@ use nix::pty::{ForkptyResult, Winsize, forkpty};
 #[cfg(unix)]
 use nix::sys::wait::{WaitPidFlag, WaitStatus, waitpid};
 #[cfg(unix)]
-use std::os::unix::process::CommandExt;
-#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::process::Command;
 #[cfg(unix)]
-use std::{ffi::CString, io::{Read, Write}};
+use std::{
+    ffi::CString,
+    io::{Read, Write},
+};
 
 /// Construit la liste complète des arguments SSH sans lancer de processus.
 /// Séparé de `connect()` pour être testable unitairement.
@@ -789,11 +792,11 @@ mod tests {
     fn wallix_bastion_args_use_bastion_identity_only_for_menu_automation() {
         let mut s = base_server();
         s.bastion_host = Some("bastion.example.com:8022".into());
-        s.bastion_user = Some("pcollin".into());
+        s.bastion_user = Some("demo_user".into());
         let args = build_wallix_bastion_args(&s, false).unwrap();
 
         assert!(args.contains(&"-l".to_string()));
-        assert!(args.contains(&"pcollin".to_string()));
+        assert!(args.contains(&"demo_user".to_string()));
         assert!(args.contains(&"-p".to_string()));
         assert!(args.contains(&"8022".to_string()));
         assert_eq!(args.last().unwrap(), "bastion.example.com");

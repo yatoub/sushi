@@ -84,8 +84,8 @@ defaults:
     host: "bastion.example.com"
     user: "bastion"
     # Canonical Wallix group key (legacy wallix_group is still accepted).
-    # A short value is allowed: menu entries like PREFIX_crtech-admins will match.
-    group: "crtech-admins"
+    # A short value is allowed: menu entries like PREFIX_devops-admins will match.
+    group: "devops-admins"
     account: "default"
     protocol: "SSH"
     auto_select: true

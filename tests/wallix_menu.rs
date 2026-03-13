@@ -73,5 +73,5 @@ fn errors_when_group_is_missing_from_server_config() {
     let server = wallix_server(None);
     let error = select_id_for_server(&entries, &server).unwrap_err();
 
-    assert!(error.to_string().contains("wallix_group is not configured"));
+    assert!(error.to_string().contains("wallix.group is not configured"));
 }

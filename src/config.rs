@@ -215,6 +215,7 @@ pub struct Defaults {
 pub struct BastionConfig {
     pub host: Option<String>,
     pub user: Option<String>,
+    pub group: Option<String>,
     pub template: Option<String>,
     /// Compte Wallix (ex: "default"). Défaut : "default".
     pub account: Option<String>,
@@ -738,6 +739,7 @@ fn merge_bastion(
         (Some(p), Some(c)) => Some(BastionConfig {
             host: c.host.clone().or(p.host.clone()),
             user: c.user.clone().or(p.user.clone()),
+            group: c.group.clone().or(p.group.clone()),
             template: c.template.clone().or(p.template.clone()),
             account: c.account.clone().or(p.account.clone()),
             protocol: c.protocol.clone().or(p.protocol.clone()),
@@ -1223,7 +1225,12 @@ fn resolve_server(
             .or(def_post_disconnect_hook)
             .map(|h| shellexpand::tilde(h).into_owned()),
         hook_timeout_secs: def_hook_timeout_secs,
-        wallix_group: s.wallix_group.clone(),
+        wallix_group: s
+            .wallix
+            .as_ref()
+            .and_then(|b| b.group.clone())
+            .or_else(|| s.wallix_group.clone())
+            .or_else(|| final_bastion.as_ref().and_then(|b| b.group.clone())),
         wallix_account: final_bastion
             .as_ref()
             .and_then(|b| b.account.clone())
@@ -1341,6 +1348,7 @@ mod tests {
         let parent = Some(BastionConfig {
             host: Some("parent_host".to_string()),
             user: Some("parent_user".to_string()),
+            group: Some("parent-group".to_string()),
             template: Some("parent_tmpl".to_string()),
             account: None,
             protocol: None,
@@ -1351,6 +1359,7 @@ mod tests {
         let child = BastionConfig {
             host: None,
             user: Some("child_user".to_string()),
+            group: None,
             template: None,
             account: None,
             protocol: None,
@@ -1366,6 +1375,66 @@ mod tests {
         assert_eq!(merged.host, Some("parent_host".to_string()));
         // Parent template is inherited
         assert_eq!(merged.template, Some("parent_tmpl".to_string()));
+        // Parent group is inherited
+        assert_eq!(merged.group, Some("parent-group".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_inherits_wallix_group_from_defaults_wallix() {
+        let config = Config {
+            defaults: Some(Defaults {
+                mode: Some(ConnectionMode::Wallix),
+                wallix: Some(BastionConfig {
+                    host: Some("ssh.in.phm.education.gouv.fr".to_string()),
+                    user: Some("pcollin".to_string()),
+                    group: Some("crtech-admins".to_string()),
+                    template: None,
+                    account: None,
+                    protocol: None,
+                    auto_select: None,
+                    fail_if_menu_match_error: None,
+                    selection_timeout_secs: None,
+                }),
+                ..Default::default()
+            }),
+            groups: vec![ConfigEntry::Group(Group {
+                name: "ONDE-BD".to_string(),
+                user: None,
+                ssh_key: None,
+                mode: None,
+                ssh_port: None,
+                ssh_options: None,
+                wallix: None,
+                wallix_group: None,
+                jump: None,
+                environments: None,
+                servers: Some(vec![Server {
+                    name: "pp-ond".to_string(),
+                    host: "PP-ONDE-BD".to_string(),
+                    user: None,
+                    ssh_key: None,
+                    ssh_port: None,
+                    ssh_options: None,
+                    mode: None,
+                    wallix: None,
+                    wallix_group: None,
+                    jump: None,
+                    probe_filesystems: None,
+                    tunnels: None,
+                    tags: None,
+                    pre_connect_hook: None,
+                    post_disconnect_hook: None,
+                }]),
+                probe_filesystems: None,
+                tunnels: None,
+                tags: None,
+            })],
+            includes: vec![],
+            vars: Default::default(),
+        };
+
+        let resolved = config.resolve().unwrap();
+        assert_eq!(resolved[0].wallix_group.as_deref(), Some("crtech-admins"));
     }
 
     #[test]

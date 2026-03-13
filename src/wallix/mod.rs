@@ -101,7 +101,7 @@ pub fn parse_wallix_menu(output: &str) -> Result<Vec<WallixMenuEntry>> {
 ///
 /// This function implements the core selection algorithm:
 /// 1. Filter entries by exact target match (user@account@host:protocol).
-/// 2. Filter by exact group match (wallix_group from config).
+/// 2. Filter by exact group match (`wallix.group`, or legacy `wallix_group`).
 /// 3. Return error if no match or multiple matches found.
 /// 4. Return the ID if exactly one match.
 pub fn select_id_by_target_and_group(
@@ -150,7 +150,7 @@ pub fn select_id_by_target_and_group(
 pub fn select_id_for_server(entries: &[WallixMenuEntry], server: &ResolvedServer) -> Result<String> {
     let group = server.wallix_group.as_deref().ok_or_else(|| {
         anyhow!(
-            "wallix_group is not configured for server '{}'",
+            "wallix.group is not configured for server '{}'",
             server.name
         )
     })?;
@@ -416,7 +416,7 @@ mod tests {
         };
 
         let error = select_id_for_server(&entries, &server).unwrap_err();
-        assert!(error.to_string().contains("wallix_group is not configured"));
+        assert!(error.to_string().contains("wallix.group is not configured"));
     }
 
     #[test]

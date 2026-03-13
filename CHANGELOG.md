@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.12.2] — 2026-03-10
+
+### build
+
+- Bump catppuccin from 2.6.0 to 2.7.0
+
+
 ## [0.12.0] — 2026-03-03
 
 ### Changed

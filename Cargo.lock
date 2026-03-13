@@ -185,9 +185,9 @@ dependencies = [
 
 [[package]]
 name = "catppuccin"
-version = "2.6.0"
+version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09e258c2f1b845bc3f6fe9790f217f377246e5605ff003e6537d5b2baf44e69c"
+checksum = "1be1bbab195d00e745c1788bed24ad8c30678c735d3d9e5bd0f87f9789433971"
 dependencies = [
  "itertools",
  "prettyplease",
@@ -850,9 +850,9 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 
 [[package]]
 name = "libc"
-version = "0.2.182"
+version = "0.2.183"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
+checksum = "b5b646652bf6661599e1da8901b3b9522896f01e736bad5f723fe7a3a27f899d"
 
 [[package]]
 name = "libredox"
@@ -941,7 +941,7 @@ version = "1.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0aeb26bf5e836cc1c341c8106051b573f1766dfa05aa87f0b98be5e51b02303"
 dependencies = [
- "nix",
+ "nix 0.29.0",
  "winapi",
 ]
 
@@ -1015,6 +1015,18 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "memoffset",
+]
+
+[[package]]
+name = "nix"
+version = "0.31.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d6d0705320c1e6ba1d912b5e37cf18071b6c2e9b7fa8215a1e8a7651966f5d3"
+dependencies = [
+ "bitflags 2.11.0",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
 ]
 
 [[package]]
@@ -1751,7 +1763,7 @@ dependencies = [
 
 [[package]]
 name = "susshi"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1759,7 +1771,7 @@ dependencies = [
  "clap",
  "crossterm",
  "libc",
- "nix",
+ "nix 0.31.2",
  "ratatui",
  "serde",
  "serde_json",
@@ -1844,7 +1856,7 @@ dependencies = [
  "libc",
  "log",
  "memmem",
- "nix",
+ "nix 0.29.0",
  "num-derive",
  "num-traits",
  "ordered-float",

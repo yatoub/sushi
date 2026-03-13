@@ -56,7 +56,9 @@ Tapez h pour l'aide, ctrl-D pour quitter
 "#;
 
     let entries = parse_wallix_menu(output).unwrap();
-    let server = wallix_server(Some("PP-ONDE_crtech-admins"));
+    let mut server = wallix_server(Some("crtech-admins"));
+    server.group_name = "ONDE".to_string();
+    server.env_name = "PP".to_string();
 
     assert_eq!(select_id_for_server(&entries, &server).unwrap(), "1");
 }

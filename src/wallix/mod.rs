@@ -146,17 +146,73 @@ pub fn select_id_by_target_and_group(
     }
 }
 
-/// Select a Wallix menu entry directly from a resolved server configuration.
-pub fn select_id_for_server(entries: &[WallixMenuEntry], server: &ResolvedServer) -> Result<String> {
-    let group = server.wallix_group.as_deref().ok_or_else(|| {
-        anyhow!(
-            "wallix.group is not configured for server '{}'",
-            server.name
-        )
+fn normalize_authorization_segment(value: &str) -> String {
+    let mut normalized = String::new();
+    let mut previous_was_dash = false;
+
+    for character in value.trim().chars() {
+        if character.is_ascii_alphanumeric() {
+            normalized.push(character.to_ascii_uppercase());
+            previous_was_dash = false;
+        } else if !previous_was_dash {
+            normalized.push('-');
+            previous_was_dash = true;
+        }
+    }
+
+    normalized.trim_matches('-').to_string()
+}
+
+pub fn build_expected_groups(server: &ResolvedServer) -> Result<Vec<String>> {
+    let configured_group = server.wallix_group.as_deref().ok_or_else(|| {
+        anyhow!("wallix.group is not configured for server '{}'", server.name)
     })?;
 
+    let mut candidates = vec![configured_group.to_string()];
+
+    if !configured_group.contains('_') {
+        let mut prefix_parts = Vec::new();
+        if !server.env_name.trim().is_empty() {
+            let env = normalize_authorization_segment(&server.env_name);
+            if !env.is_empty() {
+                prefix_parts.push(env);
+            }
+        }
+        if !server.group_name.trim().is_empty() {
+            let group = normalize_authorization_segment(&server.group_name);
+            if !group.is_empty() {
+                prefix_parts.push(group);
+            }
+        }
+
+        if !prefix_parts.is_empty() {
+            candidates.push(format!("{}_{}", prefix_parts.join("-"), configured_group));
+        }
+    }
+
+    candidates.dedup();
+    Ok(candidates)
+}
+
+/// Select a Wallix menu entry directly from a resolved server configuration.
+pub fn select_id_for_server(entries: &[WallixMenuEntry], server: &ResolvedServer) -> Result<String> {
     let target = build_expected_target(server);
-    select_id_by_target_and_group(entries, &target, group)
+    let groups = build_expected_groups(server)?;
+    let mut last_error = None;
+
+    for group in groups {
+        match select_id_by_target_and_group(entries, &target, &group) {
+            Ok(id) => return Ok(id),
+            Err(err) => last_error = Some(err),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        anyhow!(
+            "No Wallix authorization candidate matched for server '{}'",
+            server.name
+        )
+    }))
 }
 
 #[cfg(test)]
@@ -417,6 +473,89 @@ mod tests {
 
         let error = select_id_for_server(&entries, &server).unwrap_err();
         assert!(error.to_string().contains("wallix.group is not configured"));
+    }
+
+    #[test]
+    fn test_build_expected_groups_adds_yaml_structure_prefix() {
+        let server = ResolvedServer {
+            namespace: String::new(),
+            group_name: "ONDE".to_string(),
+            env_name: "PP".to_string(),
+            name: "pp-ond-crtech".to_string(),
+            host: "PP-ONDE-BD".to_string(),
+            user: "pcollin".to_string(),
+            port: 22,
+            ssh_key: String::new(),
+            ssh_options: vec![],
+            default_mode: crate::config::ConnectionMode::Wallix,
+            jump_host: None,
+            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
+            bastion_user: Some("pcollin".to_string()),
+            bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
+            wallix_group: Some("crtech-admins".to_string()),
+            wallix_account: "default".to_string(),
+            wallix_protocol: "SSH".to_string(),
+            wallix_auto_select: true,
+            wallix_fail_if_menu_match_error: true,
+            wallix_selection_timeout_secs: 8,
+            use_system_ssh_config: false,
+            probe_filesystems: vec![],
+            tunnels: vec![],
+            tags: vec![],
+            control_master: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
+        };
+
+        let groups = build_expected_groups(&server).unwrap();
+        assert_eq!(groups, vec!["crtech-admins".to_string(), "PP-ONDE_crtech-admins".to_string()]);
+    }
+
+    #[test]
+    fn test_select_id_for_server_accepts_short_group_and_yaml_structure() {
+        let entries = vec![WallixMenuEntry {
+            id: "1".to_string(),
+            target: "pcollin@default@PP-ONDE-BD:SSH".to_string(),
+            group: "PP-ONDE_crtech-admins".to_string(),
+        }];
+
+        let server = ResolvedServer {
+            namespace: String::new(),
+            group_name: "ONDE".to_string(),
+            env_name: "PP".to_string(),
+            name: "pp-ond-crtech".to_string(),
+            host: "PP-ONDE-BD".to_string(),
+            user: "pcollin".to_string(),
+            port: 22,
+            ssh_key: String::new(),
+            ssh_options: vec![],
+            default_mode: crate::config::ConnectionMode::Wallix,
+            jump_host: None,
+            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
+            bastion_user: Some("pcollin".to_string()),
+            bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
+            wallix_group: Some("crtech-admins".to_string()),
+            wallix_account: "default".to_string(),
+            wallix_protocol: "SSH".to_string(),
+            wallix_auto_select: true,
+            wallix_fail_if_menu_match_error: true,
+            wallix_selection_timeout_secs: 8,
+            use_system_ssh_config: false,
+            probe_filesystems: vec![],
+            tunnels: vec![],
+            tags: vec![],
+            control_master: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
+        };
+
+        assert_eq!(select_id_for_server(&entries, &server).unwrap(), "1");
     }
 
     #[test]

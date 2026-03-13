@@ -1,8 +1,8 @@
-/// Test d'intégration SFTP — nécessite un serveur SSH réel sur 192.168.1.13.
+/// Test d'intégration SFTP — nécessite un serveur SSH réel sur 192.0.2.13.
 /// Lancer avec : cargo test --test sftp_transfer -- --nocapture --ignored
 ///
 /// Le serveur cible doit être joignable et l'agent SSH ou ~/.ssh/id_ed25519 doivent
-/// permettre une connexion root@192.168.1.13.
+/// permettre une connexion root@192.0.2.13.
 use std::time::Duration;
 use susshi::config::{ConnectionMode, ResolvedServer};
 use susshi::ssh::sftp::{ScpDirection, ScpEvent, spawn_sftp};
@@ -13,7 +13,7 @@ fn test_server() -> ResolvedServer {
         group_name: String::new(),
         env_name: String::new(),
         name: "test-sftp".into(),
-        host: "192.168.1.13".into(),
+        host: "192.0.2.13".into(),
         user: "root".into(),
         port: 22,
         ssh_key: String::new(), // agent SSH ou clés par défaut
@@ -33,15 +33,21 @@ fn test_server() -> ResolvedServer {
         pre_connect_hook: None,
         post_disconnect_hook: None,
         hook_timeout_secs: 5,
+        wallix_group: None,
+        wallix_account: "default".to_string(),
+        wallix_protocol: "SSH".to_string(),
+        wallix_auto_select: true,
+        wallix_fail_if_menu_match_error: true,
+        wallix_selection_timeout_secs: 8,
     }
 }
 
-/// Upload /tmp/random-data.bin → root@192.168.1.13:/root/random-data.bin
+/// Upload /tmp/random-data.bin → root@192.0.2.13:/root/random-data.bin
 /// Vérifie que tous les événements ScpEvent::Progress arrivent dans l'ordre
 /// et que ScpEvent::Done(true) est bien reçu.
 #[test]
 #[ignore]
-fn upload_random_data_to_192_168_1_13() {
+fn upload_random_data_to_192_0_2_13() {
     let local = "/tmp/random-data.bin";
     assert!(
         std::path::Path::new(local).exists(),
@@ -91,11 +97,11 @@ fn upload_random_data_to_192_168_1_13() {
     println!("Upload OK — progression finale : {last_pct}%");
 }
 
-/// Download root@192.168.1.13:~/random-data.bin → /tmp/random-data-downloaded.bin
+/// Download root@192.0.2.13:~/random-data.bin → /tmp/random-data-downloaded.bin
 /// Vérifie que le fichier local est créé et a la même taille que l'original.
 #[test]
 #[ignore]
-fn download_random_data_from_192_168_1_13() {
+fn download_random_data_from_192_0_2_13() {
     let local_dest = "/tmp/random-data-downloaded.bin";
     // On s'assure que le fichier de destination n'existe pas avant le test.
     let _ = std::fs::remove_file(local_dest);

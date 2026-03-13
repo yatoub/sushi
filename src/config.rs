@@ -215,7 +215,18 @@ pub struct Defaults {
 pub struct BastionConfig {
     pub host: Option<String>,
     pub user: Option<String>,
+    pub group: Option<String>,
     pub template: Option<String>,
+    /// Compte Wallix (ex: "default"). Défaut : "default".
+    pub account: Option<String>,
+    /// Protocole Wallix (ex: "SSH"). Défaut : "SSH".
+    pub protocol: Option<String>,
+    /// Auto-sélectionner l'ID dans le menu Wallix si match unique. Défaut : true.
+    pub auto_select: Option<bool>,
+    /// Abort si pas de match unique et auto_select=true. Défaut : true.
+    pub fail_if_menu_match_error: Option<bool>,
+    /// Timeout avant abandon du parsing menu (secondes). Défaut : 8.
+    pub selection_timeout_secs: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -247,6 +258,7 @@ pub struct Group {
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub wallix: Option<BastionConfig>,
+    pub wallix_group: Option<String>,
     pub jump: Option<Vec<JumpConfig>>,
     pub environments: Option<Vec<Environment>>,
     pub servers: Option<Vec<Server>>,
@@ -264,6 +276,7 @@ pub struct Environment {
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub wallix: Option<BastionConfig>,
+    pub wallix_group: Option<String>,
     pub jump: Option<Vec<JumpConfig>>,
     pub servers: Vec<Server>,
     pub probe_filesystems: Option<Vec<String>>,
@@ -281,6 +294,7 @@ pub struct Server {
     pub ssh_options: Option<Vec<String>>,
     pub mode: Option<ConnectionMode>,
     pub wallix: Option<BastionConfig>,
+    pub wallix_group: Option<String>,
     pub jump: Option<Vec<JumpConfig>>,
     pub probe_filesystems: Option<Vec<String>>,
     pub tunnels: Option<Vec<TunnelConfig>>,
@@ -310,6 +324,18 @@ pub struct ResolvedServer {
     pub bastion_host: Option<String>,
     pub bastion_user: Option<String>,
     pub bastion_template: String,
+    /// Groupe/autorisation Wallix pour la sélection de menu (optionnel).
+    pub wallix_group: Option<String>,
+    /// Compte Wallix (défaut: "default").
+    pub wallix_account: String,
+    /// Protocole Wallix (défaut: "SSH").
+    pub wallix_protocol: String,
+    /// Auto-sélectionner l'ID dans le menu Wallix si match unique.
+    pub wallix_auto_select: bool,
+    /// Abort si pas de match unique et auto_select=true.
+    pub wallix_fail_if_menu_match_error: bool,
+    /// Timeout avant abandon du parsing menu (secondes).
+    pub wallix_selection_timeout_secs: u64,
     /// Respecte `~/.ssh/config` si `true` (ne passe pas `-F /dev/null`).
     pub use_system_ssh_config: bool,
     /// Points de montage à interroger lors d'un probe (hérités en cascade).
@@ -713,7 +739,13 @@ fn merge_bastion(
         (Some(p), Some(c)) => Some(BastionConfig {
             host: c.host.clone().or(p.host.clone()),
             user: c.user.clone().or(p.user.clone()),
+            group: c.group.clone().or(p.group.clone()),
             template: c.template.clone().or(p.template.clone()),
+            account: c.account.clone().or(p.account.clone()),
+            protocol: c.protocol.clone().or(p.protocol.clone()),
+            auto_select: c.auto_select.or(p.auto_select),
+            fail_if_menu_match_error: c.fail_if_menu_match_error.or(p.fail_if_menu_match_error),
+            selection_timeout_secs: c.selection_timeout_secs.or(p.selection_timeout_secs),
         }),
     }
 }
@@ -967,6 +999,7 @@ fn yaml_validate_entry(
                 "ssh_options",
                 "mode",
                 "wallix",
+                "wallix_group",
                 "jump",
                 "probe_filesystems",
                 "tunnels",
@@ -988,6 +1021,7 @@ fn yaml_validate_entry(
                 "ssh_port",
                 "ssh_options",
                 "wallix",
+                "wallix_group",
                 "jump",
                 "environments",
                 "servers",
@@ -1015,6 +1049,7 @@ fn yaml_validate_entry(
                             "ssh_port",
                             "ssh_options",
                             "wallix",
+                            "wallix_group",
                             "jump",
                             "servers",
                             "probe_filesystems",
@@ -1190,6 +1225,32 @@ fn resolve_server(
             .or(def_post_disconnect_hook)
             .map(|h| shellexpand::tilde(h).into_owned()),
         hook_timeout_secs: def_hook_timeout_secs,
+        wallix_group: s
+            .wallix
+            .as_ref()
+            .and_then(|b| b.group.clone())
+            .or_else(|| s.wallix_group.clone())
+            .or_else(|| final_bastion.as_ref().and_then(|b| b.group.clone())),
+        wallix_account: final_bastion
+            .as_ref()
+            .and_then(|b| b.account.clone())
+            .unwrap_or_else(|| "default".to_string()),
+        wallix_protocol: final_bastion
+            .as_ref()
+            .and_then(|b| b.protocol.clone())
+            .unwrap_or_else(|| "SSH".to_string()),
+        wallix_auto_select: final_bastion
+            .as_ref()
+            .and_then(|b| b.auto_select)
+            .unwrap_or(true),
+        wallix_fail_if_menu_match_error: final_bastion
+            .as_ref()
+            .and_then(|b| b.fail_if_menu_match_error)
+            .unwrap_or(true),
+        wallix_selection_timeout_secs: final_bastion
+            .as_ref()
+            .and_then(|b| b.selection_timeout_secs)
+            .unwrap_or(8),
     })
 }
 
@@ -1251,6 +1312,7 @@ mod tests {
                 ssh_port: None,
                 ssh_options: None,
                 wallix: None,
+                wallix_group: None,
                 jump: None,
                 probe_filesystems: None,
                 environments: None,
@@ -1286,12 +1348,24 @@ mod tests {
         let parent = Some(BastionConfig {
             host: Some("parent_host".to_string()),
             user: Some("parent_user".to_string()),
+            group: Some("parent-group".to_string()),
             template: Some("parent_tmpl".to_string()),
+            account: None,
+            protocol: None,
+            auto_select: None,
+            fail_if_menu_match_error: None,
+            selection_timeout_secs: None,
         });
         let child = BastionConfig {
             host: None,
             user: Some("child_user".to_string()),
+            group: None,
             template: None,
+            account: None,
+            protocol: None,
+            auto_select: None,
+            fail_if_menu_match_error: None,
+            selection_timeout_secs: None,
         };
 
         let merged = merge_bastion(&parent, &Some(child)).unwrap();
@@ -1301,6 +1375,66 @@ mod tests {
         assert_eq!(merged.host, Some("parent_host".to_string()));
         // Parent template is inherited
         assert_eq!(merged.template, Some("parent_tmpl".to_string()));
+        // Parent group is inherited
+        assert_eq!(merged.group, Some("parent-group".to_string()));
+    }
+
+    #[test]
+    fn test_resolve_inherits_wallix_group_from_defaults_wallix() {
+        let config = Config {
+            defaults: Some(Defaults {
+                mode: Some(ConnectionMode::Wallix),
+                wallix: Some(BastionConfig {
+                    host: Some("bastion.example.test".to_string()),
+                    user: Some("demo_user".to_string()),
+                    group: Some("dev-admins".to_string()),
+                    template: None,
+                    account: None,
+                    protocol: None,
+                    auto_select: None,
+                    fail_if_menu_match_error: None,
+                    selection_timeout_secs: None,
+                }),
+                ..Default::default()
+            }),
+            groups: vec![ConfigEntry::Group(Group {
+                name: "ALPHA-BD".to_string(),
+                user: None,
+                ssh_key: None,
+                mode: None,
+                ssh_port: None,
+                ssh_options: None,
+                wallix: None,
+                wallix_group: None,
+                jump: None,
+                environments: None,
+                servers: Some(vec![Server {
+                    name: "app-alpha".to_string(),
+                    host: "APP-ALPHA-BD".to_string(),
+                    user: None,
+                    ssh_key: None,
+                    ssh_port: None,
+                    ssh_options: None,
+                    mode: None,
+                    wallix: None,
+                    wallix_group: None,
+                    jump: None,
+                    probe_filesystems: None,
+                    tunnels: None,
+                    tags: None,
+                    pre_connect_hook: None,
+                    post_disconnect_hook: None,
+                }]),
+                probe_filesystems: None,
+                tunnels: None,
+                tags: None,
+            })],
+            includes: vec![],
+            vars: Default::default(),
+        };
+
+        let resolved = config.resolve().unwrap();
+        assert_eq!(resolved[0].wallix_group.as_deref(), Some("dev-admins"));
     }
 
     #[test]
@@ -1316,6 +1450,7 @@ mod tests {
                     ssh_port: None,
                     ssh_options: None,
                     wallix: None,
+                    wallix_group: None,
                     jump: None,
                     environments: None,
                     servers: None,
@@ -1346,6 +1481,7 @@ mod tests {
                     ssh_port: None,
                     ssh_options: None,
                     wallix: None,
+                    wallix_group: None,
                     jump: None,
                     environments: None,
                     servers: None,
@@ -1391,6 +1527,7 @@ mod tests {
                 ssh_port: None, // Inherits 2222
                 ssh_options: None,
                 wallix: None,
+                wallix_group: None,
                 jump: None,
                 probe_filesystems: None,
                 tags: None,
@@ -1402,6 +1539,7 @@ mod tests {
                     ssh_port: None, // Inherits 2222
                     ssh_options: None,
                     wallix: None,
+                    wallix_group: None,
                     jump: None,
                     probe_filesystems: None,
                     tunnels: None,
@@ -1452,6 +1590,7 @@ mod tests {
                 ssh_port: None,
                 ssh_options: None,
                 wallix: None,
+                wallix_group: None,
                 jump: None,
                 probe_filesystems: None, // hérite des defaults
                 environments: None,
@@ -1522,13 +1661,14 @@ mod tests {
                 ..Default::default()
             }),
             groups: vec![ConfigEntry::Group(Group {
-                name: "ONDE".to_string(),
+                name: "ALPHA".to_string(),
                 user: None,
                 ssh_key: None,
                 mode: None,
                 ssh_port: None,
                 ssh_options: None,
                 wallix: None,
+                wallix_group: None,
                 jump: None,
                 probe_filesystems: Some(vec!["/kafka_data".to_string()]), // s'ajoute
                 environments: None,

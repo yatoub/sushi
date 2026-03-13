@@ -83,8 +83,14 @@ defaults:
   wallix:
     host: "bastion.example.com"
     user: "bastion"
-    ssh_options:
-      - "ForwardAgent=yes"
+    # Canonical Wallix group key (legacy wallix_group is still accepted).
+    # A short value is allowed: menu entries like PREFIX_devops-admins will match.
+    group: "devops-admins"
+    account: "default"
+    protocol: "SSH"
+    auto_select: true
+    fail_if_menu_match_error: true
+    selection_timeout_secs: 8
   # Single jump host
   jump:
     - host: "jump.example.com"

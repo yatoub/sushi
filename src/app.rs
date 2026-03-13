@@ -7,6 +7,7 @@ use crate::ssh::sftp::{self as ssh_sftp, ScpDirection, ScpEvent};
 use crate::ssh::tunnel::{self as ssh_tunnel, TunnelHandle, TunnelStatus};
 use crate::state::{self, TunnelOverride};
 use crate::ui::theme::{Theme, get_theme};
+use crate::wallix::WallixMenuEntry;
 use ratatui::widgets::ListState;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -169,6 +170,24 @@ pub enum TunnelOverlayState {
     Form(TunnelForm),
 }
 
+/// État de l'overlay de sélection manuelle Wallix.
+#[derive(Debug, Clone)]
+pub enum WallixSelectorState {
+    /// Récupération des entrées depuis le bastion.
+    Loading { server: Box<ResolvedServer> },
+    /// Liste des entrées Wallix disponibles.
+    List {
+        server: Box<ResolvedServer>,
+        entries: Vec<WallixMenuEntry>,
+        selected: usize,
+    },
+    /// Erreur lors du chargement du menu Wallix.
+    Error {
+        server: Box<ResolvedServer>,
+        message: String,
+    },
+}
+
 /// Champ actif dans le formulaire de transfert SCP.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ScpFormField {
@@ -328,7 +347,14 @@ pub struct App {
     pub scp_state: ScpState,
     /// Récepteur des évènements du thread SFTP (présent uniquement quand Running).
     pub scp_rx: Option<mpsc::Receiver<ScpEvent>>,
+
+    /// État de l'overlay de sélection manuelle Wallix.
+    pub wallix_selector: Option<WallixSelectorState>,
+    /// Récepteur du chargement asynchrone du menu Wallix.
+    pub wallix_selector_rx: Option<mpsc::Receiver<WallixMenuLoadResult>>,
 }
+
+type WallixMenuLoadResult = (ResolvedServer, Result<Vec<WallixMenuEntry>, String>);
 
 /// Sépare la requête de recherche en tokens texte et tokens `#tag`.
 /// Exemple : `"web #prod DB"` → `(["web", "DB"], ["prod"])`
@@ -426,6 +452,8 @@ impl App {
             active_tunnels: HashMap::new(),
             scp_state: ScpState::Idle,
             scp_rx: None,
+            wallix_selector: None,
+            wallix_selector_rx: None,
         };
 
         app.list_state.select(Some(0));
@@ -1709,6 +1737,88 @@ impl App {
         self.cmd_rx = None;
     }
 
+    // ─── Sélecteur Wallix ───────────────────────────────────────────────────
+
+    pub fn should_open_wallix_selector(&self, server: &ResolvedServer) -> bool {
+        self.connection_mode == ConnectionMode::Wallix
+            && (!server.wallix_auto_select || !server.wallix_fail_if_menu_match_error)
+    }
+
+    pub fn open_wallix_selector(&mut self, server: ResolvedServer, verbose: bool) {
+        let (tx, rx) = mpsc::channel();
+        self.wallix_selector = Some(WallixSelectorState::Loading {
+            server: Box::new(server.clone()),
+        });
+        self.wallix_selector_rx = Some(rx);
+
+        std::thread::spawn(move || {
+            let result = crate::ssh::client::fetch_wallix_menu_entries(&server, verbose)
+                .map_err(|e| e.to_string());
+            let _ = tx.send((server, result));
+        });
+    }
+
+    pub fn poll_wallix_selector(&mut self) {
+        let done = if let Some(rx) = &self.wallix_selector_rx {
+            rx.try_recv().ok()
+        } else {
+            None
+        };
+
+        if let Some((server, result)) = done {
+            match result {
+                Ok(entries) => {
+                    self.wallix_selector = Some(WallixSelectorState::List {
+                        server: Box::new(server),
+                        entries,
+                        selected: 0,
+                    });
+                }
+                Err(message) => {
+                    self.wallix_selector = Some(WallixSelectorState::Error {
+                        server: Box::new(server),
+                        message,
+                    });
+                }
+            }
+            self.wallix_selector_rx = None;
+        }
+    }
+
+    pub fn close_wallix_selector(&mut self) {
+        self.wallix_selector = None;
+        self.wallix_selector_rx = None;
+    }
+
+    pub fn wallix_selector_next(&mut self) {
+        if let Some(WallixSelectorState::List {
+            entries, selected, ..
+        }) = &mut self.wallix_selector
+            && !entries.is_empty()
+        {
+            *selected = (*selected + 1).min(entries.len().saturating_sub(1));
+        }
+    }
+
+    pub fn wallix_selector_previous(&mut self) {
+        if let Some(WallixSelectorState::List { selected, .. }) = &mut self.wallix_selector {
+            *selected = selected.saturating_sub(1);
+        }
+    }
+
+    pub fn wallix_selector_selected_id(&self) -> Option<(ResolvedServer, String)> {
+        match &self.wallix_selector {
+            Some(WallixSelectorState::List {
+                server,
+                entries,
+                selected,
+            }) => entries
+                .get(*selected)
+                .map(|entry| ((**server).clone(), entry.id.clone())),
+            _ => None,
+        }
+    }
+
     // ─── SCP ─────────────────────────────────────────────────────────────────
 
     /// Ouvre l'étape de sélection de la direction SCP pour le serveur sélectionné.
@@ -1968,6 +2078,7 @@ mod tests {
                 ssh_port: None,
                 ssh_options: None,
                 wallix: None,
+                wallix_group: None,
                 jump: None,
                 probe_filesystems: None,
                 environments: Some(vec![Environment {
@@ -1978,6 +2089,7 @@ mod tests {
                     ssh_port: None,
                     ssh_options: None,
                     wallix: None,
+                    wallix_group: None,
                     jump: None,
                     probe_filesystems: None,
                     tunnels: None,
@@ -2066,6 +2178,7 @@ mod tests {
                 ssh_port: None,
                 ssh_options: None,
                 wallix: None,
+                wallix_group: None,
                 jump: None,
                 probe_filesystems: None,
                 environments: None,
@@ -2284,6 +2397,7 @@ mod tests {
                     ssh_port: None,
                     ssh_options: None,
                     wallix: None,
+                    wallix_group: None,
                     jump: None,
                     probe_filesystems: None,
                     environments: None,
@@ -2318,6 +2432,7 @@ mod tests {
                         ssh_port: None,
                         ssh_options: None,
                         wallix: None,
+                        wallix_group: None,
                         jump: None,
                         probe_filesystems: None,
                         environments: None,
@@ -2507,5 +2622,41 @@ mod tests {
         assert_eq!(form.local_port, "8080");
         assert_eq!(form.remote_host, "db.local");
         assert_eq!(form.label, "MySQL");
+    }
+
+    #[test]
+    fn wallix_selector_required_when_auto_select_disabled() {
+        let mut app = App::new(
+            make_namespace_config(),
+            vec![],
+            std::path::PathBuf::new(),
+            vec![],
+        )
+        .unwrap();
+        app.connection_mode = ConnectionMode::Wallix;
+
+        let mut server = app.resolved_servers[0].clone();
+        server.wallix_auto_select = false;
+        server.wallix_fail_if_menu_match_error = true;
+
+        assert!(app.should_open_wallix_selector(&server));
+    }
+
+    #[test]
+    fn wallix_selector_required_when_manual_fallback_enabled() {
+        let mut app = App::new(
+            make_namespace_config(),
+            vec![],
+            std::path::PathBuf::new(),
+            vec![],
+        )
+        .unwrap();
+        app.connection_mode = ConnectionMode::Wallix;
+
+        let mut server = app.resolved_servers[0].clone();
+        server.wallix_auto_select = true;
+        server.wallix_fail_if_menu_match_error = false;
+
+        assert!(app.should_open_wallix_selector(&server));
     }
 }

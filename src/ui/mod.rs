@@ -10,10 +10,11 @@ use ratatui::{
 };
 
 use crate::app::{
-    App, AppMode, CmdState, ConfigItem, ScpFormField, ScpState, TunnelFormField, TunnelOverlayState,
+    App, AppMode, CmdState, ConfigItem, ScpFormField, ScpState, TunnelFormField,
+    TunnelOverlayState, WallixSelectorState,
 };
 use crate::i18n::Strings;
-use crate::probe::ProbeState;
+use crate::probe::{ProbeProfile, ProbeState};
 use crate::ssh::tunnel::TunnelStatus;
 use crate::ui::theme::Theme;
 
@@ -53,6 +54,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     // Overlay SCP — affiché par-dessus les tunnels si actif
     if !matches!(app.scp_state, ScpState::Idle | ScpState::Running { .. }) {
         draw_scp_overlay(f, app, f.area());
+    }
+
+    // Overlay Wallix — affiché au-dessus des panneaux normaux
+    if app.wallix_selector.is_some() {
+        draw_wallix_selector_overlay(f, app, f.area());
     }
 
     // Overlay erreur — rendu en dernier pour être au-dessus de tout
@@ -108,6 +114,137 @@ fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect, theme: &Theme, lan
 
     let hint = Paragraph::new(lang.error_dismiss).style(Style::default().fg(theme.subtext0));
     f.render_widget(hint, chunks[1]);
+}
+
+fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
+    let Some(state) = &app.wallix_selector else {
+        return;
+    };
+
+    let popup_area = centered_rect(86, 18, area);
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .title(" Wallix Selection ")
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(app.theme.sapphire))
+        .style(Style::default().bg(app.theme.bg));
+    let inner = block.inner(popup_area);
+    f.render_widget(block, popup_area);
+
+    match state {
+        WallixSelectorState::Loading { server } => {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(2),
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                ])
+                .split(inner);
+            f.render_widget(
+                Paragraph::new(format!("Loading Wallix entries for {}…", server.name))
+                    .style(Style::default().fg(app.theme.fg)),
+                chunks[0],
+            );
+            f.render_widget(
+                Paragraph::new("Contacting the bastion and reading the interactive menu.")
+                    .style(Style::default().fg(app.theme.subtext0))
+                    .wrap(Wrap { trim: true }),
+                chunks[1],
+            );
+            f.render_widget(
+                Paragraph::new("Esc/q: cancel").style(Style::default().fg(app.theme.subtext0)),
+                chunks[2],
+            );
+        }
+        WallixSelectorState::Error { server, message } => {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(2),
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                ])
+                .split(inner);
+            f.render_widget(
+                Paragraph::new(format!("Wallix selector error for {}", server.name)).style(
+                    Style::default()
+                        .fg(app.theme.red)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                chunks[0],
+            );
+            f.render_widget(
+                Paragraph::new(message.clone())
+                    .style(Style::default().fg(app.theme.fg))
+                    .wrap(Wrap { trim: true }),
+                chunks[1],
+            );
+            f.render_widget(
+                Paragraph::new("Enter/Esc/q: close").style(Style::default().fg(app.theme.subtext0)),
+                chunks[2],
+            );
+        }
+        WallixSelectorState::List {
+            server,
+            entries,
+            selected,
+        } => {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(2),
+                    Constraint::Min(6),
+                    Constraint::Length(2),
+                ])
+                .split(inner);
+
+            f.render_widget(
+                Paragraph::new(format!(
+                    "Select the Wallix entry for {} ({})",
+                    server.name, server.host
+                ))
+                .style(Style::default().fg(app.theme.fg)),
+                chunks[0],
+            );
+
+            let items: Vec<ListItem> = entries
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| {
+                    let is_selected = index == *selected;
+                    let bg = if is_selected {
+                        app.theme.selection_bg
+                    } else {
+                        app.theme.bg
+                    };
+                    let fg = if is_selected {
+                        app.theme.selection_fg
+                    } else {
+                        app.theme.fg
+                    };
+                    ListItem::new(Line::from(vec![
+                        Span::styled(
+                            format!("#{:<3} ", entry.id),
+                            Style::default().fg(app.theme.sapphire).bg(bg),
+                        ),
+                        Span::styled(entry.target.clone(), Style::default().fg(fg).bg(bg)),
+                        Span::styled("  →  ", Style::default().fg(app.theme.subtext0).bg(bg)),
+                        Span::styled(entry.group.clone(), Style::default().fg(fg).bg(bg)),
+                    ]))
+                })
+                .collect();
+            f.render_widget(List::new(items), chunks[1]);
+
+            f.render_widget(
+                Paragraph::new("↑/↓: navigate | Enter: connect | Esc/q: cancel")
+                    .style(Style::default().fg(app.theme.subtext0)),
+                chunks[2],
+            );
+        }
+    }
 }
 
 /// Overlay flottant centré listant les tunnels SSH d'un serveur.
@@ -1296,79 +1433,109 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                     app.lang.probe_section,
                                     Style::default().fg(theme.border),
                                 )]));
-                                lines.push(Line::from(vec![
-                                    Span::styled(
-                                        app.lang.probe_kernel,
-                                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
-                                    ),
-                                    Span::raw(r.kernel.clone()),
-                                ]));
-                                lines.push(Line::from(vec![
-                                    Span::styled(
-                                        app.lang.probe_os,
-                                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
-                                    ),
-                                    Span::raw(r.os_name.clone()),
-                                ]));
-                                lines.push(Line::from(vec![
-                                    Span::styled(
-                                        app.lang.probe_cpu,
-                                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
-                                    ),
-                                    Span::raw(r.cpu_model.clone()),
-                                ]));
-                                lines.push(Line::from(vec![
-                                    Span::styled(
-                                        app.lang.probe_cpu_cores,
-                                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
-                                    ),
-                                    Span::raw(r.cpu_cores.to_string()),
-                                ]));
-                                lines.push(Line::from(vec![
-                                    Span::styled(
-                                        app.lang.probe_load,
-                                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
-                                    ),
-                                    Span::raw(r.load.clone()),
-                                ]));
-                                lines.push(probe_bar(
-                                    app.lang.probe_ram,
-                                    r.ram_pct,
-                                    r.ram_total_gb,
-                                    theme,
-                                ));
-                                lines.push(probe_bar(
-                                    app.lang.probe_disk,
-                                    r.disk_pct,
-                                    r.disk_total_gb,
-                                    theme,
-                                ));
-                                for fs_entry in &r.extra_fs {
-                                    match &fs_entry.usage {
-                                        Some(usage) => {
-                                            let label = app.lang.probe_disk_extra.replacen(
-                                                "{}",
-                                                &fs_entry.mountpoint,
-                                                1,
-                                            );
-                                            lines.push(probe_bar(
-                                                &label,
-                                                usage.pct,
-                                                usage.total_gb,
-                                                theme,
-                                            ));
-                                        }
-                                        None => {
-                                            lines.push(Line::from(vec![Span::styled(
-                                                app.lang.probe_fs_absent.replacen(
+                                if r.profile == ProbeProfile::Wallix {
+                                    for note in &r.notes {
+                                        let style = if note.contains("error")
+                                            || note.contains("<missing>")
+                                        {
+                                            Style::default().fg(theme.red)
+                                        } else if note.contains("skipped") {
+                                            Style::default().fg(theme.yellow)
+                                        } else if note.contains("ok") {
+                                            Style::default().fg(theme.green)
+                                        } else {
+                                            Style::default().fg(theme.fg)
+                                        };
+                                        lines.push(Line::from(vec![Span::styled(
+                                            format!("  {}", note),
+                                            style,
+                                        )]));
+                                    }
+                                } else {
+                                    lines.push(Line::from(vec![
+                                        Span::styled(
+                                            app.lang.probe_kernel,
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .fg(theme.fg),
+                                        ),
+                                        Span::raw(r.kernel.clone()),
+                                    ]));
+                                    lines.push(Line::from(vec![
+                                        Span::styled(
+                                            app.lang.probe_os,
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .fg(theme.fg),
+                                        ),
+                                        Span::raw(r.os_name.clone()),
+                                    ]));
+                                    lines.push(Line::from(vec![
+                                        Span::styled(
+                                            app.lang.probe_cpu,
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .fg(theme.fg),
+                                        ),
+                                        Span::raw(r.cpu_model.clone()),
+                                    ]));
+                                    lines.push(Line::from(vec![
+                                        Span::styled(
+                                            app.lang.probe_cpu_cores,
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .fg(theme.fg),
+                                        ),
+                                        Span::raw(r.cpu_cores.to_string()),
+                                    ]));
+                                    lines.push(Line::from(vec![
+                                        Span::styled(
+                                            app.lang.probe_load,
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .fg(theme.fg),
+                                        ),
+                                        Span::raw(r.load.clone()),
+                                    ]));
+                                    lines.push(probe_bar(
+                                        app.lang.probe_ram,
+                                        r.ram_pct,
+                                        r.ram_total_gb,
+                                        theme,
+                                    ));
+                                    lines.push(probe_bar(
+                                        app.lang.probe_disk,
+                                        r.disk_pct,
+                                        r.disk_total_gb,
+                                        theme,
+                                    ));
+                                    for fs_entry in &r.extra_fs {
+                                        match &fs_entry.usage {
+                                            Some(usage) => {
+                                                let label = app.lang.probe_disk_extra.replacen(
                                                     "{}",
                                                     &fs_entry.mountpoint,
                                                     1,
-                                                ),
-                                                Style::default()
-                                                    .fg(theme.yellow)
-                                                    .add_modifier(Modifier::BOLD),
-                                            )]));
+                                                );
+                                                lines.push(probe_bar(
+                                                    &label,
+                                                    usage.pct,
+                                                    usage.total_gb,
+                                                    theme,
+                                                ));
+                                            }
+                                            None => {
+                                                lines.push(Line::from(vec![Span::styled(
+                                                    app.lang.probe_fs_absent.replacen(
+                                                        "{}",
+                                                        &fs_entry.mountpoint,
+                                                        1,
+                                                    ),
+                                                    Style::default()
+                                                        .fg(theme.yellow)
+                                                        .add_modifier(Modifier::BOLD),
+                                                )]));
+                                            }
                                         }
                                     }
                                 }

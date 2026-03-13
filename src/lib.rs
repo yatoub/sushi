@@ -9,3 +9,4 @@ pub mod probe;
 pub mod ssh;
 pub mod state;
 pub mod ui;
+pub mod wallix;

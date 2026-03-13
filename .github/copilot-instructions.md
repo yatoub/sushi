@@ -37,12 +37,13 @@ Ce fichier est en français, à usage interne. Communiquer avec l'utilisateur en
 
 - **Toujours travailler sur une branche** — ne jamais pousser directement sur `master`. Ouvrir une PR et attendre que `ci.yml` (fmt + clippy + tests) passe avant de merger.
 - **TDD** : écrire les tests avant l'implémentation.
-- `cargo fmt` avant tout commit.
+    - Les tests sont anonymes (fausses données, pas de noms de personnes ou d'organisations réelles).
+    - cargo fmt et cargo clippy doivent être exécutés localement avant de pousser.
 - `cargo clippy -- -D warnings` doit passer sans erreur.
 - `cargo test` doit passer (tous les tests, y compris les tests d'intégration dans `tests/`).
 - Aucun `unwrap()` dans le code de production sans justification explicite.
 - Le code Unix-spécifique (`libc`, `nix`, `CommandExt::exec/pre_exec`) doit être gaté derrière `#[cfg(unix)]`. `nix` est dans `[target.'cfg(unix)'.dependencies]` dans `Cargo.toml`.
-
+- Vérification de la compatibilité multiplateforme (windows/macOS) : utiliser `cargo build --target` et `cargo test --target` pour les cibles pertinentes (x86_64-pc-windows-msvc, x86_64-apple-darwin, aarch64-apple-darwin).
 ---
 
 ## Chaîne CI/CD

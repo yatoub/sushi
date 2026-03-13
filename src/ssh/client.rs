@@ -160,8 +160,22 @@ pub fn fetch_wallix_menu_entries(
     verbose: bool,
 ) -> Result<Vec<WallixMenuEntry>> {
     let args = build_wallix_bastion_args(server, verbose)?;
-    let (child, mut master_reader, _master_writer) = spawn_wallix_pty(&args)?;
-    let transcript = read_until_wallix_prompt(&mut master_reader)?;
+    let (child, mut master_reader, mut master_writer) = spawn_wallix_pty(&args)?;
+    let mut transcript = String::new();
+
+    loop {
+        let page = read_until_wallix_prompt(&mut master_reader)?;
+        transcript.push_str(&page);
+
+        match parse_wallix_page_position(&page) {
+            Some((current, total)) if current < total => {
+                master_writer.write_all(b"n\n")?;
+                master_writer.flush()?;
+            }
+            _ => break,
+        }
+    }
+
     unsafe {
         libc::kill(child.as_raw(), libc::SIGTERM);
     }
@@ -278,13 +292,45 @@ fn contains_wallix_prompt(buffer: &str) -> bool {
         || trimmed.lines().rev().find(|line| !line.trim().is_empty()) == Some(">")
 }
 
-    #[cfg(unix)]
-    fn contains_wallix_target_address_prompt(buffer: &str) -> bool {
-        let lowered = buffer.to_ascii_lowercase();
-        lowered.contains("adresse cible")
+#[cfg(unix)]
+fn contains_wallix_target_address_prompt(buffer: &str) -> bool {
+    let lowered = buffer.to_ascii_lowercase();
+    lowered.contains("adresse cible")
         || lowered.contains("target address")
         || lowered.contains("destination address")
+}
+
+#[cfg(unix)]
+fn parse_wallix_page_position(buffer: &str) -> Option<(u32, u32)> {
+    let lowered = buffer.to_ascii_lowercase();
+    let marker = "page ";
+    let start = lowered.rfind(marker)? + marker.len();
+    let tail = &lowered[start..];
+
+    let mut current = String::new();
+    let mut total = String::new();
+    let mut seen_slash = false;
+
+    for character in tail.chars() {
+        if character.is_ascii_digit() {
+            if seen_slash {
+                total.push(character);
+            } else {
+                current.push(character);
+            }
+        } else if character == '/' && !seen_slash {
+            seen_slash = true;
+        } else if !current.is_empty() {
+            break;
+        }
     }
+
+    if current.is_empty() || total.is_empty() {
+        return None;
+    }
+
+    Some((current.parse().ok()?, total.parse().ok()?))
+}
 
 #[cfg(unix)]
 fn spawn_wallix_pty(args: &[String]) -> Result<(nix::unistd::Pid, std::fs::File, std::fs::File)> {
@@ -418,6 +464,19 @@ fn connect_wallix_via_pty_with_selection(
                             selection_completed = true;
                         }
                         Err(err) if server.wallix_fail_if_menu_match_error => {
+                            if err
+                                .to_string()
+                                .contains("No menu entry found with target")
+                                && let Some((current, total)) =
+                                    parse_wallix_page_position(&transcript)
+                                && current < total
+                            {
+                                master_writer.write_all(b"n\n")?;
+                                master_writer.flush()?;
+                                transcript.clear();
+                                continue;
+                            }
+
                             unsafe {
                                 libc::kill(child.as_raw(), libc::SIGTERM);
                             }
@@ -740,6 +799,12 @@ mod tests {
         assert!(contains_wallix_target_address_prompt(
             "Account successfully checked out\nAdresse cible (dans 10.242.23.24/29): "
         ));
+    }
+
+    #[test]
+    fn wallix_page_position_parser_reads_page_numbers() {
+        let line = "| ID | Cible (page 1/16)                       | Autorisation";
+        assert_eq!(parse_wallix_page_position(line), Some((1, 16)));
     }
 
     // ── invariant destination ─────────────────────────────────────────────────

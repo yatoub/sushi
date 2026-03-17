@@ -1,68 +1,101 @@
 # 🍣 susshi
 
-**susshi** is a modern, terminal-based SSH connection manager written in Rust. It helps you organize your servers into groups and environments, handle complex connection scenarios (jumphosts, Wallix bastions), and connect quickly with a beautiful TUI with Catppuccin theme.
+**susshi** is a modern, terminal-based SSH connection manager written in Rust.
+It helps you organize servers, handle complex access flows (jump hosts, Wallix bastions), and connect fast through a clean Catppuccin-powered TUI.
 
-## ✨ Features
+## Table of Contents
 
-- **Hierarchical Organization**: Structure your infrastructure with Groups, Environments, and Servers.
-- **Multi-file Configuration**: Split your config by team or perimeter with `includes:`. Each included file is shown as a collapsible **namespace** in the TUI. Nested includes are resolved recursively. Missing or circular includes are non-fatal warnings.
-- **Connection Modes**:
-  - **Direct**: Standard SSH connection.
-  - **Jump**: Connect via one or more jump hosts (`-J`). Supports multi-hop chains.
-  - **Wallix**: Connect via a Wallix bastion with menu auto-selection and manual fallback.
-  - **Mode Inheritance**: Connection mode inherits from defaults → group → environment → server.
-- **Configuration Inheritance**: Define defaults globally or at the group/environment level to avoid repetition.
-  - Full cascading support for user, ssh_key, mode, port, options, and connection configs.
-  - `use_system_ssh_config`: opt in to respecting `~/.ssh/config` (ControlMaster, aliases…).
-- **CLI — connect without opening the TUI**:
-  - `--direct`, `--jump`, `--wallix` `[user@]host[:port]` — instant SSH connection.
-  - `-u/--user`, `-p/--port`, `-k/--key` — override any SSH parameter.
-  - `-c/--config` — use an alternate configuration file.
-  - `-v/--verbose` — enable SSH verbose output.
-- **Advanced Search**:
-  - **Multi-field Search**: Search by server name OR hostname.
-  - **Tag Filtering**: Use `#tag` prefix to filter by tag (e.g. `#prod`). Multiple tags perform an AND filter. Mix text and tags freely (e.g. `api #prod`).
-  - **Live Results Counter**: See matching servers in real-time (e.g., "45 / 387 servers").
-  - **Visual Feedback**: Color-coded borders (sapphire during search, green for results, red for no match).
-  - **Smart Expansion**: Auto-expands groups when searching.
-  - **Default Filter**: Set `defaults.default_filter` in your config to pre-apply a filter at startup.
-- **Interactive TUI**:
-  - **Mouse Support**: Click to select, double-click to connect.
-  - **Configurable Theme**: Choose from four Catppuccin flavors — `latte`, `frappe`, `macchiato`, or `mocha` (default) via `defaults.theme` in your config.
-  - **Verbose Mode**: Toggle SSH verbose output with `v`.
-  - **Rich Detail Pane**: Shows port (highlighted when non-standard), connection mode, jump host, wallix host, SSH options, and last connection timestamp.
-  - **Quick Diagnostic** (`d`): Press `d` on any server to run a non-blocking SSH probe. The detail pane displays a **System** block with kernel version, OS name and version (from `/etc/os-release`), CPU model and logical core count, load average, and color-coded RAM/Disk progress bars (green < 60%, yellow 60–85%, red > 85%). Additional mount points configured via `probe_filesystems` are also shown: each extra path gets its own bar, or a yellow `⚠ /path — not mounted` warning if absent. An animated spinner shows while the probe is running. Press `d` again to refresh; changing server resets it.
-  - **Ad-hoc Command** (`x`): Run any non-interactive SSH command on the selected server directly from the TUI. The output (up to 20 lines) is displayed in the detail pane with a colored exit status indicator.
-  - **Clipboard**: Copy the SSH command for any server with `y` (requires a running clipboard manager on Linux).
-  - **Hot Reload** (`r`): Reload all configuration files (main + includes) without restarting. The tree updates in place and the current expansion state is preserved.
-  - **Favorites** (`f` / `F`): Mark any server as a favorite (⭐). Press `F` to toggle the favorites-only view — the tree filters all groups, environments, and namespaces accordingly.
-  - **Collapse All** (`C`): Press `C` to instantly collapse all expanded groups, namespaces, and environments and jump back to the top of the list.
-  - **Recent Sort** (`H`): Switch between alphabetical order and a flat list sorted by most-recently-used server.
-- **Connection History**: The last connection timestamp for each server is stored in `~/.susshi_state.json` and displayed in the detail pane (e.g., "il y a 2 h" / "2 h ago").
-- **YAML Validation**: Unknown fields in any config file are detected and reported as non-blocking `ValidationWarning` entries at startup.
-- **State Persistence**: Expanded groups, favorites, last-seen timestamps, and sort mode are saved to `~/.susshi_state.json` and restored on next launch.
-- **Keep-Open Mode**: Set `keep_open: true` in `defaults` to automatically reopen the TUI after a connection closes — no need to relaunch susshi to switch to another server.
-- **SSH Tunnels** (`T`): Press `T` to open the tunnel overlay for the selected server. Start, stop, add, edit, and delete local SSH port-forwarding tunnels interactively. Tunnels can be predefined in the config (`tunnels:` key) or created on the fly as user overrides — both are persisted across sessions. Active tunnels are shown with live `[KEY]` status badges in the status bar.
-- **SCP File Transfer** (`s`): Press `s` to open the SCP form. Choose upload or download, fill in the local and remote paths, and watch real-time transfer progress directly in the TUI. The transfer runs via a PTY so OpenSSH streams percentage updates live.
-- **In-TUI Error Screen**: Connection errors are displayed as an overlay instead of crashing — press `Enter`/`Esc`/`q` to dismiss.
-- **Smart Sorting**: Automatically sorts groups and servers alphabetically.
-- **Import `~/.ssh/config`** (`--import-ssh-config`): parse an OpenSSH client config file (including recursive `Include` directives) and emit a susshi-compatible YAML block. Supports `--ssh-config-path <path>`, `--output <file>`, and `--dry-run` (preview without writing). `ProxyJump` entries are automatically converted to jump-mode servers.
-- **ControlMaster SSH multiplexing**: set `control_master: true` in `defaults` to reuse SSH connections across sessions. susshi injects `-o ControlMaster=auto -o ControlPath=… -o ControlPersist=…` automatically and creates the socket directory if needed. Configurable via `control_path` (default: `~/.ssh/ctl/%h_%p_%r`) and `control_persist` (default: `10m`). Silently disabled in Wallix mode.
-- **Hooks `pre_connect_hook` / `post_disconnect_hook`**: run shell scripts before/after each SSH connection. Configurable globally in `defaults` or per server. Variables `SUSSHI_SERVER`, `SUSSHI_HOST`, `SUSSHI_USER`, `SUSSHI_PORT`, `SUSSHI_MODE` are passed as environment variables. A non-zero exit from `pre_connect_hook` cancels the connection. `hook_timeout_secs` (default: `5`) controls the kill timeout.
-- **Export Ansible inventory** (`--export ansible`): generate a YAML Ansible inventory from your susshi config. Groups → `children`, environments → sub-groups, namespaces → top-level groups. Use `--export-output <file>` to write to a file, and `--export-filter <query>` to apply the same text + `#tag` filter as the TUI search.
-- **Templating / variable interpolation**: define a `_vars:` section at the top of any YAML file and reference variables with `{{ var }}` in any string field. Scoped per file — variables in an included file do not pollute the parent. Undefined variables emit a non-blocking warning and are left as-is.
-  - Built-in `{{ index }}`: automatically expands to the 1-based position of a server within its list, enabling compact fleet declarations (`name: "worker-{{ index }}"`, `host: "10.0.1.{{ index }}"`). Each list resets the counter independently.
-- **Tags and advanced search** (`tags:` key on servers and groups): filter servers by semantic labels directly in the TUI.
-  - `#tag` prefix in the search bar filters by tag.
-  - Multiple `#tag` tokens perform an AND filter.
-  - Mix text and tags: `api #prod` = name contains "api" **AND** tag `prod` is present.
-  - `defaults.default_filter` sets a filter active at startup (cleared with `Esc`).
+- [🍣 susshi](#-susshi)
+  - [Table of Contents](#table-of-contents)
+  - [Quick Start](#quick-start)
+  - [Why susshi](#why-susshi)
+    - [Core Features](#core-features)
+    - [Productivity Features](#productivity-features)
+    - [Advanced Features](#advanced-features)
+  - [Installation](#installation)
+    - [Pre-built binaries](#pre-built-binaries)
+    - [AUR (Arch Linux)](#aur-arch-linux)
+    - [Build from source](#build-from-source)
+  - [Configuration](#configuration)
+    - [Minimal template](#minimal-template)
+    - [Configuration docs](#configuration-docs)
+  - [CLI Usage](#cli-usage)
+  - [TUI Usage](#tui-usage)
+    - [Essential keybindings](#essential-keybindings)
+    - [Advanced keybindings](#advanced-keybindings)
+  - [Advanced Guides](#advanced-guides)
+  - [Contributing](#contributing)
+  - [License](#license)
 
-## 🚀 Installation
+## Quick Start
+
+Install and connect in less than 2 minutes.
+
+```bash
+# Linux x86_64
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64
+chmod +x susshi-linux-amd64
+sudo mv susshi-linux-amd64 /usr/local/bin/susshi
+```
+
+Create `~/.susshi.yml`:
+
+```yaml
+defaults:
+  user: "admin"
+  theme: mocha
+
+groups:
+  - name: "Production"
+    servers:
+      - name: "api-01"
+        host: "10.0.1.10"
+        mode: "direct"
+```
+
+Use either mode:
+
+```bash
+# Open the TUI
+susshi
+
+# Direct one-shot connection
+susshi --direct admin@10.0.1.10
+```
+
+For a complete config example, see [examples/full_config.yaml](examples/full_config.yaml).
+
+## Why susshi
+
+### Core Features
+
+- Hierarchical inventory: groups, environments, servers.
+- Mode inheritance: defaults -> group -> environment -> server.
+- Connection modes: direct, jump (single or multi-hop), wallix.
+- Multi-file config with `includes:` and recursive resolution.
+- Hot reload (`r`) without restarting the app.
+
+### Productivity Features
+
+- Search by name/host with live result counter.
+- Tag filtering with `#tag` tokens (AND semantics).
+- Favorite servers (`f`) and favorites-only mode (`F`).
+- Recent-sort view (`H`) by last used server.
+- Clipboard copy of generated SSH command (`y`).
+
+### Advanced Features
+
+- Quick diagnostics (`d`) with system stats and filesystem checks.
+- Ad-hoc non-interactive SSH command runner (`x`).
+- SSH tunnel manager (`T`) with persistent user overrides.
+- SCP transfer form (`s`) with live progress.
+- Hooks (`pre_connect_hook`, `post_disconnect_hook`).
+- `~/.ssh/config` import and Ansible inventory export.
+- Variable interpolation with `_vars` and built-in `{{ index }}`.
+
+## Installation
 
 ### Pre-built binaries
-
-Download the latest binary directly — the URL always points to the most recent release:
 
 ```bash
 # Linux x86_64
@@ -77,18 +110,16 @@ wget https://github.com/yatoub/susshi/releases/latest/download/susshi-macos-amd6
 wget https://github.com/yatoub/susshi/releases/latest/download/susshi-macos-arm64
 ```
 
-### Package manager (AUR)
-
-For Arch Linux users:
+### AUR (Arch Linux)
 
 ```bash
 paru -S susshi-bin  # pre-compiled binary
 paru -S susshi      # build from source
 ```
 
-### Build from Source
+### Build from source
 
-Requires [Rust & Cargo](https://rustup.rs/) and a terminal with truecolor support (e.g., Alacritty, Kitty, WezTerm, iTerm2, Tilix).
+Requires [Rust & Cargo](https://rustup.rs/) and a truecolor terminal.
 
 ```bash
 git clone https://github.com/yatoub/susshi.git
@@ -97,282 +128,95 @@ cargo build --release
 sudo cp target/release/susshi /usr/local/bin/
 ```
 
-## ⚙️ Configuration
+## Configuration
 
-susshi looks for a configuration file at `~/.susshi.yml`.  
-A fully annotated example covering every feature is available at [`examples/full_config.yaml`](examples/full_config.yaml).
+susshi reads `~/.susshi.yml` by default.
 
-### Multi-file configuration — `includes`
-
-Split a large config into one YAML file per team or perimeter and reference them from the main file:
-
-```yaml
-# ~/.susshi.yml
-includes:
-  - label: "DEV"
-    path: "~/.susshi_dev.yml"
-  - label: "QUALIF"
-    path: "~/.susshi_qualif.yml"
-    merge_defaults: true   # propagate main-file defaults into this sub-file
-
-defaults:
-  user: "admin"
-
-groups:
-  - name: "Local"
-    servers:
-      - name: "dev-vm"
-        host: "192.168.56.10"
-```
-
-- **`label`** — text shown as the namespace header (📦) in the TUI.
-- **`path`** — absolute or `~`-expanded path. Relative paths are resolved from the directory of the main file.
-- **`merge_defaults`** *(optional, default: `false`)* — when `true`, the main file's `defaults` are merged as a base layer for the included file's servers (still lower priority than the sub-file's own defaults and any group/env/server-level overrides).
-- Each included file is a standard susshi YAML (`defaults`, `groups`…). Its `defaults` are **local** unless `merge_defaults: true` is set.
-- Includes inside an included file are resolved **recursively**. Circular dependencies are detected and reported as non-blocking warnings.
-- If a file is missing or unreadable, the remaining includes still load normally — a warning overlay is shown at startup.
-
-### Example `~/.susshi.yml`
+### Minimal template
 
 ```yaml
 defaults:
   user: "admin"
   ssh_key: "~/.ssh/id_ed25519"
-  ssh_port: 22
-  theme: mocha  # latte | frappe | macchiato | mocha (default)
-  ssh_options:
-    - "StrictHostKeyChecking=no"
-    - "UserKnownHostsFile=/dev/null"
-  # Set to true to honour ~/.ssh/config (ControlMaster, aliases, etc.)
-  use_system_ssh_config: false
-  # Set to true to reopen the TUI after each connection closes
-  keep_open: false
-  jump:
-    - host: "jump.example.com"
-      user: "jump"
-  # Multi-hop example:
-  # jump:
-  #   - host: "jump1.example.com"
-  #     user: "jump"
-  #   - host: "jump2.example.com"
-  #     user: "jump"
-  wallix:
-    host: "bastion.example.com"
-    user: "bastion"
-    group: "devops-admins" # short group is allowed
-    account: "default"
-    protocol: "SSH"
-    auto_select: true
-    fail_if_menu_match_error: true
-    selection_timeout_secs: 8
+  theme: mocha  # latte | frappe | macchiato | mocha
 
 groups:
-  # Level 3: Group → Environment → Server
-  - name: "Projet Alpha"
-    user: "dev"             # overrides default user for this group
-    environments:
-      - name: "Production"
-        servers:
-          - name: "web-01"
-            host: "192.168.1.10"
-            mode: "direct"
-          - name: "db-01"
-            host: "192.168.1.11"  # inherits mode from defaults
-      - name: "Staging"
-        servers:
-          - name: "web-stg"
-            host: "192.168.1.20"
-            mode: "jump"          # override at server level
-
-  # Level 2: Group → Server
   - name: "Infrastructure"
     servers:
       - name: "proxmox-host"
         host: "192.168.1.100"
         mode: "direct"
-      - name: "internal-nas"
-        host: "192.168.1.200"
-        user: "root"
-        mode: "wallix"
-
-  # Level 1: Single server at root
-  - name: "Raspberry-Pi-Home"
-    host: "raspberrypi.local"
-    user: "pi"
-    mode: "direct"
 ```
 
-> See [`examples/full_config.yaml`](examples/full_config.yaml) for a complete reference with all options and inline comments.
+### Configuration docs
 
-```yaml
-# Before (v0.4.x)
-jump:
-  host: "jump.example.com"
-  user: "jump"
+- Full annotated reference: [examples/full_config.yaml](examples/full_config.yaml)
+- Full configuration guide: [docs/configuration.md](docs/configuration.md)
+- Wallix behavior and auto-selection details: [docs/wallix.md](docs/wallix.md)
 
-# After (v0.5.0+)
-jump:
-  - host: "jump.example.com"
-    user: "jump"
-```
-
-### Configuration Breakdown
-
-- **`includes`**: *(optional)* List of external YAML files to merge as namespaces.
-  - `label`: Display name shown as the top-level collapsible namespace (📦) in the tree.
-  - `path`: Path to the included file (absolute or `~`-expanded). Relative paths are resolved from the main file's directory.
-  - `merge_defaults` *(optional)*: when `true`, the main file's `defaults` are applied as a base layer for the sub-file's servers.
-  - The included file uses the same YAML schema as the main file. Its `defaults` apply only to that file's servers (unless `merge_defaults` is enabled). Nested includes are resolved recursively.
-  - Circular dependencies are detected and reported as non-blocking warnings at startup.
-  - Unknown YAML fields in any config file generate non-blocking `ValidationWarning` entries.
-- **`defaults`**: Global settings applied to all servers unless overridden.
-  - `mode`: Default connection mode (`direct`, `jump`, or `wallix`).
-  - `theme`: UI color theme — `latte`, `frappe`, `macchiato`, or `mocha` (default).
-  - `jump`: Jump host chain — a **list** of `{ host, user }` entries. SSH receives `-J user1@host1,user2@host2`. Even a single hop must be written as a list item.
-  - `wallix`: Wallix bastion configuration (required when using `wallix` mode). The YAML key `bastion` is accepted as a backward-compatible alias.
-    - `host`, `user`: bastion endpoint and login user.
-    - `group`: authorization group used for menu matching. This is the canonical key (legacy `wallix_group` is still accepted).
-    - `account` / `protocol`: target rendering parts (defaults: `default` / `SSH`).
-    - `auto_select`: try to auto-pick a menu entry before handing control to the user (default: `true`).
-    - `fail_if_menu_match_error`: if `true`, keep trying auto-selection (including pagination) and only fallback to manual selection when no reliable match is found.
-    - `selection_timeout_secs`: timeout budget for menu parsing.
-  - `use_system_ssh_config`: Set to `true` to honour `~/.ssh/config` instead of passing `-F /dev/null`. Defaults to `false`.
-  - `probe_filesystems`: List of extra mount points to inspect during the quick diagnostic (`d`). Uses **additive inheritance**: each level appends its paths to the parent list (unlike `user` or `ssh_key` which replace). If a path is not mounted on the target server a yellow `⚠` warning is shown instead of a progress bar.
-  - `keep_open`: Set to `true` to reopen the TUI automatically after a connection closes. Defaults to `false` (historical behaviour: susshi exits after connecting).
-  - `control_master` / `control_path` / `control_persist`: Enable SSH ControlMaster multiplexing (reuse connections). `control_path` is tilde-expanded and its parent directory is created automatically. Not active in Wallix mode.
-  - `pre_connect_hook` / `post_disconnect_hook`: Path to a shell script run before/after each connection (tilde-expanded). Receives `SUSSHI_*` environment variables. Non-zero exit from `pre_connect_hook` aborts the connection. Can also be set per-server.
-  - `hook_timeout_secs`: Maximum seconds to wait for a hook to exit before killing it (default: `5`).
-  - `default_filter`: Pre-apply a TUI search filter at startup (e.g. `default_filter: "#prod"`). The user can clear it with `Esc`.
-- **`_vars`**: *(optional, top-level)* A map of scalar variables available for interpolation in any string field of the same file via `{{ var }}`. Scoped to the file — variables do not propagate across `includes`. Referencing an undefined variable emits a non-blocking warning and leaves the placeholder intact.
-- **`tags`**: *(optional, on a server or group)* A list of string labels used for filtering in the TUI search bar and in `--export-filter`.
-- **`groups`**: The top-level hierarchy. Can contain `environments` or direct `servers`.
-  - Can override any default setting including `mode`.
-- **`environments`**: A sub-grouping under a Group.
-  - Inherits from group and can override any setting.
-- **`servers`**: The actual connection endpoints.
-  - Inherits all settings through the chain: defaults → group → environment → server.
-  - `mode`: Connection mode inherits but can be overridden at server level.
-  - `tunnels` *(optional)*: List of predefined local SSH port-forwarding tunnels for this server. Each entry has:
-    - `label`: a short display name (e.g. `"PostgreSQL"`).
-    - `local_port`: local TCP port to listen on.
-    - `remote_host`: destination host reached through the tunnel (e.g. `"127.0.0.1"`).
-    - `remote_port`: destination port (e.g. `5432`).
-  - Tunnels can also be added, edited, or deleted interactively from the TUI — user overrides are stored in `~/.susshi_state.json`.
-
-### Wallix Selection Behavior
-
-When `mode: wallix` is active, susshi resolves multiple target and group candidates before selecting an ID in the Wallix menu:
-
-- Target candidates include FQDN, short host, and inferred aliases from YAML structure (env/group/role).
-- Group candidates include the configured `wallix.group` and structure-derived variants.
-- Prefixed authorizations (for example `ST-ANSIBLE_devops-admins`) match a short configured group like `devops-admins`.
-- Paginated menus are scanned automatically (`page X/Y` with `n`) before declaring failure.
-- If Wallix asks for a second prompt such as `Adresse cible`, susshi auto-fills it with the configured server `host`.
-- If no reliable auto-match is found, susshi falls back to manual Wallix selection in-session instead of hard failing.
-
-## ⌨️ Keybindings
-
-| Key | Action |
-| --- | --- |
-| `j` / `↓` | Move selection down |
-| `k` / `↑` | Move selection up |
-| `/` | Enter search mode (search by name or hostname) |
-| `v` | Toggle verbose SSH mode (`-v`) |
-| `q` | Quit application |
-| `Space` | Toggle expand/collapse group |
-| `Enter` | Connect to server / Toggle group |
-| `Tab` | Cycle connection mode (Direct/Jump/Wallix) |
-| `1` | Select **Direct** mode |
-| `2` | Select **Jump** mode |
-| `3` | Select **Wallix** mode |
-| `Ctrl+U` | Clear search query (while in search mode) |
-| `d` | Run quick SSH diagnostic (kernel, OS, CPU cores, load, RAM, disk) |
-| `y` | Copy SSH command to clipboard |
-| `r` | Hot-reload configuration files |
-| `f` | Toggle favorite on selected server |
-| `F` | Toggle favorites-only view |
-| `C` | Collapse all expanded groups / environments / namespaces |
-| `H` | Toggle recent-sort (flat list sorted by last connection) |
-| `x` | Run ad-hoc SSH command on selected server |
-| `T` | Open SSH tunnel manager for selected server |
-| `s` | Open SCP file transfer form for selected server |
-| `Esc` | Cancel search / close ad-hoc prompt / dismiss error overlay |
-
-### Mouse Support
-
-- **Click**: Select server or change tab
-- **Double-click**: Connect to selected server
-
-## 🖥️ CLI Usage
-
-susshi can connect directly without opening the TUI:
+## CLI Usage
 
 ```bash
-# Connect directly
+# Direct / jump / wallix one-shot connection
 susshi --direct root@myserver
-susshi --direct admin@10.0.1.5:2222
-
-# Connect via jump host
 susshi --jump root@192.168.1.50
-
-# Connect via Wallix bastion
 susshi --wallix web-01.prod.example.com
 
 # Override SSH parameters
 susshi --direct myserver.com --user deploy --port 2222 --key ~/.ssh/deploy_rsa
 
-# Use a custom config file
+# Alternate config file
 susshi --config ~/work/.susshi.yml
-
-# Import ~/.ssh/config
-susshi --import-ssh-config                        # print generated YAML to stdout
-susshi --import-ssh-config --dry-run              # preview, do not write
-susshi --import-ssh-config --output ~/.susshi.yml # write directly to a file
-susshi --import-ssh-config --ssh-config-path ~/work/.ssh/config  # alternate source
-
-# Export Ansible inventory
-susshi --export ansible                             # print to stdout
-susshi --export ansible --export-output ~/inventory.yml
-susshi --export ansible --export-filter "#prod"   # filter by tag
-susshi --export ansible --export-filter "web"     # filter by name
 
 # Show all options
 susshi --help
 ```
 
-## 🎨 Theme & UI
+Detailed CLI examples: [docs/cli.md](docs/cli.md)
 
-susshi uses the [Catppuccin](https://github.com/catppuccin/catppuccin) palette. Choose a flavor in your config:
+## TUI Usage
 
-```yaml
-defaults:
-  theme: mocha   # latte | frappe | macchiato | mocha (default)
-```
+### Essential keybindings
 
-### Color Scheme (Mocha)
+| Key | Action |
+| --- | --- |
+| `j` / `↓` | Move selection down |
+| `k` / `↑` | Move selection up |
+| `Enter` | Connect to server / Toggle group |
+| `Space` | Toggle expand/collapse group |
+| `/` | Enter search mode |
+| `Esc` | Cancel search or close overlays |
+| `v` | Toggle verbose SSH mode |
+| `q` | Quit |
 
-- **Blue**: Default borders
-- **Sapphire**: Active search border
-- **Green**: Successful search results, verbose mode active, environment headers
-- **Red**: No search results, error overlay border
-- **Sky**: Active connection mode tab, jump / wallix host in detail pane
-- **Yellow**: Port number when different from 22
-- **Lavender**: Namespace headers (📦 included files)
-- **Mauve**: Group headers
-- **Surface2**: Selection background
+### Advanced keybindings
 
-### UI Elements
+| Key | Action |
+| --- | --- |
+| `Tab`, `1`, `2`, `3` | Switch connection mode |
+| `d` | Quick diagnostics |
+| `x` | Ad-hoc SSH command |
+| `T` | Tunnel manager |
+| `s` | SCP transfer form |
+| `f` / `F` | Favorite toggle / favorites-only view |
+| `r` | Hot-reload configuration |
+| `C` | Collapse all |
+| `H` | Toggle recent-sort |
+| `y` | Copy SSH command |
 
-- **Search Bar**: Dynamic title showing result count ("🔍 45 / 387 servers")
-- **Connection Modes**: Tab interface with visual highlight
-- **Verbose Toggle**: Checkbox indicator (☐/☑) with color feedback
-  - **Detail Pane**: Port, mode, identity file, jump/wallix host, SSH options, last connection time, **ad-hoc command output** (when active), and **System** block (kernel, CPU, load, RAM/Disk bars, plus extra mount points) after running `d`
-- **Error Overlay**: Centered popup for connection errors — press `Enter` to dismiss
+Detailed TUI behavior and visuals: [docs/tui.md](docs/tui.md)
 
-## 🤝 Contributing
+## Advanced Guides
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+- Configuration model and inheritance: [docs/configuration.md](docs/configuration.md)
+- Wallix matching and fallback flow: [docs/wallix.md](docs/wallix.md)
+- Full CLI cookbook (import/export included): [docs/cli.md](docs/cli.md)
+- TUI interactions, diagnostics, tunnels and SCP: [docs/tui.md](docs/tui.md)
 
-## 📄 License
+## Contributing
+
+Contributions are welcome. Please open a Pull Request.
+
+## License
 
 This project is licensed under the MIT License.

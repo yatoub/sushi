@@ -43,3 +43,20 @@ lto = true
 codegen-units = 1
 # Pas de symboles de panic verbeux (remplace "panicked at …" par abort)
 panic = "abort"
+
+[package.metadata.deb]
+name = "susshi"
+maintainer = "yatoub <yatoub@users.noreply.github.com>"
+copyright = "2024-2026 yatoub"
+license-file = ["LICENCE", "0"]
+extended-description = """\
+susshi is a modern, terminal-based SSH connection manager \
+with TUI (ratatui + Catppuccin theme), multi-mode connections \
+(direct, jump, bastion/Wallix), and YAML configuration."""
+depends = "openssh-client"
+recommends = "xclip | xdotool"
+section = "net"
+priority = "optional"
+assets = [
+    ["target/release/susshi", "usr/bin/susshi", "755"],
+]

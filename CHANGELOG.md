@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.13.1] — 2026-03-17
+
+## [0.13.0] — 2026-03-13
+
+### Added
+
+- Derive authorization candidates from YAML structure
+
+- Add diagnostic profile and manual TUI selector
+
+- Automate menu selection through a PTY session
+
+- Add menu parser and selection algorithm
+
+
+### Changed
+
+- Support inherited group in wallix config block
+
+- Add Wallix menu selection configuration schema
+
+
+### Fixed
+
+- Finalize anonymized fixtures and matching behavior
+
+- Support prefixed authorization groups and manual fallback
+
+- Scan paginated menu before failing selection
+
+- Auto-fill post-checkout target address prompt
+
+- Derive target aliases from fqdn and resolved structure
+
+
 ## [0.12.2] — 2026-03-10
 
 ### build

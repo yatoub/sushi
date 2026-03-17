@@ -30,7 +30,7 @@ thiserror = "2.0.18"
 nix = { version = "0.31", features = ["term", "process"] }
 
 [dev-dependencies]
-tempfile = "3.26.0"
+tempfile = "3.27.0"
 
 [profile.release]
 # Optimise pour la taille plutôt que la vitesse

@@ -14,6 +14,8 @@ It helps you organize servers, handle complex access flows (jump hosts, Wallix b
     - [Advanced Features](#advanced-features)
   - [Installation](#installation)
     - [Pre-built binaries](#pre-built-binaries)
+    - [Ubuntu / Debian (x86_64, ARM64)](#ubuntu--debian-x86_64-arm64)
+    - [Fedora / RHEL (x86_64)](#fedora--rhel-x86_64)
     - [AUR (Arch Linux)](#aur-arch-linux)
     - [Build from source](#build-from-source)
   - [Configuration](#configuration)
@@ -108,6 +110,31 @@ wget https://github.com/yatoub/susshi/releases/latest/download/susshi-macos-amd6
 
 # macOS Apple Silicon
 wget https://github.com/yatoub/susshi/releases/latest/download/susshi-macos-arm64
+```
+
+### Ubuntu / Debian (x86_64, ARM64)
+
+Install from native DEB packages:
+
+```bash
+# x86_64
+sudo apt-get update && sudo apt-get install -y openssh-client xclip
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi_*_amd64.deb
+sudo dpkg -i susshi_*_amd64.deb
+
+# ARM64
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi_*_arm64.deb
+sudo dpkg -i susshi_*_arm64.deb
+```
+
+### Fedora / RHEL (x86_64)
+
+Install from native RPM packages:
+
+```bash
+sudo dnf install openssh-clients
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi-*.x86_64.rpm
+sudo dnf install ./susshi-*.x86_64.rpm
 ```
 
 ### AUR (Arch Linux)

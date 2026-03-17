@@ -110,3 +110,81 @@ jobs:
           asset_name: ${{ matrix.asset_name }}
           tag: ${{ github.event.inputs.tag || github.ref }}
           overwrite: true
+
+  build-deb:
+    name: Build DEB packages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-deb and cross
+        run: |
+          cargo install cargo-deb
+          cargo install cross
+
+      - name: Build amd64 DEB
+        run: |
+          cargo build --release --target x86_64-unknown-linux-gnu
+          cargo deb --no-build --target x86_64-unknown-linux-gnu
+
+      - name: Build arm64 DEB (cross)
+        run: |
+          cross build --release --target aarch64-unknown-linux-gnu
+          cargo deb --no-build --target aarch64-unknown-linux-gnu
+
+      - name: Upload DEBs to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: target/debian/susshi_*.deb
+          file_glob: true
+          tag: ${{ github.event.inputs.tag || github.ref }}
+          overwrite: true
+
+  build-rpm:
+    name: Build RPM package
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install build dependencies
+        run: dnf install -y rust cargo openssl-devel rpm-build rpmdevtools git
+
+      - name: Setup rpmbuild tree
+        run: rpmdev-setuptree
+
+      - name: Patch version in spec
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" susshi.spec
+
+      - name: Fetch source archive
+        run: spectool -g -R susshi.spec
+
+      - name: Build RPM
+        run: rpmbuild -ba susshi.spec
+
+      - name: Upload RPMs to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ~/rpmbuild/RPMS/**/*.rpm
+          file_glob: true
+          tag: ${{ github.event.inputs.tag || github.ref }}
+          overwrite: true

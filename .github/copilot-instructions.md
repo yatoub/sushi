@@ -68,8 +68,10 @@ merge de la PR release-plz
   └── release-plz.yml : crée le tag vX.Y.Z + GitHub Release
 
 push tag v*.*.*
-  └── release.yml     : build Linux x86_64 / macOS Intel / macOS ARM / Windows x86_64
-                        → binaires attachés à la GitHub Release
+  └── release.yml     : build binaires (Linux/macOS/Windows)
+                        + paquets DEB (x86_64/arm64)
+                        + paquets RPM (x86_64)
+                        → tous attachés à la GitHub Release
 ```
 
 ### Workflows
@@ -78,5 +80,5 @@ push tag v*.*.*
 |---|---|---|
 | `ci.yml` | push `master` + PR | fmt, clippy, tests |
 | `release-plz.yml` | push `master` | PR de release + tag + GitHub Release |
-| `release.yml` | push tag `v*.*.*` | build multiplateforme + upload binaires |
+| `release.yml` | push tag `v*.*.*` | build binaires + paquets DEB/RPM + upload |
 | `aur-publish.yml` | push tag `v*.*.*` | mise à jour du PKGBUILD AUR |

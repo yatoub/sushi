@@ -43,19 +43,33 @@ jobs:
             target: x86_64-unknown-linux-gnu
             binary_name: susshi
             asset_name: susshi-linux-amd64
+            build_tool: cargo
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu.2.17
+            binary_name: susshi
+            asset_name: susshi-linux-amd64-glibc217
+            build_tool: zigbuild
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            binary_name: susshi
+            asset_name: susshi-linux-amd64-musl
+            build_tool: cargo
           - os: macos-latest
             target: x86_64-apple-darwin
             binary_name: susshi
             asset_name: susshi-macos-amd64
+            build_tool: cargo
           - os: macos-14
             target: aarch64-apple-darwin
             binary_name: susshi
             asset_name: susshi-macos-arm64
+            build_tool: cargo
           # Windows support (optional, but good to have)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary_name: susshi.exe
             asset_name: susshi-windows-amd64.exe
+            build_tool: cargo
 
     steps:
       - name: Checkout repository
@@ -64,12 +78,49 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.target == 'x86_64-unknown-linux-gnu.2.17' && 'x86_64-unknown-linux-gnu' || matrix.target }}
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+
+      - name: Install tools for Linux compatibility builds
+        if: startsWith(matrix.target, 'x86_64-unknown-linux-')
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - name: Setup Zig
+        if: matrix.build_tool == 'zigbuild'
+        uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.14.0
+
+      - name: Install cargo-zigbuild
+        if: matrix.build_tool == 'zigbuild'
+        shell: bash
+        run: cargo install cargo-zigbuild
+
+      - name: Install OpenSSL (Windows)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
+            $vcpkgRoot = "C:\\vcpkg"
+          }
+          $vcpkg = "$vcpkgRoot\\vcpkg.exe"
+          if (-not (Test-Path $vcpkg)) {
+            Write-Error "vcpkg not found at $vcpkg"
+          }
+          & $vcpkg install openssl:x64-windows-static-md
+          "OPENSSL_NO_VENDOR=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKGRS_DYNAMIC=0" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKGRS_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Install OpenSSL (macOS x86_64)
         if: matrix.target == 'x86_64-apple-darwin'
@@ -88,12 +139,35 @@ jobs:
       - name: Build release
         shell: bash
         run: |
-          cargo build --release --target ${{ matrix.target }}
+          if [ "${{ matrix.build_tool }}" = "zigbuild" ]; then
+            cargo zigbuild --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Check GLIBC compatibility for legacy artifact
+        if: matrix.target == 'x86_64-unknown-linux-gnu.2.17'
+        shell: bash
+        run: |
+          max_glibc=$(readelf --version-info target/x86_64-unknown-linux-gnu/release/${{ matrix.binary_name }} \
+            | grep -o 'GLIBC_[0-9.]*' \
+            | sort -V \
+            | tail -1)
+          echo "Max GLIBC required: ${max_glibc}"
+          if [ "${max_glibc}" != "GLIBC_2.17" ]; then
+            echo "Unexpected GLIBC requirement for legacy build"
+            exit 1
+          fi
+
       - name: Prepare asset (Unix)
         if: matrix.os != 'windows-latest'
         shell: bash
         run: |
-          cp target/${{ matrix.target }}/release/${{ matrix.binary_name }} ${{ matrix.asset_name }}
+          TARGET_DIR="${{ matrix.target }}"
+          if [ "${{ matrix.build_tool }}" = "zigbuild" ]; then
+            TARGET_DIR="x86_64-unknown-linux-gnu"
+          fi
+          cp target/${TARGET_DIR}/release/${{ matrix.binary_name }} ${{ matrix.asset_name }}
           chmod +x ${{ matrix.asset_name }}
 
       - name: Prepare asset (Windows)
@@ -163,7 +237,7 @@ jobs:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Install build dependencies
-        run: dnf install -y rust cargo openssl-devel rpm-build rpmdevtools git
+        run: dnf install -y rust cargo openssl-devel pkgconf-pkg-config rpm-build rpmdevtools git
 
       - name: Setup rpmbuild tree
         run: rpmdev-setuptree
@@ -179,6 +253,8 @@ jobs:
 
       - name: Build RPM
         run: rpmbuild -ba susshi.spec
+        env:
+          OPENSSL_NO_VENDOR: "1"
 
       - name: Upload RPMs to release
         uses: svenstaro/upload-release-action@v2

@@ -40,6 +40,20 @@ chmod +x susshi-linux-amd64
 sudo mv susshi-linux-amd64 /usr/local/bin/susshi
 ```
 
+If you run an older distro with an older glibc (for example Linux Mint 21.x / Ubuntu 22.04), use one of these alternatives:
+
+```bash
+# Linux x86_64 (legacy glibc-compatible)
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64-glibc217
+chmod +x susshi-linux-amd64-glibc217
+sudo mv susshi-linux-amd64-glibc217 /usr/local/bin/susshi
+
+# Linux x86_64 (musl fallback)
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64-musl
+chmod +x susshi-linux-amd64-musl
+sudo mv susshi-linux-amd64-musl /usr/local/bin/susshi
+```
+
 Create `~/.susshi.yml`:
 
 ```yaml
@@ -104,6 +118,16 @@ For a complete config example, see [examples/full_config.yaml](examples/full_con
 wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64
 chmod +x susshi-linux-amd64
 sudo mv susshi-linux-amd64 /usr/local/bin/susshi
+
+# Linux x86_64 (legacy glibc-compatible)
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64-glibc217
+chmod +x susshi-linux-amd64-glibc217
+sudo mv susshi-linux-amd64-glibc217 /usr/local/bin/susshi
+
+# Linux x86_64 (musl fallback)
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64-musl
+chmod +x susshi-linux-amd64-musl
+sudo mv susshi-linux-amd64-musl /usr/local/bin/susshi
 
 # macOS Intel
 wget https://github.com/yatoub/susshi/releases/latest/download/susshi-macos-amd64

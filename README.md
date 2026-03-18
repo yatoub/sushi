@@ -3,6 +3,8 @@
 **susshi** is a modern, terminal-based SSH connection manager written in Rust.
 It helps you organize servers, handle complex access flows (jump hosts, Wallix bastions), and connect fast through a clean Catppuccin-powered TUI.
 
+![susshi TUI screenshot](docs/susshi.png)
+
 ## Table of Contents
 
 - [🍣 susshi](#-susshi)

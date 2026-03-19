@@ -1773,7 +1773,7 @@ dependencies = [
 
 [[package]]
 name = "susshi"
-version = "0.13.2"
+version = "0.13.4"
 dependencies = [
  "anyhow",
  "arboard",

@@ -1620,18 +1620,14 @@ impl App {
 
     /// Recharge la configuration depuis le disque sans quitter.
     pub fn reload(&mut self) -> Result<(), ConfigError> {
-        // Rechargement sélectif : si le contenu du fichier n'a pas changé, on n'a rien à faire.
-        let new_hash = hash_config_file(&self.config_path);
-        if new_hash == self.config_hash {
-            self.set_status_message(self.lang.config_reloaded);
-            return Ok(());
-        }
-        self.config_hash = new_hash;
-
         let mut stack = std::collections::HashSet::new();
         let (new_config, new_warnings, new_val_warnings) =
             Config::load_merged(&self.config_path, &mut stack)?;
         let resolved = new_config.resolve()?;
+
+        // Le hash du fichier principal est conservé pour le debug et la télémétrie.
+        // Les includes sont pris en compte via le reload complet ci-dessus.
+        self.config_hash = hash_config_file(&self.config_path);
 
         // Conserve l'expansion / la sélection actuelles
         let old_expanded = self.expanded_items.clone();
@@ -2514,6 +2510,47 @@ mod tests {
             _ => false,
         });
         assert!(!has_root, "root_srv should be filtered out");
+    }
+
+    #[test]
+    fn test_reload_detects_new_host_in_included_file() {
+        use std::fs;
+
+        let temp = tempfile::tempdir().unwrap();
+        let main_path = temp.path().join("main.yaml");
+        let include_path = temp.path().join("included.yaml");
+
+        fs::write(
+            &include_path,
+            "groups:\n  - name: \"IncGroup\"\n    servers:\n      - name: \"inc-1\"\n        host: \"10.10.10.1\"\n",
+        )
+        .unwrap();
+
+        fs::write(
+            &main_path,
+            "groups: []\nincludes:\n  - label: \"Included\"\n    path: \"included.yaml\"\n",
+        )
+        .unwrap();
+
+        let (config, warnings, validation_warnings) =
+            Config::load_merged(&main_path, &mut std::collections::HashSet::new()).unwrap();
+        assert!(warnings.is_empty());
+        assert!(validation_warnings.is_empty());
+
+        let mut app =
+            App::new(config, vec![], main_path.clone(), vec![]).expect("app init should work");
+        assert_eq!(app.resolved_servers.len(), 1);
+
+        fs::write(
+            &include_path,
+            "groups:\n  - name: \"IncGroup\"\n    servers:\n      - name: \"inc-1\"\n        host: \"10.10.10.1\"\n      - name: \"inc-2\"\n        host: \"10.10.10.2\"\n",
+        )
+        .unwrap();
+
+        app.reload().expect("reload should succeed");
+
+        assert_eq!(app.resolved_servers.len(), 2);
+        assert!(app.resolved_servers.iter().any(|s| s.name == "inc-2"));
     }
 
     // ── TunnelForm validation ─────────────────────────────────────────────────

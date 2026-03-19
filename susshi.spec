@@ -8,6 +8,7 @@ Source0:        https://github.com/yatoub/susshi/archive/refs/tags/v%{version}.t
 
 BuildRequires:  cargo
 BuildRequires:  openssl-devel
+BuildRequires:  zlib-devel
 Requires:       openssh-clients
 
 %description
@@ -17,14 +18,17 @@ supporting direct, jump, and Wallix bastion connections.
 %prep
 %autosetup -n %{name}-%{version}
 export RUSTUP_TOOLCHAIN=stable
+export LIBZ_SYS_USE_PKG_CONFIG=1
 cargo fetch --locked
 
 %build
 export RUSTUP_TOOLCHAIN=stable
+export LIBZ_SYS_USE_PKG_CONFIG=1
 cargo build --frozen --release
 
 %check
 export RUSTUP_TOOLCHAIN=stable
+export LIBZ_SYS_USE_PKG_CONFIG=1
 cargo test --frozen
 
 %install

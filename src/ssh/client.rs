@@ -1,5 +1,7 @@
 use crate::config::{ConnectionMode, ResolvedServer};
-use crate::wallix::{WallixMenuEntry, parse_wallix_menu, select_id_for_server};
+use crate::wallix::WallixMenuEntry;
+#[cfg(unix)]
+use crate::wallix::{parse_wallix_menu, select_id_for_server};
 use anyhow::Result;
 #[cfg(unix)]
 use nix::pty::{ForkptyResult, Winsize, forkpty};
@@ -222,10 +224,12 @@ pub fn connect_blocking_wallix_with_selection(
 
 // ─── helpers privés ──────────────────────────────────────────────────────────
 
+#[cfg(unix)]
 fn should_use_wallix_menu_automation(server: &ResolvedServer, mode: ConnectionMode) -> bool {
     mode == ConnectionMode::Wallix && server.wallix_auto_select
 }
 
+#[cfg(unix)]
 fn build_wallix_bastion_args(server: &ResolvedServer, verbose: bool) -> Result<Vec<String>> {
     let mut args: Vec<String> = Vec::new();
 

@@ -1740,8 +1740,7 @@ impl App {
     // ─── Sélecteur Wallix ───────────────────────────────────────────────────
 
     pub fn should_open_wallix_selector(&self, server: &ResolvedServer) -> bool {
-        self.connection_mode == ConnectionMode::Wallix
-            && (!server.wallix_auto_select || !server.wallix_fail_if_menu_match_error)
+        self.connection_mode == ConnectionMode::Wallix && !server.wallix_auto_select
     }
 
     pub fn open_wallix_selector(&mut self, server: ResolvedServer, verbose: bool) {
@@ -2643,7 +2642,7 @@ mod tests {
     }
 
     #[test]
-    fn wallix_selector_required_when_manual_fallback_enabled() {
+    fn wallix_selector_not_required_when_manual_fallback_enabled() {
         let mut app = App::new(
             make_namespace_config(),
             vec![],
@@ -2657,6 +2656,6 @@ mod tests {
         server.wallix_auto_select = true;
         server.wallix_fail_if_menu_match_error = false;
 
-        assert!(app.should_open_wallix_selector(&server));
+        assert!(!app.should_open_wallix_selector(&server));
     }
 }

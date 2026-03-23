@@ -261,7 +261,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ~/rpmbuild/RPMS/**/*.rpm
+          file: /github/home/rpmbuild/RPMS/**/*.rpm
           file_glob: true
           tag: ${{ github.event.inputs.tag || github.ref }}
           overwrite: true

@@ -237,7 +237,7 @@ jobs:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
       - name: Install build dependencies
-        run: dnf install -y rust cargo openssl-devel pkgconf-pkg-config rpm-build rpmdevtools git
+        run: dnf install -y rust cargo openssl-devel zlib-devel pkgconf-pkg-config rpm-build rpmdevtools git
 
       - name: Setup rpmbuild tree
         run: rpmdev-setuptree
@@ -255,6 +255,7 @@ jobs:
         run: rpmbuild -ba susshi.spec
         env:
           OPENSSL_NO_VENDOR: "1"
+          LIBZ_SYS_USE_PKG_CONFIG: "1"
 
       - name: Upload RPMs to release
         uses: svenstaro/upload-release-action@v2

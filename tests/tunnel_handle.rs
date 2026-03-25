@@ -16,7 +16,7 @@ fn base_server() -> ResolvedServer {
         group_name: "integration".into(),
         env_name: "test".into(),
         name: "srv".into(),
-        host: "192.168.1.10".into(),
+        host: "198.51.100.10".into(),
         user: "ops".into(),
         port: 22,
         ssh_key: String::new(),
@@ -137,7 +137,7 @@ fn build_tunnel_args_structure() {
     // La destination reste toujours en dernière position (invariant critique)
     assert_eq!(
         args.last().unwrap(),
-        "ops@192.168.1.10",
+        "ops@198.51.100.10",
         "destination doit être en dernière position"
     );
 }
@@ -154,7 +154,7 @@ fn build_tunnel_args_jump_keeps_j_and_destination_last() {
     assert!(args.contains(&"-N".to_string()), "-N attendu");
     assert_eq!(
         args.last().unwrap(),
-        "ops@192.168.1.10",
+        "ops@198.51.100.10",
         "destination doit être en dernière position"
     );
 }
@@ -182,7 +182,7 @@ fn build_tunnel_args_options_before_destination() {
 
     let dest_pos = args
         .iter()
-        .rposition(|a| a == "ops@192.168.1.10")
+        .rposition(|a| a == "ops@198.51.100.10")
         .expect("destination absente");
     let opt_pos = args
         .iter()

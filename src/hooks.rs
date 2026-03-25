@@ -74,7 +74,7 @@ mod tests {
             group_name: String::new(),
             env_name: String::new(),
             name: "srv".into(),
-            host: "10.0.0.1".into(),
+            host: "198.51.100.1".into(),
             user: "admin".into(),
             port: 22,
             ssh_key: String::new(),

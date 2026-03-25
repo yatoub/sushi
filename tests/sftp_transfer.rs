@@ -2,7 +2,7 @@
 /// Lancer avec : cargo test --test sftp_transfer -- --nocapture --ignored
 ///
 /// Le serveur cible doit être joignable et l'agent SSH ou ~/.ssh/id_ed25519 doivent
-/// permettre une connexion root@192.0.2.13.
+/// permettre une connexion ops-user@192.0.2.13.
 use std::time::Duration;
 use susshi::config::{ConnectionMode, ResolvedServer};
 use susshi::ssh::sftp::{ScpDirection, ScpEvent, spawn_sftp};
@@ -42,7 +42,7 @@ fn test_server() -> ResolvedServer {
     }
 }
 
-/// Upload /tmp/random-data.bin → root@192.0.2.13:/root/random-data.bin
+/// Upload /tmp/random-data.bin → ops-user@192.0.2.13:/root/random-data.bin
 /// Vérifie que tous les événements ScpEvent::Progress arrivent dans l'ordre
 /// et que ScpEvent::Done(true) est bien reçu.
 #[test]
@@ -97,7 +97,7 @@ fn upload_random_data_to_192_0_2_13() {
     println!("Upload OK — progression finale : {last_pct}%");
 }
 
-/// Download root@192.0.2.13:~/random-data.bin → /tmp/random-data-downloaded.bin
+/// Download ops-user@192.0.2.13:~/random-data.bin → /tmp/random-data-downloaded.bin
 /// Vérifie que le fichier local est créé et a la même taille que l'original.
 #[test]
 #[ignore]

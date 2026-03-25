@@ -19,8 +19,8 @@ mod tests {
             .iter()
             .find(|s| s.name == "nextcloud")
             .expect("nextcloud found");
-        assert_eq!(nextcloud.host, "192.168.1.13");
-        assert_eq!(nextcloud.user, "root"); // server override
+        assert_eq!(nextcloud.host, "198.51.100.13");
+        assert_eq!(nextcloud.user, "service-admin"); // server override
         assert_eq!(nextcloud.default_mode, ConnectionMode::Direct);
 
         // Find db-01
@@ -28,8 +28,8 @@ mod tests {
             .iter()
             .find(|s| s.name == "db-01")
             .expect("db-01 found");
-        assert_eq!(db01.host, "192.168.1.11");
-        assert_eq!(db01.user, "dev"); // "Projet Alpha" defines user="dev", no override on Env or Server.
+        assert_eq!(db01.host, "198.51.100.11");
+        assert_eq!(db01.user, "app-user"); // "Projet Alpha" defines user="app-user", no override on Env or Server.
         assert_eq!(db01.group_name, "Projet Alpha");
 
         // Find internal-nas
@@ -37,11 +37,11 @@ mod tests {
             .iter()
             .find(|s| s.name == "internal-nas")
             .expect("internal-nas found");
-        assert_eq!(nas.user, "root"); // server override
+        assert_eq!(nas.user, "nas-admin"); // server override
         assert_eq!(nas.default_mode, ConnectionMode::Wallix);
         // Wallix (bastion) config should be inherited from defaults
         assert_eq!(nas.bastion_host.as_deref().unwrap(), "bastion.example.com");
-        assert_eq!(nas.bastion_user.as_deref().unwrap(), "bastion");
+        assert_eq!(nas.bastion_user.as_deref().unwrap(), "bastion-user");
     }
 
     // ── Tunnels ───────────────────────────────────────────────────────────────

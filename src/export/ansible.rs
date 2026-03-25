@@ -8,7 +8,7 @@
 //!     <groupe>:
 //!       hosts:
 //!         <serveur>:
-//!           ansible_host: 10.0.0.1
+//!           ansible_host: 198.51.100.1
 //!           ansible_user: admin
 //!           ansible_port: 22
 //!           ansible_ssh_private_key_file: ~/.ssh/prod_ed25519
@@ -244,18 +244,18 @@ mod tests {
 
     #[test]
     fn single_server_group_no_env() {
-        let srv = make_server("web-01", "10.0.0.1", "prod", "", "", vec![]);
+        let srv = make_server("web-01", "198.51.100.1", "prod", "", "", vec![]);
         let yaml = to_ansible_yaml(&[&srv]);
         assert!(yaml.contains("prod:"), "group missing");
         assert!(yaml.contains("web-01:"), "server key missing");
-        assert!(yaml.contains("ansible_host: 10.0.0.1"));
+        assert!(yaml.contains("ansible_host: 198.51.100.1"));
         assert!(yaml.contains("ansible_user: admin"));
         assert!(yaml.contains("ansible_port: 22"));
     }
 
     #[test]
     fn server_with_env_creates_children_subgroup() {
-        let srv = make_server("api-01", "10.0.0.2", "workers", "prod", "", vec![]);
+        let srv = make_server("api-01", "198.51.100.2", "workers", "prod", "", vec![]);
         let yaml = to_ansible_yaml(&[&srv]);
         assert!(yaml.contains("workers:"));
         assert!(yaml.contains("children:"));
@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn namespace_creates_top_level_group() {
-        let srv = make_server("srv", "1.1.1.1", "grp", "", "CES", vec![]);
+        let srv = make_server("srv", "203.0.113.1", "grp", "", "CES", vec![]);
         let yaml = to_ansible_yaml(&[&srv]);
         assert!(yaml.contains("ces:"), "namespace group missing");
         assert!(yaml.contains("grp:"));
@@ -274,8 +274,8 @@ mod tests {
 
     #[test]
     fn filter_by_text() {
-        let s1 = make_server("web-prod", "10.0.0.1", "", "", "", vec![]);
-        let s2 = make_server("db-prod", "10.0.0.2", "", "", "", vec![]);
+        let s1 = make_server("web-prod", "198.51.100.1", "", "", "", vec![]);
+        let s2 = make_server("db-prod", "198.51.100.2", "", "", "", vec![]);
         let all = vec![s1, s2];
         let filtered = filter_servers(&all, "web");
         assert_eq!(filtered.len(), 1);
@@ -284,8 +284,8 @@ mod tests {
 
     #[test]
     fn filter_by_tag() {
-        let s1 = make_server("web", "1.1.1.1", "", "", "", vec!["prod", "web"]);
-        let s2 = make_server("db", "2.2.2.2", "", "", "", vec!["staging", "db"]);
+        let s1 = make_server("web", "203.0.113.1", "", "", "", vec!["prod", "web"]);
+        let s2 = make_server("db", "203.0.113.2", "", "", "", vec!["staging", "db"]);
         let all = vec![s1, s2];
         let filtered = filter_servers(&all, "#prod");
         assert_eq!(filtered.len(), 1);
@@ -294,8 +294,8 @@ mod tests {
 
     #[test]
     fn filter_empty_returns_all() {
-        let s1 = make_server("a", "1.1.1.1", "", "", "", vec![]);
-        let s2 = make_server("b", "2.2.2.2", "", "", "", vec![]);
+        let s1 = make_server("a", "203.0.113.1", "", "", "", vec![]);
+        let s2 = make_server("b", "203.0.113.2", "", "", "", vec![]);
         let all = vec![s1, s2];
         assert_eq!(filter_servers(&all, "").len(), 2);
     }
@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn ssh_key_included_when_non_empty() {
-        let mut srv = make_server("s", "1.1.1.1", "g", "", "", vec![]);
+        let mut srv = make_server("s", "203.0.113.1", "g", "", "", vec![]);
         srv.ssh_key = "~/.ssh/prod_ed25519".to_string();
         let yaml = to_ansible_yaml(&[&srv]);
         assert!(yaml.contains("ansible_ssh_private_key_file: ~/.ssh/prod_ed25519"));

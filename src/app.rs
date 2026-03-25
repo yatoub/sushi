@@ -2227,7 +2227,7 @@ mod tests {
                     tags: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
-                        host: "10.0.0.1".to_string(),
+                        host: "198.51.100.1".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -2243,7 +2243,7 @@ mod tests {
                 }]),
                 servers: Some(vec![Server {
                     name: "S2".to_string(),
-                    host: "10.0.0.2".to_string(),
+                    host: "198.51.100.2".to_string(),
                     user: None,
                     ssh_key: None,
                     ssh_port: None,
@@ -2318,7 +2318,7 @@ mod tests {
                 servers: Some(vec![
                     Server {
                         name: "prod-web".to_string(),
-                        host: "1.1.1.1".to_string(),
+                        host: "203.0.113.1".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -2333,7 +2333,7 @@ mod tests {
                     },
                     Server {
                         name: "staging-db".to_string(),
-                        host: "2.2.2.2".to_string(),
+                        host: "203.0.113.2".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -2536,7 +2536,7 @@ mod tests {
                     tags: None,
                     servers: Some(vec![Server {
                         name: "root_srv".to_string(),
-                        host: "1.1.1.1".to_string(),
+                        host: "203.0.113.1".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -2571,7 +2571,7 @@ mod tests {
                         tags: None,
                         servers: Some(vec![Server {
                             name: "ces_srv".to_string(),
-                            host: "2.2.2.2".to_string(),
+                            host: "203.0.113.2".to_string(),
                             user: None,
                             ssh_key: None,
                             ssh_port: None,
@@ -2657,7 +2657,7 @@ mod tests {
 
         fs::write(
             &include_path,
-            "groups:\n  - name: \"IncGroup\"\n    servers:\n      - name: \"inc-1\"\n        host: \"10.10.10.1\"\n",
+            "groups:\n  - name: \"IncGroup\"\n    servers:\n      - name: \"inc-1\"\n        host: \"198.51.100.101\"\n",
         )
         .unwrap();
 
@@ -2678,7 +2678,7 @@ mod tests {
 
         fs::write(
             &include_path,
-            "groups:\n  - name: \"IncGroup\"\n    servers:\n      - name: \"inc-1\"\n        host: \"10.10.10.1\"\n      - name: \"inc-2\"\n        host: \"10.10.10.2\"\n",
+            "groups:\n  - name: \"IncGroup\"\n    servers:\n      - name: \"inc-1\"\n        host: \"198.51.100.101\"\n      - name: \"inc-2\"\n        host: \"198.51.100.102\"\n",
         )
         .unwrap();
 

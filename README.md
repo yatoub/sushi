@@ -60,14 +60,14 @@ Create `~/.susshi.yml`:
 
 ```yaml
 defaults:
-  user: "admin"
+  user: "ops-user"
   theme: mocha
 
 groups:
   - name: "Production"
     servers:
       - name: "api-01"
-        host: "10.0.1.10"
+        host: "198.51.100.10"
         mode: "direct"
 ```
 
@@ -78,7 +78,7 @@ Use either mode:
 susshi
 
 # Direct one-shot connection
-susshi --direct admin@10.0.1.10
+susshi --direct ops-user@198.51.100.10
 ```
 
 For a complete config example, see [examples/full_config.yaml](examples/full_config.yaml).
@@ -190,7 +190,7 @@ susshi reads `~/.susshi.yml` by default.
 
 ```yaml
 defaults:
-  user: "admin"
+  user: "ops-user"
   ssh_key: "~/.ssh/id_ed25519"
   theme: mocha  # latte | frappe | macchiato | mocha
 
@@ -198,7 +198,7 @@ groups:
   - name: "Infrastructure"
     servers:
       - name: "proxmox-host"
-        host: "192.168.1.100"
+        host: "198.51.100.100"
         mode: "direct"
 ```
 
@@ -221,12 +221,12 @@ Short troubleshooting is available in [docs/wallix.md](docs/wallix.md#troublesho
 
 ```bash
 # Direct / jump / wallix one-shot connection
-susshi --direct root@myserver
-susshi --jump root@192.168.1.50
-susshi --wallix web-01.prod.example.com
+susshi --direct ops-user@app-01.internal.example
+susshi --jump ops-user@198.51.100.50
+susshi --wallix web-01.internal.example
 
 # Override SSH parameters
-susshi --direct myserver.com --user deploy --port 2222 --key ~/.ssh/deploy_rsa
+susshi --direct app-01.internal.example --user deploy --port 2222 --key ~/.ssh/deploy_rsa
 
 # Alternate config file
 susshi --config ~/work/.susshi.yml

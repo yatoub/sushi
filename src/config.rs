@@ -1508,7 +1508,7 @@ mod tests {
                     jump: None,
                     servers: vec![Server {
                         name: "db07".to_string(),
-                        host: "pr-ond-bdd07.onde.example.test".to_string(),
+                        host: "db07.internal.example".to_string(),
                         ..Default::default()
                     }],
                     probe_filesystems: None,
@@ -1568,7 +1568,7 @@ mod tests {
                 }),
                 ConfigEntry::Server(Server {
                     name: "Alpha".to_string(),
-                    host: "10.0.0.1".to_string(),
+                    host: "198.51.100.1".to_string(),
                     user: None,
                     ssh_key: None,
                     ssh_port: None,
@@ -1654,7 +1654,7 @@ mod tests {
                     tags: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
-                        host: "1.1.1.1".to_string(),
+                        host: "203.0.113.1".to_string(),
                         user: None, // Inherits "group_user"
                         ssh_key: None,
                         ssh_port: Some(8080), // Override 2222
@@ -1707,7 +1707,7 @@ mod tests {
                 servers: Some(vec![
                     Server {
                         name: "inherits".to_string(),
-                        host: "1.2.3.4".to_string(),
+                        host: "203.0.113.4".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -1722,7 +1722,7 @@ mod tests {
                     },
                     Server {
                         name: "extends".to_string(),
-                        host: "1.2.3.5".to_string(),
+                        host: "203.0.113.5".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -1784,7 +1784,7 @@ mod tests {
                 tags: None,
                 servers: Some(vec![Server {
                     name: "kafka01".to_string(),
-                    host: "10.0.0.1".to_string(),
+                    host: "198.51.100.1".to_string(),
                     user: None,
                     ssh_key: None,
                     ssh_port: None,
@@ -1834,7 +1834,7 @@ groups:
   - name: NS_Group
     servers:
       - name: ns_srv
-        host: "192.168.1.1"
+        host: "198.51.100.1"
 "#;
         let sub_file = write_temp_yaml(sub_yaml);
 
@@ -1849,7 +1849,7 @@ groups:
   - name: Main_Group
     servers:
       - name: main_srv
-        host: "10.0.0.1"
+        host: "198.51.100.1"
 "#,
             sub_file.path().to_string_lossy()
         );
@@ -1892,7 +1892,7 @@ groups:
   - name: Sub
     servers:
       - name: sub_srv
-        host: "1.2.3.4"
+        host: "203.0.113.4"
 "#;
         let sub_file = write_temp_yaml(sub_yaml);
 
@@ -1908,7 +1908,7 @@ groups:
   - name: Main
     servers:
       - name: main_srv
-        host: "5.6.7.8"
+        host: "203.0.113.8"
 "#,
             sub_file.path().to_string_lossy()
         );
@@ -1943,7 +1943,7 @@ groups:
   - name: Main
     servers:
       - name: ok_srv
-        host: "1.2.3.4"
+        host: "203.0.113.4"
 "#;
         let main_file = write_temp_yaml(main_yaml);
 
@@ -1971,7 +1971,7 @@ groups:
   - name: Leaf
     servers:
       - name: leaf_srv
-        host: "9.9.9.9"
+        host: "203.0.113.9"
 "#;
         let leaf_file = write_temp_yaml(leaf_yaml);
 
@@ -1984,7 +1984,7 @@ groups:
   - name: Sub
     servers:
       - name: sub_srv
-        host: "8.8.8.8"
+        host: "203.0.113.18"
 "#,
             leaf_file.path().to_string_lossy()
         );
@@ -2052,7 +2052,7 @@ groups:
   - name: Sub
     servers:
       - name: sub_srv
-        host: "1.2.3.4"
+        host: "203.0.113.4"
 "#;
         let sub_file = write_temp_yaml(sub_yaml);
 
@@ -2135,7 +2135,7 @@ includes:
     path: "{}"
 groups:
   - name: GroupA
-    servers: [{{ name: srv_a, host: "10.0.0.1" }}]
+    servers: [{{ name: srv_a, host: "198.51.100.1" }}]
 "#,
             file_b.path().display()
         );
@@ -2146,7 +2146,7 @@ includes:
     path: "{}"
 groups:
   - name: GroupB
-    servers: [{{ name: srv_b, host: "10.0.0.2" }}]
+    servers: [{{ name: srv_b, host: "198.51.100.2" }}]
 "#,
             file_a.path().display()
         );
@@ -2197,7 +2197,7 @@ groups:
   - name: G
     servers:
       - name: srv
-        host: "1.2.3.4"
+        host: "203.0.113.4"
         missspelled_user: "admin"
 "#;
         let warnings = validate_yaml(yaml, "test.yml");
@@ -2215,7 +2215,7 @@ groups:
   - name: NS_G
     servers:
       - name: ns_srv
-        host: "10.10.10.1"
+        host: "198.51.100.101"
         user: "ns_user"
 "#;
         let sub_file = write_temp_yaml(sub_yaml);

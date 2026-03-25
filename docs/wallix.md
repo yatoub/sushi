@@ -8,7 +8,7 @@ This page describes how susshi behaves in `wallix` mode.
 defaults:
   wallix:
     host: "bastion.example.com"
-    user: "bastion"
+    user: "bastion-user"
     group: "devops-admins"
     account: "default"
     protocol: "SSH"
@@ -21,7 +21,7 @@ Enable Wallix on a server:
 
 ```yaml
 - name: "internal-nas"
-  host: "192.168.1.200"
+  host: "198.51.100.200"
   mode: "wallix"
 ```
 
@@ -38,18 +38,18 @@ Example:
 ```yaml
 defaults:
   wallix:
-    host: "ssh.in.phm.education.gouv.fr"
-    user: "pcollin"
-    group: "ces3s-admins"
+    host: "bastion.example.com"
+    user: "wallix-user"
+    group: "devops-admins"
 
 groups:
   - name: "Databases"
     servers:
-      - name: "pr-ond-bdd07"
-        host: "pr-ond-bdd07.onde.in.phm.education.gouv.fr"
+      - name: "db-ops-01"
+        host: "db-ops-01.internal.example"
         mode: "wallix"
         wallix:
-          group: "crtech-admins"
+          group: "qa-admins"
 ```
 
 ## Automatic SSH User Identity

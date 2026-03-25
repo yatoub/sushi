@@ -625,7 +625,7 @@ mod tests {
             group_name: "G".into(),
             env_name: "E".into(),
             name: "srv".into(),
-            host: "10.0.0.1".into(),
+            host: "198.51.100.1".into(),
             user: "admin".into(),
             port: 22,
             ssh_key: String::new(),
@@ -662,7 +662,7 @@ mod tests {
         let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
         assert!(args.contains(&"-F".to_string()));
         assert!(args.contains(&"/dev/null".to_string()));
-        assert!(args.contains(&"admin@10.0.0.1".to_string()));
+        assert!(args.contains(&"admin@198.51.100.1".to_string()));
         assert!(!args.contains(&"-v".to_string()));
     }
 
@@ -676,11 +676,11 @@ mod tests {
     #[test]
     fn direct_with_port_in_host() {
         let mut s = base_server();
-        s.host = "10.0.0.1:2222".into();
+        s.host = "198.51.100.1:2222".into();
         let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
         assert!(args.contains(&"-p".to_string()));
         assert!(args.contains(&"2222".to_string()));
-        assert!(args.contains(&"admin@10.0.0.1".to_string()));
+        assert!(args.contains(&"admin@198.51.100.1".to_string()));
     }
 
     #[test]
@@ -692,7 +692,7 @@ mod tests {
         let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
         assert!(args.contains(&"-p".to_string()));
         assert!(args.contains(&"2222".to_string()));
-        assert!(args.contains(&"admin@10.0.0.1".to_string()));
+        assert!(args.contains(&"admin@198.51.100.1".to_string()));
     }
 
     #[test]
@@ -734,7 +734,7 @@ mod tests {
         let args = build_ssh_args(&s, ConnectionMode::Jump, false).unwrap();
         let j_pos = args.iter().position(|a| a == "-J").expect("-J present");
         assert_eq!(args[j_pos + 1], "juser@jump.example.com");
-        assert!(args.contains(&"admin@10.0.0.1".to_string()));
+        assert!(args.contains(&"admin@198.51.100.1".to_string()));
     }
 
     #[test]
@@ -767,7 +767,7 @@ mod tests {
             args[j_pos + 1],
             "juser@jump1.example.com,juser@jump2.example.com"
         );
-        assert!(args.contains(&"admin@10.0.0.1".to_string()));
+        assert!(args.contains(&"admin@198.51.100.1".to_string()));
     }
 
     #[test]
@@ -787,7 +787,7 @@ mod tests {
         let args = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap();
         let l_pos = args.iter().position(|a| a == "-l").expect("-l present");
         // template: {target_user}@%n:SSH:{bastion_user}
-        assert_eq!(args[l_pos + 1], "admin@10.0.0.1:SSH:buser");
+        assert_eq!(args[l_pos + 1], "admin@198.51.100.1:SSH:buser");
         assert!(args.contains(&"bastion.example.com".to_string()));
     }
 
@@ -827,7 +827,7 @@ mod tests {
         s.bastion_template = "{bastion_user}+{target_user}@{target_host}".into();
         let args = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap();
         let l_pos = args.iter().position(|a| a == "-l").expect("-l present");
-        assert_eq!(args[l_pos + 1], "buser+admin@10.0.0.1");
+        assert_eq!(args[l_pos + 1], "buser+admin@198.51.100.1");
     }
 
     #[test]
@@ -884,19 +884,19 @@ mod tests {
         s.ssh_options = vec!["StrictHostKeyChecking=no".into(), "-T".into()];
         s.port = 2222;
         let args = build_ssh_args(&s, ConnectionMode::Direct, true).unwrap();
-        assert_eq!(args.last().unwrap(), "admin@10.0.0.1");
+        assert_eq!(args.last().unwrap(), "admin@198.51.100.1");
 
         // Jump avec clé + port dans l'hôte
         let mut s2 = base_server();
         s2.ssh_key = "~/.ssh/id_ed25519".into();
-        s2.host = "10.0.0.1:2222".into();
+        s2.host = "198.51.100.1:2222".into();
         s2.jump_host = Some("juser@jump.example.com:22".into());
         let args2 = build_ssh_args(&s2, ConnectionMode::Jump, false).unwrap();
-        assert_eq!(args2.last().unwrap(), "admin@10.0.0.1");
+        assert_eq!(args2.last().unwrap(), "admin@198.51.100.1");
 
         // Direct minimal — destination = dernier arg même sans options
         let s3 = base_server();
         let args3 = build_ssh_args(&s3, ConnectionMode::Direct, false).unwrap();
-        assert_eq!(args3.last().unwrap(), "admin@10.0.0.1");
+        assert_eq!(args3.last().unwrap(), "admin@198.51.100.1");
     }
 }

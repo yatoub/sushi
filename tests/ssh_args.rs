@@ -15,7 +15,7 @@ fn base_server() -> ResolvedServer {
         group_name: "integration".into(),
         env_name: "test".into(),
         name: "srv".into(),
-        host: "192.168.1.10".into(),
+        host: "198.51.100.10".into(),
         user: "ops".into(),
         port: 22,
         ssh_key: String::new(),
@@ -55,7 +55,7 @@ fn direct_minimal() {
     assert!(args.contains(&"-F".to_string()), "-F attendu");
     assert!(args.contains(&"/dev/null".to_string()), "/dev/null attendu");
     assert!(
-        args.contains(&"ops@192.168.1.10".to_string()),
+        args.contains(&"ops@198.51.100.10".to_string()),
         "destination attendue"
     );
     // Pas d'options superflues pour un serveur port-22 sans clé
@@ -98,7 +98,7 @@ fn direct_with_port() {
     // La destination ne doit pas contenir le port
     assert_eq!(
         args.last().unwrap(),
-        "ops@192.168.1.10",
+        "ops@198.51.100.10",
         "destination incorrecte"
     );
 }
@@ -107,13 +107,13 @@ fn direct_with_port() {
 #[test]
 fn direct_with_port_in_host_string() {
     let mut s = base_server();
-    s.host = "192.168.1.10:2222".into();
+    s.host = "198.51.100.10:2222".into();
     let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
 
     assert!(args.contains(&"-p".to_string()), "-p attendu");
     assert!(args.contains(&"2222".to_string()), "valeur 2222 attendue");
     // La destination doit utiliser le host sans le port
-    assert_eq!(args.last().unwrap(), "ops@192.168.1.10");
+    assert_eq!(args.last().unwrap(), "ops@198.51.100.10");
 }
 
 /// Les `ssh_options` scalaires sont préfixées par `-o`, les flags (commençant par `-`) passent tels quels.
@@ -159,7 +159,7 @@ fn jump_host() {
 
     let j_pos = args.iter().position(|a| a == "-J").expect("-J attendu");
     assert_eq!(args[j_pos + 1], "jops@jump.infra.example.com");
-    assert_eq!(args.last().unwrap(), "ops@192.168.1.10");
+    assert_eq!(args.last().unwrap(), "ops@198.51.100.10");
 }
 
 /// Mode Jump sans `jump_host` configuré retourne une erreur explicite.
@@ -189,7 +189,7 @@ fn wallix_template() {
     let l_pos = args.iter().position(|a| a == "-l").expect("-l attendu");
     assert_eq!(
         args[l_pos + 1],
-        "ops@192.168.1.10:SSH:PR-OND-BD_crtech-admins:bops",
+        "ops@198.51.100.10:SSH:PR-OND-BD_crtech-admins:bops",
         "template Wallix incorrect"
     );
     assert!(
@@ -211,7 +211,7 @@ fn wallix_template_without_group() {
 
     assert_eq!(
         args[l_pos + 1],
-        "ops@192.168.1.10:SSH:bops",
+        "ops@198.51.100.10:SSH:bops",
         "chaîne Wallix inattendue sans groupe"
     );
 }
@@ -249,19 +249,19 @@ fn destination_is_last() {
     let args = build_ssh_args(&s, ConnectionMode::Direct, true).unwrap();
     assert_eq!(
         args.last().unwrap(),
-        "ops@192.168.1.10",
+        "ops@198.51.100.10",
         "Direct : destination doit être en dernière position"
     );
 
     // Jump + clé + port dans l'hôte
     let mut s2 = base_server();
     s2.ssh_key = "~/.ssh/prod_ed25519".into();
-    s2.host = "192.168.1.10:22".into();
+    s2.host = "198.51.100.10:22".into();
     s2.jump_host = Some("jops@jump.example.com:2222".into());
     let args2 = build_ssh_args(&s2, ConnectionMode::Jump, false).unwrap();
     assert_eq!(
         args2.last().unwrap(),
-        "ops@192.168.1.10",
+        "ops@198.51.100.10",
         "Jump : destination doit être en dernière position"
     );
 }

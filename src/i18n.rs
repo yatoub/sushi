@@ -754,8 +754,8 @@ mod tests {
     #[test]
     fn fmt_single_arg() {
         assert_eq!(
-            fmt("Copié : {}", &["ssh root@host"]),
-            "Copié : ssh root@host"
+            fmt("Copié : {}", &["ssh ops-user@host"]),
+            "Copié : ssh ops-user@host"
         );
     }
 

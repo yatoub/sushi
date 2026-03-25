@@ -107,6 +107,7 @@ For a complete config example, see [examples/full_config.yaml](examples/full_con
 - Ad-hoc non-interactive SSH command runner (`x`).
 - SSH tunnel manager (`T`) with persistent user overrides.
 - SCP transfer form (`s`) with live progress.
+- Wallix authorization auto-resolution with targeted fallback popup.
 - Hooks (`pre_connect_hook`, `post_disconnect_hook`).
 - `~/.ssh/config` import and Ansible inventory export.
 - Variable interpolation with `_vars` and built-in `{{ index }}`.
@@ -207,6 +208,15 @@ groups:
 - Full configuration guide: [docs/configuration.md](docs/configuration.md)
 - Wallix behavior and auto-selection details: [docs/wallix.md](docs/wallix.md)
 
+### Wallix authorization flow (v0.15)
+
+- susshi builds the Wallix SSH `User` identity from your selected server host.
+- `wallix.group` is inherited from higher levels and can be overridden per server.
+- If authorization cannot be resolved unambiguously, a targeted TUI popup is shown and the chosen ID is cached for the current session.
+- The nominal flow no longer displays the global Wallix pseudo-TTY menu.
+
+Short troubleshooting is available in [docs/wallix.md](docs/wallix.md#troubleshooting).
+
 ## CLI Usage
 
 ```bash
@@ -262,7 +272,7 @@ Detailed TUI behavior and visuals: [docs/tui.md](docs/tui.md)
 ## Advanced Guides
 
 - Configuration model and inheritance: [docs/configuration.md](docs/configuration.md)
-- Wallix matching and fallback flow: [docs/wallix.md](docs/wallix.md)
+- Wallix matching and fallback flow (inheritance, targeted selection, troubleshooting): [docs/wallix.md](docs/wallix.md)
 - Full CLI cookbook (import/export included): [docs/cli.md](docs/cli.md)
 - TUI interactions, diagnostics, tunnels and SCP: [docs/tui.md](docs/tui.md)
 

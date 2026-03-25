@@ -193,6 +193,22 @@ groups:
             host: "192.168.1.20"
             mode: "jump" # Route through a jump host
   # --- LEVEL 2 example: Group → Server ---
+  - name: "Secured Perimeter"
+    wallix:
+      # Group applied by default to servers in this group.
+      group: "ops-admins"
+    servers:
+      - name: "anscore-admin"
+        host: "pp-aut-anscore21.ste.hp.in.phm.education.gouv.fr"
+        mode: "wallix"
+        wallix:
+          # Server-level override has priority over inherited group.
+          group: "crtech-admins"
+      - name: "standard-ops"
+        host: "pr-ond-bdd07.onde.in.phm.education.gouv.fr"
+        mode: "wallix"
+        # Inherits wallix.group = "ops-admins" from parent group.
+
   - name: "Infrastructure"
     servers:
       - name: "proxmox-host"

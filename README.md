@@ -60,14 +60,14 @@ Create `~/.susshi.yml`:
 
 ```yaml
 defaults:
-  user: "admin"
+  user: "ops-user"
   theme: mocha
 
 groups:
   - name: "Production"
     servers:
       - name: "api-01"
-        host: "10.0.1.10"
+        host: "198.51.100.10"
         mode: "direct"
 ```
 
@@ -78,7 +78,7 @@ Use either mode:
 susshi
 
 # Direct one-shot connection
-susshi --direct admin@10.0.1.10
+susshi --direct ops-user@198.51.100.10
 ```
 
 For a complete config example, see [examples/full_config.yaml](examples/full_config.yaml).
@@ -107,6 +107,7 @@ For a complete config example, see [examples/full_config.yaml](examples/full_con
 - Ad-hoc non-interactive SSH command runner (`x`).
 - SSH tunnel manager (`T`) with persistent user overrides.
 - SCP transfer form (`s`) with live progress.
+- Wallix authorization auto-resolution with targeted fallback popup.
 - Hooks (`pre_connect_hook`, `post_disconnect_hook`).
 - `~/.ssh/config` import and Ansible inventory export.
 - Variable interpolation with `_vars` and built-in `{{ index }}`.
@@ -189,7 +190,7 @@ susshi reads `~/.susshi.yml` by default.
 
 ```yaml
 defaults:
-  user: "admin"
+  user: "ops-user"
   ssh_key: "~/.ssh/id_ed25519"
   theme: mocha  # latte | frappe | macchiato | mocha
 
@@ -197,7 +198,7 @@ groups:
   - name: "Infrastructure"
     servers:
       - name: "proxmox-host"
-        host: "192.168.1.100"
+        host: "198.51.100.100"
         mode: "direct"
 ```
 
@@ -207,16 +208,25 @@ groups:
 - Full configuration guide: [docs/configuration.md](docs/configuration.md)
 - Wallix behavior and auto-selection details: [docs/wallix.md](docs/wallix.md)
 
+### Wallix authorization flow (v0.15)
+
+- susshi builds the Wallix SSH `User` identity from your selected server host.
+- `wallix.group` is inherited from higher levels and can be overridden per server.
+- If authorization cannot be resolved unambiguously, a targeted TUI popup is shown and the chosen ID is cached for the current session.
+- The nominal flow no longer displays the global Wallix pseudo-TTY menu.
+
+Short troubleshooting is available in [docs/wallix.md](docs/wallix.md#troubleshooting).
+
 ## CLI Usage
 
 ```bash
 # Direct / jump / wallix one-shot connection
-susshi --direct root@myserver
-susshi --jump root@192.168.1.50
-susshi --wallix web-01.prod.example.com
+susshi --direct ops-user@app-01.internal.example
+susshi --jump ops-user@198.51.100.50
+susshi --wallix web-01.internal.example
 
 # Override SSH parameters
-susshi --direct myserver.com --user deploy --port 2222 --key ~/.ssh/deploy_rsa
+susshi --direct app-01.internal.example --user deploy --port 2222 --key ~/.ssh/deploy_rsa
 
 # Alternate config file
 susshi --config ~/work/.susshi.yml
@@ -262,7 +272,7 @@ Detailed TUI behavior and visuals: [docs/tui.md](docs/tui.md)
 ## Advanced Guides
 
 - Configuration model and inheritance: [docs/configuration.md](docs/configuration.md)
-- Wallix matching and fallback flow: [docs/wallix.md](docs/wallix.md)
+- Wallix matching and fallback flow (inheritance, targeted selection, troubleshooting): [docs/wallix.md](docs/wallix.md)
 - Full CLI cookbook (import/export included): [docs/cli.md](docs/cli.md)
 - TUI interactions, diagnostics, tunnels and SCP: [docs/tui.md](docs/tui.md)
 

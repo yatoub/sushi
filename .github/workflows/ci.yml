@@ -33,3 +33,80 @@ jobs:
 
       - name: Run tests
         run: cargo test --verbose
+
+  target-matrix:
+    name: Target Matrix Smoke (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            openssl_mode: system
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            openssl_mode: vendored
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            openssl_mode: system
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            openssl_mode: system
+          - os: macos-14
+            target: aarch64-apple-darwin
+            openssl_mode: system
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install Linux build deps
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools pkg-config libssl-dev
+
+      - name: Install OpenSSL (Windows)
+        if: matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
+            $vcpkgRoot = "C:\\vcpkg"
+          }
+          $vcpkg = "$vcpkgRoot\\vcpkg.exe"
+          if (-not (Test-Path $vcpkg)) {
+            Write-Error "vcpkg not found at $vcpkg"
+          }
+          & $vcpkg install openssl:x64-windows-static-md
+          "OPENSSL_NO_VENDOR=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKGRS_DYNAMIC=0" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKGRS_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build (system OpenSSL)
+        if: matrix.openssl_mode == 'system'
+        env:
+          OPENSSL_NO_VENDOR: "1"
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (vendored fallback)
+        if: matrix.openssl_mode == 'vendored'
+        run: cargo build --release --features openssl-vendored --target ${{ matrix.target }}
+
+      - name: Run tests on native Linux target
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: cargo test --verbose

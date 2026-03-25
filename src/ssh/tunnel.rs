@@ -194,7 +194,7 @@ mod tests {
             group_name: "G".into(),
             env_name: "E".into(),
             name: "srv".into(),
-            host: "10.0.0.1".into(),
+            host: "198.51.100.1".into(),
             user: "admin".into(),
             port: 22,
             ssh_key: String::new(),
@@ -244,7 +244,7 @@ mod tests {
         assert_eq!(args[l_idx + 1], "5433:127.0.0.1:5432");
 
         // La destination reste la dernière.
-        assert_eq!(args.last().unwrap(), "admin@10.0.0.1");
+        assert_eq!(args.last().unwrap(), "admin@198.51.100.1");
         // ExitOnForwardFailure doit être présent.
         assert!(args.iter().any(|a| a.contains("ExitOnForwardFailure")));
     }
@@ -258,7 +258,7 @@ mod tests {
         assert!(args.contains(&"-J".to_string()), "doit contenir -J");
         assert!(args.contains(&"-N".to_string()), "-N absent");
         // La destination reste la dernière.
-        assert_eq!(args.last().unwrap(), "admin@10.0.0.1");
+        assert_eq!(args.last().unwrap(), "admin@198.51.100.1");
     }
 
     #[test]
@@ -278,7 +278,7 @@ mod tests {
         s.ssh_options = vec!["ServerAliveInterval=30".into()];
         let t = pg_tunnel();
         let args = build_tunnel_args(&s, ConnectionMode::Direct, &t).unwrap();
-        assert_eq!(args.last().unwrap(), "admin@10.0.0.1");
+        assert_eq!(args.last().unwrap(), "admin@198.51.100.1");
     }
 
     #[test]
@@ -305,7 +305,7 @@ mod tests {
         let i_pos = args.iter().position(|a| a == "-i").expect("-i absent");
         assert_eq!(args[i_pos + 1], "/home/user/.ssh/id_ed25519");
         // Destination toujours en dernière position
-        assert_eq!(args.last().unwrap(), "admin@10.0.0.1");
+        assert_eq!(args.last().unwrap(), "admin@198.51.100.1");
     }
 
     #[test]
@@ -314,7 +314,10 @@ mod tests {
         s.ssh_options = vec!["ServerAliveInterval=30".into()];
         let t = pg_tunnel();
         let args = build_tunnel_args(&s, ConnectionMode::Direct, &t).unwrap();
-        let dest_pos = args.iter().rposition(|a| a == "admin@10.0.0.1").unwrap();
+        let dest_pos = args
+            .iter()
+            .rposition(|a| a == "admin@198.51.100.1")
+            .unwrap();
         let opt_pos = args
             .iter()
             .position(|a| a == "ServerAliveInterval=30")

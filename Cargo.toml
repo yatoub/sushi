@@ -11,6 +11,11 @@ keywords = ["ssh", "tui", "terminal", "manager", "ratatui"]
 categories = ["command-line-utilities", "network-programming"]
 exclude = ["target/", ".idea/", ".github/"]
 
+[features]
+default = []
+# Controlled fallback for targets where system OpenSSL is unavailable or unstable.
+openssl-vendored = ["ssh2/vendored-openssl"]
+
 [dependencies]
 anyhow = "1.0.102"
 arboard = { version = "3", default-features = false }
@@ -23,11 +28,16 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 shellexpand = "3.1.2"
-ssh2 = "0.9"
 thiserror = "2.0.18"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["term", "process"] }
+
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+ssh2 = "0.9"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+ssh2 = "0.9"
 
 [dev-dependencies]
 tempfile = "3.27.0"

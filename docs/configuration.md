@@ -61,9 +61,9 @@ Global values applied unless overridden:
 ```yaml
 jump:
   - host: "jump1.example.com"
-    user: "jump"
+    user: "jump-user"
   - host: "jump2.example.com"
-    user: "jump"
+    user: "jump-user"
 ```
 
 ### Wallix block
@@ -71,7 +71,7 @@ jump:
 ```yaml
 wallix:
   host: "bastion.example.com"
-  user: "bastion"
+  user: "bastion-user"
   group: "devops-admins"
   account: "default"
   protocol: "SSH"

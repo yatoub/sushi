@@ -22,7 +22,7 @@
 # _vars:
 #   bastion: "bastion.prod.example.com"
 #   prod_key: "~/.ssh/prod_ed25519"
-#   subnet: "10.0.1"
+#   subnet: "198.51.100"
 #
 # groups:
 #   - name: "Workers"
@@ -36,12 +36,12 @@
 #           mode: jump
 #         servers:
 #           - name: "worker-{{ index }}"   # → worker-1, worker-2, worker-3 …
-#             host: "{{ subnet }}.{{ index }}"  # → 10.0.1.1, 10.0.1.2 …
+#             host: "{{ subnet }}.{{ index }}"  # → 198.51.100.1, 198.51.100.2 …
 #           - name: "worker-{{ index }}"
 #             host: "{{ subnet }}.{{ index }}"
 #           - name: "worker-{{ index }}"
 #             host: "{{ subnet }}.{{ index }}"
-#   # Result: worker-1 @ 10.0.1.1, worker-2 @ 10.0.1.2, worker-3 @ 10.0.1.3
+#   # Result: worker-1 @ 198.51.100.1, worker-2 @ 198.51.100.2, worker-3 @ 198.51.100.3
 #
 # Note: {{ index }} is resolved independently per list — if two environments
 # both contain servers using {{ index }}, each list starts at 1.
@@ -65,7 +65,7 @@
 # 1. Default settings (Global level)
 # These values are used unless overridden at a lower level.
 defaults:
-  user: "admin"
+  user: "ops-user"
   ssh_key: "~/.ssh/id_ed25519"
   ssh_port: 22
   ssh_options:
@@ -82,7 +82,7 @@ defaults:
   # default_filter: "#prod"
   wallix:
     host: "bastion.example.com"
-    user: "bastion"
+    user: "bastion-user"
     # Canonical Wallix group key (legacy wallix_group is still accepted).
     # A short value is allowed: menu entries like PREFIX_devops-admins will match.
     group: "devops-admins"
@@ -94,13 +94,13 @@ defaults:
   # Single jump host
   jump:
     - host: "jump.example.com"
-      user: "jump"
+      user: "jump-user"
   # Multi-hop example (two successive hops):
   # jump:
   #   - host: "jump1.example.com"
-  #     user: "jump"
+  #     user: "jump-user"
   #   - host: "jump2.example.com"
-  #     user: "jump"
+  #     user: "jump-user"
 
   # Extra mount points to inspect during the quick diagnostic (`d`).
   # Semantics: ADDITIVE — each level APPENDS its paths to the parent list
@@ -156,7 +156,7 @@ defaults:
 groups:
   # --- LEVEL 3 example: Group → Environment → Server ---
   - name: "Projet Alpha"
-    user: "dev" # Override the default user for the whole group
+    user: "app-user" # Override the default user for the whole group
     # Appends /app_data to the filesystems defined in defaults (/var/log, /data).
     # A server in this group with mode: direct will monitor /var/log, /data AND /app_data.
     probe_filesystems:
@@ -165,14 +165,14 @@ groups:
       - name: "Production"
         servers:
           - name: "nextcloud"
-            user: "root"
-            host: "192.168.1.13"
+            user: "service-admin"
+            host: "198.51.100.13"
             mode: "direct" # Standard SSH connection
             # Tags are optional string labels used for filtering in the TUI (/)
             # and in --export-filter. Support text + #tag syntax.
             tags: [prod, eu-west, web]
           - name: "db-01"
-            host: "192.168.1.11"
+            host: "198.51.100.11"
             # Appends /pg_data at server level: monitors /var/log, /data, /app_data AND /pg_data.
             probe_filesystems:
               - "/pg_data"
@@ -190,21 +190,37 @@ groups:
       - name: "Staging"
         servers:
           - name: "web-stg"
-            host: "192.168.1.20"
+            host: "198.51.100.20"
             mode: "jump" # Route through a jump host
   # --- LEVEL 2 example: Group → Server ---
+  - name: "Secured Perimeter"
+    wallix:
+      # Group applied by default to servers in this group.
+      group: "ops-admins"
+    servers:
+      - name: "anscore-admin"
+        host: "anscore-admin.internal.example"
+        mode: "wallix"
+        wallix:
+          # Server-level override has priority over inherited group.
+          group: "qa-admin"
+      - name: "standard-ops"
+        host: "standard-ops.internal.example"
+        mode: "wallix"
+        # Inherits wallix.group = "ops-admins" from parent group.
+
   - name: "Infrastructure"
     servers:
       - name: "proxmox-host"
-        host: "192.168.1.100"
+        host: "198.51.100.100"
         mode: "direct"
       - name: "internal-nas"
-        host: "192.168.1.200"
-        user: "root"
+        host: "198.51.100.200"
+        user: "nas-admin"
         mode: "wallix" # Route through a dedicated Wallix bastion
   # --- LEVEL 1 example: Single server at root ---
   - name: "Raspberry-Pi-Home"
-    host: "raspberrypi.local"
-    user: "pi"
+    host: "home-lab.localdomain"
+    user: "home-user"
     mode: "direct"
       

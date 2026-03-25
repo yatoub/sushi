@@ -320,20 +320,20 @@ mod tests {
 
     #[test]
     fn test_parse_basic_host() {
-        let f = write_temp("Host myserver\n  HostName 10.0.0.1\n  User admin\n  Port 2222\n");
+        let f = write_temp("Host myserver\n  HostName 198.51.100.1\n  User admin\n  Port 2222\n");
         let result = import_ssh_config(f.path());
         assert!(result.warnings.is_empty());
         assert_eq!(result.entries.len(), 1);
         let e = &result.entries[0];
         assert_eq!(e.host_pattern, "myserver");
-        assert_eq!(e.effective_host(), "10.0.0.1");
+        assert_eq!(e.effective_host(), "198.51.100.1");
         assert_eq!(e.user, Some("admin".to_string()));
         assert_eq!(e.port, Some(2222));
     }
 
     #[test]
     fn test_skip_wildcard() {
-        let f = write_temp("Host *\n  User default\n\nHost real\n  HostName 1.2.3.4\n");
+        let f = write_temp("Host *\n  User default\n\nHost real\n  HostName 203.0.113.4\n");
         let result = import_ssh_config(f.path());
         assert_eq!(result.entries.len(), 1);
         assert_eq!(result.entries[0].host_pattern, "real");
@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn test_proxy_jump() {
         let f = write_temp(
-            "Host bastion\n  HostName jump.example.com\n\nHost prod\n  HostName 10.0.0.2\n  ProxyJump bastion\n",
+            "Host bastion\n  HostName jump.example.com\n\nHost prod\n  HostName 198.51.100.2\n  ProxyJump bastion\n",
         );
         let result = import_ssh_config(f.path());
         assert_eq!(result.entries.len(), 2);
@@ -356,7 +356,8 @@ mod tests {
 
     #[test]
     fn test_proxy_command_warning() {
-        let f = write_temp("Host legacy\n  HostName 1.2.3.4\n  ProxyCommand ssh -W %h:%p jump\n");
+        let f =
+            write_temp("Host legacy\n  HostName 203.0.113.4\n  ProxyCommand ssh -W %h:%p jump\n");
         let result = import_ssh_config(f.path());
         assert_eq!(result.warnings.len(), 1);
         assert!(result.warnings[0].contains("ProxyCommand"));
@@ -364,7 +365,7 @@ mod tests {
 
     #[test]
     fn test_server_alive_interval() {
-        let f = write_temp("Host monitored\n  HostName 10.0.0.5\n  ServerAliveInterval 60\n");
+        let f = write_temp("Host monitored\n  HostName 198.51.100.5\n  ServerAliveInterval 60\n");
         let result = import_ssh_config(f.path());
         let e = &result.entries[0];
         assert!(
@@ -375,7 +376,8 @@ mod tests {
 
     #[test]
     fn test_identity_file() {
-        let f = write_temp("Host secure\n  HostName 10.0.0.6\n  IdentityFile ~/.ssh/prod_key\n");
+        let f =
+            write_temp("Host secure\n  HostName 198.51.100.6\n  IdentityFile ~/.ssh/prod_key\n");
         let result = import_ssh_config(f.path());
         let e = &result.entries[0];
         assert_eq!(e.identity_file, Some("~/.ssh/prod_key".to_string()));
@@ -385,13 +387,13 @@ mod tests {
     fn test_import_to_yaml_direct() {
         let entries = vec![SshConfigEntry {
             host_pattern: "web-01".to_string(),
-            hostname: Some("10.0.0.1".to_string()),
+            hostname: Some("198.51.100.1".to_string()),
             user: Some("admin".to_string()),
             ..Default::default()
         }];
         let yaml = import_to_yaml(&entries);
         assert!(yaml.contains("name: \"web-01\""));
-        assert!(yaml.contains("host: \"10.0.0.1\""));
+        assert!(yaml.contains("host: \"198.51.100.1\""));
         assert!(yaml.contains("user: \"admin\""));
     }
 
@@ -405,7 +407,7 @@ mod tests {
             },
             SshConfigEntry {
                 host_pattern: "prod-api".to_string(),
-                hostname: Some("10.0.0.2".to_string()),
+                hostname: Some("198.51.100.2".to_string()),
                 proxy_jump: Some("bastion".to_string()),
                 ..Default::default()
             },
@@ -417,9 +419,9 @@ mod tests {
 
     #[test]
     fn test_include_recursive() {
-        let sub = write_temp("Host sub-server\n  HostName 192.168.1.1\n");
+        let sub = write_temp("Host sub-server\n  HostName 198.51.100.1\n");
         let main_content = format!(
-            "Host main-server\n  HostName 10.0.0.1\n\nInclude {}\n",
+            "Host main-server\n  HostName 198.51.100.1\n\nInclude {}\n",
             sub.path().display()
         );
         let main = write_temp(&main_content);

@@ -7,7 +7,7 @@ use crate::ssh::sftp::{self as ssh_sftp, ScpDirection, ScpEvent};
 use crate::ssh::tunnel::{self as ssh_tunnel, TunnelHandle, TunnelStatus};
 use crate::state::{self, TunnelOverride};
 use crate::ui::theme::{Theme, get_theme};
-use crate::wallix::WallixMenuEntry;
+use crate::wallix::{WallixMenuEntry, build_expected_targets, select_id_for_server};
 use ratatui::widgets::ListState;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -352,9 +352,83 @@ pub struct App {
     pub wallix_selector: Option<WallixSelectorState>,
     /// Récepteur du chargement asynchrone du menu Wallix.
     pub wallix_selector_rx: Option<mpsc::Receiver<WallixMenuLoadResult>>,
+    /// Cache session des sélections Wallix (clé serveur -> ID choisi).
+    pub wallix_selection_cache: HashMap<String, String>,
+    /// Connexion Wallix prête à démarrer (résolue automatiquement ou via choix utilisateur).
+    wallix_pending_connection: Option<(ResolvedServer, String)>,
 }
 
 type WallixMenuLoadResult = (ResolvedServer, Result<Vec<WallixMenuEntry>, String>);
+
+fn wallix_matching_error(message: &str) -> bool {
+    message.contains("No menu entry found with target")
+        || message.contains("No menu entry found for matching targets")
+        || message.contains("No menu entry found for target")
+        || message.contains("Multiple menu entries")
+        || message.contains("wallix.group is not configured")
+}
+
+fn group_suffix_matches(entry_group: &str, configured_group: &str) -> bool {
+    entry_group == configured_group || entry_group.ends_with(&format!("_{configured_group}"))
+}
+
+fn score_entry(
+    server: &ResolvedServer,
+    expected_targets: &[String],
+    entry: &WallixMenuEntry,
+) -> u8 {
+    let mut score = 0;
+
+    if expected_targets
+        .iter()
+        .any(|target| target == &entry.target)
+    {
+        score += 10;
+    }
+
+    if let Some(group) = server
+        .wallix_group
+        .as_deref()
+        .map(str::trim)
+        .filter(|g| !g.is_empty())
+    {
+        if entry.group == group {
+            score += 4;
+        } else if group_suffix_matches(&entry.group, group) {
+            score += 2;
+        }
+    }
+
+    score
+}
+
+fn targeted_wallix_entries(
+    server: &ResolvedServer,
+    entries: &[WallixMenuEntry],
+) -> Vec<WallixMenuEntry> {
+    let expected_targets = build_expected_targets(server);
+
+    let mut targeted: Vec<WallixMenuEntry> = entries
+        .iter()
+        .filter(|entry| {
+            expected_targets
+                .iter()
+                .any(|target| target == &entry.target)
+        })
+        .cloned()
+        .collect();
+
+    if !targeted.is_empty() {
+        targeted
+            .sort_by_key(|entry| std::cmp::Reverse(score_entry(server, &expected_targets, entry)));
+        return targeted;
+    }
+
+    let mut all_entries = entries.to_vec();
+    all_entries
+        .sort_by_key(|entry| std::cmp::Reverse(score_entry(server, &expected_targets, entry)));
+    all_entries
+}
 
 /// Sépare la requête de recherche en tokens texte et tokens `#tag`.
 /// Exemple : `"web #prod DB"` → `(["web", "DB"], ["prod"])`
@@ -454,6 +528,8 @@ impl App {
             scp_rx: None,
             wallix_selector: None,
             wallix_selector_rx: None,
+            wallix_selection_cache: HashMap::new(),
+            wallix_pending_connection: None,
         };
 
         app.list_state.select(Some(0));
@@ -1736,10 +1812,24 @@ impl App {
     // ─── Sélecteur Wallix ───────────────────────────────────────────────────
 
     pub fn should_open_wallix_selector(&self, server: &ResolvedServer) -> bool {
-        self.connection_mode == ConnectionMode::Wallix && !server.wallix_auto_select
+        let _ = server;
+        if self.connection_mode != ConnectionMode::Wallix {
+            return false;
+        }
+
+        #[cfg(unix)]
+        {
+            true
+        }
+
+        #[cfg(not(unix))]
+        {
+            false
+        }
     }
 
     pub fn open_wallix_selector(&mut self, server: ResolvedServer, verbose: bool) {
+        self.wallix_pending_connection = None;
         let (tx, rx) = mpsc::channel();
         self.wallix_selector = Some(WallixSelectorState::Loading {
             server: Box::new(server.clone()),
@@ -1763,11 +1853,48 @@ impl App {
         if let Some((server, result)) = done {
             match result {
                 Ok(entries) => {
-                    self.wallix_selector = Some(WallixSelectorState::List {
-                        server: Box::new(server),
-                        entries,
-                        selected: 0,
-                    });
+                    let server_key = Self::server_key(&server);
+
+                    if let Some(cached_id) = self.wallix_selection_cache.get(&server_key)
+                        && entries.iter().any(|entry| &entry.id == cached_id)
+                    {
+                        self.wallix_pending_connection = Some((server, cached_id.clone()));
+                        self.wallix_selector = None;
+                        self.wallix_selector_rx = None;
+                        return;
+                    }
+
+                    if server.wallix_auto_select {
+                        match select_id_for_server(&entries, &server) {
+                            Ok(selected_id) => {
+                                self.wallix_selection_cache
+                                    .insert(server_key, selected_id.clone());
+                                self.wallix_pending_connection = Some((server, selected_id));
+                                self.wallix_selector = None;
+                            }
+                            Err(err) => {
+                                let message = err.to_string();
+                                if wallix_matching_error(&message) {
+                                    self.wallix_selector = Some(WallixSelectorState::List {
+                                        server: Box::new(server.clone()),
+                                        entries: targeted_wallix_entries(&server, &entries),
+                                        selected: 0,
+                                    });
+                                } else {
+                                    self.wallix_selector = Some(WallixSelectorState::Error {
+                                        server: Box::new(server),
+                                        message,
+                                    });
+                                }
+                            }
+                        }
+                    } else {
+                        self.wallix_selector = Some(WallixSelectorState::List {
+                            server: Box::new(server.clone()),
+                            entries: targeted_wallix_entries(&server, &entries),
+                            selected: 0,
+                        });
+                    }
                 }
                 Err(message) => {
                     self.wallix_selector = Some(WallixSelectorState::Error {
@@ -1783,6 +1910,15 @@ impl App {
     pub fn close_wallix_selector(&mut self) {
         self.wallix_selector = None;
         self.wallix_selector_rx = None;
+    }
+
+    pub fn take_pending_wallix_connection(&mut self) -> Option<(ResolvedServer, String)> {
+        self.wallix_pending_connection.take()
+    }
+
+    pub fn remember_wallix_selection(&mut self, server: &ResolvedServer, selected_id: &str) {
+        self.wallix_selection_cache
+            .insert(Self::server_key(server), selected_id.to_string());
     }
 
     pub fn wallix_selector_next(&mut self) {
@@ -2091,7 +2227,7 @@ mod tests {
                     tags: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
-                        host: "10.0.0.1".to_string(),
+                        host: "198.51.100.1".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -2107,7 +2243,7 @@ mod tests {
                 }]),
                 servers: Some(vec![Server {
                     name: "S2".to_string(),
-                    host: "10.0.0.2".to_string(),
+                    host: "198.51.100.2".to_string(),
                     user: None,
                     ssh_key: None,
                     ssh_port: None,
@@ -2182,7 +2318,7 @@ mod tests {
                 servers: Some(vec![
                     Server {
                         name: "prod-web".to_string(),
-                        host: "1.1.1.1".to_string(),
+                        host: "203.0.113.1".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -2197,7 +2333,7 @@ mod tests {
                     },
                     Server {
                         name: "staging-db".to_string(),
-                        host: "2.2.2.2".to_string(),
+                        host: "203.0.113.2".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -2400,7 +2536,7 @@ mod tests {
                     tags: None,
                     servers: Some(vec![Server {
                         name: "root_srv".to_string(),
-                        host: "1.1.1.1".to_string(),
+                        host: "203.0.113.1".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -2435,7 +2571,7 @@ mod tests {
                         tags: None,
                         servers: Some(vec![Server {
                             name: "ces_srv".to_string(),
-                            host: "2.2.2.2".to_string(),
+                            host: "203.0.113.2".to_string(),
                             user: None,
                             ssh_key: None,
                             ssh_port: None,
@@ -2521,7 +2657,7 @@ mod tests {
 
         fs::write(
             &include_path,
-            "groups:\n  - name: \"IncGroup\"\n    servers:\n      - name: \"inc-1\"\n        host: \"10.10.10.1\"\n",
+            "groups:\n  - name: \"IncGroup\"\n    servers:\n      - name: \"inc-1\"\n        host: \"198.51.100.101\"\n",
         )
         .unwrap();
 
@@ -2542,7 +2678,7 @@ mod tests {
 
         fs::write(
             &include_path,
-            "groups:\n  - name: \"IncGroup\"\n    servers:\n      - name: \"inc-1\"\n        host: \"10.10.10.1\"\n      - name: \"inc-2\"\n        host: \"10.10.10.2\"\n",
+            "groups:\n  - name: \"IncGroup\"\n    servers:\n      - name: \"inc-1\"\n        host: \"198.51.100.101\"\n      - name: \"inc-2\"\n        host: \"198.51.100.102\"\n",
         )
         .unwrap();
 
@@ -2679,7 +2815,7 @@ mod tests {
     }
 
     #[test]
-    fn wallix_selector_not_required_when_manual_fallback_enabled() {
+    fn wallix_selector_required_when_auto_select_enabled() {
         let mut app = App::new(
             make_namespace_config(),
             vec![],
@@ -2693,6 +2829,223 @@ mod tests {
         server.wallix_auto_select = true;
         server.wallix_fail_if_menu_match_error = false;
 
-        assert!(!app.should_open_wallix_selector(&server));
+        assert!(app.should_open_wallix_selector(&server));
+    }
+
+    fn wallix_test_server(group: Option<&str>) -> ResolvedServer {
+        ResolvedServer {
+            namespace: String::new(),
+            group_name: "ALPHA-BD".to_string(),
+            env_name: String::new(),
+            name: "app-alpha".to_string(),
+            host: "APP-ALPHA-BD".to_string(),
+            user: "demo_user".to_string(),
+            port: 22,
+            ssh_key: String::new(),
+            ssh_options: vec![],
+            default_mode: ConnectionMode::Wallix,
+            jump_host: None,
+            bastion_host: Some("bastion.example.test".to_string()),
+            bastion_user: Some("demo_user".to_string()),
+            bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
+            wallix_group: group.map(str::to_string),
+            wallix_account: "default".to_string(),
+            wallix_protocol: "SSH".to_string(),
+            wallix_auto_select: true,
+            wallix_fail_if_menu_match_error: true,
+            wallix_selection_timeout_secs: 8,
+            use_system_ssh_config: false,
+            probe_filesystems: vec![],
+            tunnels: vec![],
+            tags: vec![],
+            control_master: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
+        }
+    }
+
+    #[test]
+    fn wallix_poll_auto_resolves_to_pending_connection() {
+        let mut app = App::new(
+            make_namespace_config(),
+            vec![],
+            std::path::PathBuf::new(),
+            vec![],
+        )
+        .unwrap();
+
+        let server = wallix_test_server(Some("dev-admins"));
+        let entries = vec![WallixMenuEntry {
+            id: "42".to_string(),
+            target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+            group: "APP-ALPHA_dev-admins".to_string(),
+        }];
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.wallix_selector_rx = Some(rx);
+        tx.send((server.clone(), Ok(entries))).unwrap();
+
+        app.poll_wallix_selector();
+
+        assert!(app.wallix_selector.is_none());
+        let pending = app.take_pending_wallix_connection();
+        assert!(pending.is_some());
+        let (_, selected_id) = pending.unwrap();
+        assert_eq!(selected_id, "42");
+        assert_eq!(
+            app.wallix_selection_cache.get(&App::server_key(&server)),
+            Some(&"42".to_string())
+        );
+    }
+
+    #[test]
+    fn wallix_poll_ambiguous_resolution_opens_targeted_selector() {
+        let mut app = App::new(
+            make_namespace_config(),
+            vec![],
+            std::path::PathBuf::new(),
+            vec![],
+        )
+        .unwrap();
+
+        let server = wallix_test_server(Some("dev-admins"));
+        let entries = vec![
+            WallixMenuEntry {
+                id: "11".to_string(),
+                target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+                group: "APP-ALPHA_dev-admins".to_string(),
+            },
+            WallixMenuEntry {
+                id: "12".to_string(),
+                target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+                group: "APP-ALPHA_dev-admins".to_string(),
+            },
+            WallixMenuEntry {
+                id: "99".to_string(),
+                target: "demo_user@default@OTHER:SSH".to_string(),
+                group: "OTHER_dev-admins".to_string(),
+            },
+        ];
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.wallix_selector_rx = Some(rx);
+        tx.send((server, Ok(entries))).unwrap();
+
+        app.poll_wallix_selector();
+
+        assert!(app.take_pending_wallix_connection().is_none());
+        match &app.wallix_selector {
+            Some(WallixSelectorState::List { entries, .. }) => {
+                assert_eq!(entries.len(), 2);
+                assert!(
+                    entries
+                        .iter()
+                        .all(|entry| entry.target == "demo_user@default@APP-ALPHA-BD:SSH")
+                );
+            }
+            _ => panic!("expected Wallix selector list"),
+        }
+    }
+
+    #[test]
+    fn wallix_poll_missing_group_opens_targeted_selector() {
+        let mut app = App::new(
+            make_namespace_config(),
+            vec![],
+            std::path::PathBuf::new(),
+            vec![],
+        )
+        .unwrap();
+
+        let server = wallix_test_server(None);
+        let entries = vec![
+            WallixMenuEntry {
+                id: "21".to_string(),
+                target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+                group: "APP-ALPHA_ops-admins".to_string(),
+            },
+            WallixMenuEntry {
+                id: "22".to_string(),
+                target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+                group: "APP-ALPHA_dev-admins".to_string(),
+            },
+        ];
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.wallix_selector_rx = Some(rx);
+        tx.send((server, Ok(entries))).unwrap();
+
+        app.poll_wallix_selector();
+
+        assert!(app.take_pending_wallix_connection().is_none());
+        assert!(matches!(
+            app.wallix_selector,
+            Some(WallixSelectorState::List { .. })
+        ));
+    }
+
+    #[test]
+    fn wallix_poll_uses_cached_selection_when_available() {
+        let mut app = App::new(
+            make_namespace_config(),
+            vec![],
+            std::path::PathBuf::new(),
+            vec![],
+        )
+        .unwrap();
+
+        let server = wallix_test_server(Some("dev-admins"));
+        app.wallix_selection_cache
+            .insert(App::server_key(&server), "77".to_string());
+
+        let entries = vec![
+            WallixMenuEntry {
+                id: "77".to_string(),
+                target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+                group: "APP-ALPHA_ops-admins".to_string(),
+            },
+            WallixMenuEntry {
+                id: "78".to_string(),
+                target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+                group: "APP-ALPHA_dev-admins".to_string(),
+            },
+        ];
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.wallix_selector_rx = Some(rx);
+        tx.send((server, Ok(entries))).unwrap();
+
+        app.poll_wallix_selector();
+
+        assert!(app.wallix_selector.is_none());
+        let pending = app.take_pending_wallix_connection();
+        assert!(pending.is_some());
+        let (_, selected_id) = pending.unwrap();
+        assert_eq!(selected_id, "77");
+    }
+
+    #[test]
+    fn targeted_wallix_entries_keeps_matching_target_when_available() {
+        let server = wallix_test_server(Some("dev-admins"));
+
+        let entries = vec![
+            WallixMenuEntry {
+                id: "1".to_string(),
+                target: "demo_user@default@OTHER:SSH".to_string(),
+                group: "OTHER_dev-admins".to_string(),
+            },
+            WallixMenuEntry {
+                id: "2".to_string(),
+                target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+                group: "APP-ALPHA_dev-admins".to_string(),
+            },
+        ];
+
+        let filtered = targeted_wallix_entries(&server, &entries);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].id, "2");
     }
 }

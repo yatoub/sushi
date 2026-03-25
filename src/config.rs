@@ -1188,6 +1188,20 @@ fn resolve_server(
             .join(",")
     });
 
+    // Priorité déterministe pour le groupe Wallix:
+    // 1) server.wallix.group
+    // 2) server.wallix_group (legacy)
+    // 3) héritage déjà fusionné via final_bastion.group (env/group/defaults)
+    let resolved_wallix_group = s
+        .wallix
+        .as_ref()
+        .and_then(|b| b.group.as_deref())
+        .or(s.wallix_group.as_deref())
+        .or(final_bastion.as_ref().and_then(|b| b.group.as_deref()))
+        .map(str::trim)
+        .filter(|g| !g.is_empty())
+        .map(ToOwned::to_owned);
+
     Ok(ResolvedServer {
         namespace: namespace.to_string(),
         group_name: group.to_string(),
@@ -1225,12 +1239,7 @@ fn resolve_server(
             .or(def_post_disconnect_hook)
             .map(|h| shellexpand::tilde(h).into_owned()),
         hook_timeout_secs: def_hook_timeout_secs,
-        wallix_group: s
-            .wallix
-            .as_ref()
-            .and_then(|b| b.group.clone())
-            .or_else(|| s.wallix_group.clone())
-            .or_else(|| final_bastion.as_ref().and_then(|b| b.group.clone())),
+        wallix_group: resolved_wallix_group,
         wallix_account: final_bastion
             .as_ref()
             .and_then(|b| b.account.clone())
@@ -1438,6 +1447,105 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_wallix_group_server_override_wins_over_global() {
+        let config = Config {
+            defaults: Some(Defaults {
+                wallix: Some(BastionConfig {
+                    group: Some("global-admins".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            groups: vec![ConfigEntry::Server(Server {
+                name: "srv".to_string(),
+                host: "srv.example.test".to_string(),
+                wallix: Some(BastionConfig {
+                    group: Some("conn-admins".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })],
+            includes: vec![],
+            vars: Default::default(),
+        };
+
+        let resolved = config.resolve().unwrap();
+        assert_eq!(resolved[0].wallix_group.as_deref(), Some("conn-admins"));
+    }
+
+    #[test]
+    fn test_resolve_wallix_group_env_override_wins_over_global() {
+        let config = Config {
+            defaults: Some(Defaults {
+                wallix: Some(BastionConfig {
+                    group: Some("global-admins".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            groups: vec![ConfigEntry::Group(Group {
+                name: "G".to_string(),
+                user: None,
+                ssh_key: None,
+                mode: None,
+                ssh_port: None,
+                ssh_options: None,
+                wallix: None,
+                wallix_group: None,
+                jump: None,
+                environments: Some(vec![Environment {
+                    name: "PR-OND".to_string(),
+                    user: None,
+                    ssh_key: None,
+                    mode: None,
+                    ssh_port: None,
+                    ssh_options: None,
+                    wallix: Some(BastionConfig {
+                        group: Some("env-admins".to_string()),
+                        ..Default::default()
+                    }),
+                    wallix_group: None,
+                    jump: None,
+                    servers: vec![Server {
+                        name: "db07".to_string(),
+                        host: "db07.internal.example".to_string(),
+                        ..Default::default()
+                    }],
+                    probe_filesystems: None,
+                    tunnels: None,
+                    tags: None,
+                }]),
+                servers: None,
+                probe_filesystems: None,
+                tunnels: None,
+                tags: None,
+            })],
+            includes: vec![],
+            vars: Default::default(),
+        };
+
+        let resolved = config.resolve().unwrap();
+        assert_eq!(resolved[0].wallix_group.as_deref(), Some("env-admins"));
+    }
+
+    #[test]
+    fn test_resolve_wallix_group_none_when_missing_everywhere() {
+        let config = Config {
+            defaults: Some(Defaults::default()),
+            groups: vec![ConfigEntry::Server(Server {
+                name: "srv".to_string(),
+                host: "srv.example.test".to_string(),
+                ..Default::default()
+            })],
+            includes: vec![],
+            vars: Default::default(),
+        };
+
+        let resolved = config.resolve().unwrap();
+        assert_eq!(resolved[0].wallix_group, None);
+    }
+
+    #[test]
     fn test_sorting_mixed() {
         let mut config = Config {
             defaults: None,
@@ -1460,7 +1568,7 @@ mod tests {
                 }),
                 ConfigEntry::Server(Server {
                     name: "Alpha".to_string(),
-                    host: "10.0.0.1".to_string(),
+                    host: "198.51.100.1".to_string(),
                     user: None,
                     ssh_key: None,
                     ssh_port: None,
@@ -1546,7 +1654,7 @@ mod tests {
                     tags: None,
                     servers: vec![Server {
                         name: "S1".to_string(),
-                        host: "1.1.1.1".to_string(),
+                        host: "203.0.113.1".to_string(),
                         user: None, // Inherits "group_user"
                         ssh_key: None,
                         ssh_port: Some(8080), // Override 2222
@@ -1599,7 +1707,7 @@ mod tests {
                 servers: Some(vec![
                     Server {
                         name: "inherits".to_string(),
-                        host: "1.2.3.4".to_string(),
+                        host: "203.0.113.4".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -1614,7 +1722,7 @@ mod tests {
                     },
                     Server {
                         name: "extends".to_string(),
-                        host: "1.2.3.5".to_string(),
+                        host: "203.0.113.5".to_string(),
                         user: None,
                         ssh_key: None,
                         ssh_port: None,
@@ -1676,7 +1784,7 @@ mod tests {
                 tags: None,
                 servers: Some(vec![Server {
                     name: "kafka01".to_string(),
-                    host: "10.0.0.1".to_string(),
+                    host: "198.51.100.1".to_string(),
                     user: None,
                     ssh_key: None,
                     ssh_port: None,
@@ -1726,7 +1834,7 @@ groups:
   - name: NS_Group
     servers:
       - name: ns_srv
-        host: "192.168.1.1"
+        host: "198.51.100.1"
 "#;
         let sub_file = write_temp_yaml(sub_yaml);
 
@@ -1741,7 +1849,7 @@ groups:
   - name: Main_Group
     servers:
       - name: main_srv
-        host: "10.0.0.1"
+        host: "198.51.100.1"
 "#,
             sub_file.path().to_string_lossy()
         );
@@ -1784,7 +1892,7 @@ groups:
   - name: Sub
     servers:
       - name: sub_srv
-        host: "1.2.3.4"
+        host: "203.0.113.4"
 "#;
         let sub_file = write_temp_yaml(sub_yaml);
 
@@ -1800,7 +1908,7 @@ groups:
   - name: Main
     servers:
       - name: main_srv
-        host: "5.6.7.8"
+        host: "203.0.113.8"
 "#,
             sub_file.path().to_string_lossy()
         );
@@ -1835,7 +1943,7 @@ groups:
   - name: Main
     servers:
       - name: ok_srv
-        host: "1.2.3.4"
+        host: "203.0.113.4"
 "#;
         let main_file = write_temp_yaml(main_yaml);
 
@@ -1863,7 +1971,7 @@ groups:
   - name: Leaf
     servers:
       - name: leaf_srv
-        host: "9.9.9.9"
+        host: "203.0.113.9"
 "#;
         let leaf_file = write_temp_yaml(leaf_yaml);
 
@@ -1876,7 +1984,7 @@ groups:
   - name: Sub
     servers:
       - name: sub_srv
-        host: "8.8.8.8"
+        host: "203.0.113.18"
 "#,
             leaf_file.path().to_string_lossy()
         );
@@ -1944,7 +2052,7 @@ groups:
   - name: Sub
     servers:
       - name: sub_srv
-        host: "1.2.3.4"
+        host: "203.0.113.4"
 "#;
         let sub_file = write_temp_yaml(sub_yaml);
 
@@ -2027,7 +2135,7 @@ includes:
     path: "{}"
 groups:
   - name: GroupA
-    servers: [{{ name: srv_a, host: "10.0.0.1" }}]
+    servers: [{{ name: srv_a, host: "198.51.100.1" }}]
 "#,
             file_b.path().display()
         );
@@ -2038,7 +2146,7 @@ includes:
     path: "{}"
 groups:
   - name: GroupB
-    servers: [{{ name: srv_b, host: "10.0.0.2" }}]
+    servers: [{{ name: srv_b, host: "198.51.100.2" }}]
 "#,
             file_a.path().display()
         );
@@ -2089,7 +2197,7 @@ groups:
   - name: G
     servers:
       - name: srv
-        host: "1.2.3.4"
+        host: "203.0.113.4"
         missspelled_user: "admin"
 "#;
         let warnings = validate_yaml(yaml, "test.yml");
@@ -2107,7 +2215,7 @@ groups:
   - name: NS_G
     servers:
       - name: ns_srv
-        host: "10.10.10.1"
+        host: "198.51.100.101"
         user: "ns_user"
 "#;
         let sub_file = write_temp_yaml(sub_yaml);

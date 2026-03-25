@@ -638,6 +638,15 @@ fn run_app(
         // Lit le résultat du chargement du menu Wallix si un thread tourne
         app.poll_wallix_selector();
 
+        if let Some((server, selected_id)) = app.take_pending_wallix_connection() {
+            app.record_connection(&server);
+            return Ok(AppResult::ConnectWallixSelected(
+                Box::new(server),
+                app.verbose_mode,
+                selected_id,
+            ));
+        }
+
         // Sonde l'état des tunnels SSH actifs (détecte les fins inopinées)
         app.poll_tunnel_events();
 
@@ -738,6 +747,7 @@ fn run_app(
                                 if let Some((server, selected_id)) =
                                     app.wallix_selector_selected_id()
                                 {
+                                    app.remember_wallix_selection(&server, &selected_id);
                                     app.close_wallix_selector();
                                     app.record_connection(&server);
                                     return Ok(AppResult::ConnectWallixSelected(

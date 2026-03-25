@@ -1,5 +1,7 @@
 use crate::config::{ConnectionMode, ResolvedServer};
-use crate::wallix::{WallixMenuEntry, parse_wallix_menu, select_id_for_server};
+use crate::wallix::WallixMenuEntry;
+#[cfg(unix)]
+use crate::wallix::{parse_wallix_menu, select_id_for_server};
 use anyhow::Result;
 #[cfg(unix)]
 use nix::pty::{ForkptyResult, Winsize, forkpty};
@@ -15,6 +17,42 @@ use std::{
     ffi::CString,
     io::{Read, Write},
 };
+
+fn build_wallix_login_user(
+    server: &ResolvedServer,
+    bastion_user: &str,
+    target_host: &str,
+) -> String {
+    if server.bastion_template.trim().is_empty()
+        || server.bastion_template == "{target_user}@%n:SSH:{bastion_user}"
+    {
+        let mut login = format!("{}@{}:{}", server.user, target_host, server.wallix_protocol);
+        if let Some(group) = server
+            .wallix_group
+            .as_deref()
+            .map(str::trim)
+            .filter(|g| !g.is_empty())
+        {
+            login.push(':');
+            login.push_str(group);
+        }
+        login.push(':');
+        login.push_str(bastion_user);
+        return login;
+    }
+
+    server
+        .bastion_template
+        .replace("{target_user}", &server.user)
+        .replace("{target_host}", target_host)
+        .replace("{bastion_user}", bastion_user)
+        .replace(
+            "{wallix_group}",
+            server.wallix_group.as_deref().unwrap_or(""),
+        )
+        .replace("{protocol}", &server.wallix_protocol)
+        .replace("%n", target_host)
+}
 
 /// Construit la liste complète des arguments SSH sans lancer de processus.
 /// Séparé de `connect()` pour être testable unitairement.
@@ -91,12 +129,7 @@ pub fn build_ssh_args(
             }
             let bastion_user = server.bastion_user.as_deref().unwrap_or("root");
             let (t_host, _t_port) = parse_host_port(&server.host);
-            let user_string = server
-                .bastion_template
-                .replace("{target_user}", &server.user)
-                .replace("{target_host}", t_host)
-                .replace("{bastion_user}", bastion_user)
-                .replace("%n", t_host);
+            let user_string = build_wallix_login_user(server, bastion_user, t_host);
             args.push("-l".into());
             args.push(user_string);
             let (b_host, b_port) = parse_host_port(bastion_host_str);
@@ -113,11 +146,6 @@ pub fn build_ssh_args(
 
 /// Lance la connexion SSH en remplaçant le processus courant (`exec`).
 pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> Result<()> {
-    #[cfg(unix)]
-    if should_use_wallix_menu_automation(server, mode) {
-        return connect_wallix_via_pty_with_selection(server, verbose, None);
-    }
-
     let args = build_ssh_args(server, mode, verbose)?;
     let mut command = Command::new("ssh");
     command.args(&args);
@@ -143,11 +171,6 @@ pub fn connect_blocking(
     mode: ConnectionMode,
     verbose: bool,
 ) -> Result<()> {
-    #[cfg(unix)]
-    if should_use_wallix_menu_automation(server, mode) {
-        return connect_wallix_via_pty_with_selection(server, verbose, None);
-    }
-
     let args = build_ssh_args(server, mode, verbose)?;
     Command::new("ssh")
         .args(&args)
@@ -222,10 +245,7 @@ pub fn connect_blocking_wallix_with_selection(
 
 // ─── helpers privés ──────────────────────────────────────────────────────────
 
-fn should_use_wallix_menu_automation(server: &ResolvedServer, mode: ConnectionMode) -> bool {
-    mode == ConnectionMode::Wallix && server.wallix_auto_select
-}
-
+#[cfg(unix)]
 fn build_wallix_bastion_args(server: &ResolvedServer, verbose: bool) -> Result<Vec<String>> {
     let mut args: Vec<String> = Vec::new();
 
@@ -301,6 +321,14 @@ fn contains_wallix_target_address_prompt(buffer: &str) -> bool {
     lowered.contains("adresse cible")
         || lowered.contains("target address")
         || lowered.contains("destination address")
+}
+
+#[cfg(unix)]
+fn contains_wallix_return_selector_prompt(buffer: &str) -> bool {
+    let lowered = buffer.to_lowercase();
+    lowered.contains("retour au sélecteur")
+        || lowered.contains("retour au selecteur")
+        || lowered.contains("return to selector")
 }
 
 #[cfg(unix)]
@@ -410,7 +438,11 @@ fn connect_wallix_via_pty_with_selection(
     let mut transcript = String::new();
     let mut selection_completed = false;
     let mut target_address_sent = false;
+    let mut return_selector_prompt_handled = false;
     let mut stdin_closed = false;
+    // Si un ID est déjà connu (fallback TUI), on masque le menu global Wallix
+    // pour éviter l'affichage interactif dans le terminal utilisateur.
+    let hide_menu_output = selected_id.is_some();
     let master_fd = master_reader.as_raw_fd();
     let stdin_fd = std::io::stdin().as_raw_fd();
 
@@ -448,17 +480,21 @@ fn connect_wallix_via_pty_with_selection(
                 break;
             }
 
-            stdout.write_all(&buf[..read])?;
-            stdout.flush()?;
+            let chunk = String::from_utf8_lossy(&buf[..read]);
+            transcript.push_str(&chunk);
+            if transcript.len() > 64 * 1024 {
+                let drain = transcript.len().saturating_sub(64 * 1024);
+                transcript.drain(..drain);
+            }
+
+            // En mode auto-sélection, on n'affiche rien tant que la phase menu
+            // n'est pas terminée afin d'éviter le bruit du menu global.
+            if !hide_menu_output || target_address_sent {
+                stdout.write_all(&buf[..read])?;
+                stdout.flush()?;
+            }
 
             if !selection_completed {
-                let chunk = String::from_utf8_lossy(&buf[..read]);
-                transcript.push_str(&chunk);
-                if transcript.len() > 64 * 1024 {
-                    let drain = transcript.len().saturating_sub(64 * 1024);
-                    transcript.drain(..drain);
-                }
-
                 if contains_wallix_prompt(&transcript) {
                     let selection = if let Some(id) = selected_id {
                         Ok(id.to_string())
@@ -475,18 +511,17 @@ fn connect_wallix_via_pty_with_selection(
                             selection_completed = true;
                         }
                         Err(err) if server.wallix_fail_if_menu_match_error => {
-                            if is_wallix_menu_matching_error(&err)
-                                && let Some((current, total)) =
-                                    parse_wallix_page_position(&transcript)
-                                && current < total
-                            {
-                                master_writer.write_all(b"n\n")?;
-                                master_writer.flush()?;
-                                transcript.clear();
-                                continue;
-                            }
-
                             if is_wallix_menu_matching_error(&err) {
+                                if let Some((current, total)) =
+                                    parse_wallix_page_position(&transcript)
+                                    && current < total
+                                {
+                                    master_writer.write_all(b"n\n")?;
+                                    master_writer.flush()?;
+                                    transcript.clear();
+                                    continue;
+                                }
+
                                 // Fallback manuel: l'utilisateur choisit lui-même dans le menu.
                                 selection_completed = true;
                                 continue;
@@ -503,20 +538,22 @@ fn connect_wallix_via_pty_with_selection(
                         }
                     }
                 }
-            } else if !target_address_sent {
-                let chunk = String::from_utf8_lossy(&buf[..read]);
-                transcript.push_str(&chunk);
-                if transcript.len() > 64 * 1024 {
-                    let drain = transcript.len().saturating_sub(64 * 1024);
-                    transcript.drain(..drain);
-                }
+            } else if !target_address_sent && contains_wallix_target_address_prompt(&transcript) {
+                master_writer.write_all(server.host.as_bytes())?;
+                master_writer.write_all(b"\n")?;
+                master_writer.flush()?;
+                target_address_sent = true;
+            }
 
-                if contains_wallix_target_address_prompt(&transcript) {
-                    master_writer.write_all(server.host.as_bytes())?;
-                    master_writer.write_all(b"\n")?;
-                    master_writer.flush()?;
-                    target_address_sent = true;
-                }
+            if selection_completed
+                && !return_selector_prompt_handled
+                && contains_wallix_return_selector_prompt(&transcript)
+            {
+                // En sortie de session, Wallix peut proposer un retour au sélecteur.
+                // On force un refus explicite pour terminer proprement la connexion.
+                master_writer.write_all(b"n\n")?;
+                master_writer.flush()?;
+                return_selector_prompt_handled = true;
             }
         }
 
@@ -524,6 +561,11 @@ fn connect_wallix_via_pty_with_selection(
             let mut buf = [0_u8; 4096];
             let read = stdin.read(&mut buf)?;
             if read == 0 {
+                // En mode canonique, Ctrl+D peut se traduire par EOF local (read=0).
+                // On relaie explicitement un EOT vers la session distante pour
+                // reproduire le comportement attendu d'un shell interactif.
+                master_writer.write_all(&[0x04])?;
+                master_writer.flush()?;
                 stdin_closed = true;
             } else {
                 master_writer.write_all(&buf[..read])?;
@@ -583,7 +625,7 @@ mod tests {
             group_name: "G".into(),
             env_name: "E".into(),
             name: "srv".into(),
-            host: "10.0.0.1".into(),
+            host: "198.51.100.1".into(),
             user: "admin".into(),
             port: 22,
             ssh_key: String::new(),
@@ -620,7 +662,7 @@ mod tests {
         let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
         assert!(args.contains(&"-F".to_string()));
         assert!(args.contains(&"/dev/null".to_string()));
-        assert!(args.contains(&"admin@10.0.0.1".to_string()));
+        assert!(args.contains(&"admin@198.51.100.1".to_string()));
         assert!(!args.contains(&"-v".to_string()));
     }
 
@@ -634,11 +676,11 @@ mod tests {
     #[test]
     fn direct_with_port_in_host() {
         let mut s = base_server();
-        s.host = "10.0.0.1:2222".into();
+        s.host = "198.51.100.1:2222".into();
         let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
         assert!(args.contains(&"-p".to_string()));
         assert!(args.contains(&"2222".to_string()));
-        assert!(args.contains(&"admin@10.0.0.1".to_string()));
+        assert!(args.contains(&"admin@198.51.100.1".to_string()));
     }
 
     #[test]
@@ -650,7 +692,7 @@ mod tests {
         let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
         assert!(args.contains(&"-p".to_string()));
         assert!(args.contains(&"2222".to_string()));
-        assert!(args.contains(&"admin@10.0.0.1".to_string()));
+        assert!(args.contains(&"admin@198.51.100.1".to_string()));
     }
 
     #[test]
@@ -692,7 +734,7 @@ mod tests {
         let args = build_ssh_args(&s, ConnectionMode::Jump, false).unwrap();
         let j_pos = args.iter().position(|a| a == "-J").expect("-J present");
         assert_eq!(args[j_pos + 1], "juser@jump.example.com");
-        assert!(args.contains(&"admin@10.0.0.1".to_string()));
+        assert!(args.contains(&"admin@198.51.100.1".to_string()));
     }
 
     #[test]
@@ -725,7 +767,7 @@ mod tests {
             args[j_pos + 1],
             "juser@jump1.example.com,juser@jump2.example.com"
         );
-        assert!(args.contains(&"admin@10.0.0.1".to_string()));
+        assert!(args.contains(&"admin@198.51.100.1".to_string()));
     }
 
     #[test]
@@ -745,7 +787,7 @@ mod tests {
         let args = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap();
         let l_pos = args.iter().position(|a| a == "-l").expect("-l present");
         // template: {target_user}@%n:SSH:{bastion_user}
-        assert_eq!(args[l_pos + 1], "admin@10.0.0.1:SSH:buser");
+        assert_eq!(args[l_pos + 1], "admin@198.51.100.1:SSH:buser");
         assert!(args.contains(&"bastion.example.com".to_string()));
     }
 
@@ -785,7 +827,7 @@ mod tests {
         s.bastion_template = "{bastion_user}+{target_user}@{target_host}".into();
         let args = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap();
         let l_pos = args.iter().position(|a| a == "-l").expect("-l present");
-        assert_eq!(args[l_pos + 1], "buser+admin@10.0.0.1");
+        assert_eq!(args[l_pos + 1], "buser+admin@198.51.100.1");
     }
 
     #[test]
@@ -817,6 +859,13 @@ mod tests {
     }
 
     #[test]
+    fn wallix_return_selector_prompt_detection_supports_french_prompt() {
+        assert!(contains_wallix_return_selector_prompt(
+            "Session fermée, retour au sélecteur ? [o/N]"
+        ));
+    }
+
+    #[test]
     fn wallix_page_position_parser_reads_page_numbers() {
         let line = "| ID | Cible (page 1/16)                       | Autorisation";
         assert_eq!(parse_wallix_page_position(line), Some((1, 16)));
@@ -835,19 +884,19 @@ mod tests {
         s.ssh_options = vec!["StrictHostKeyChecking=no".into(), "-T".into()];
         s.port = 2222;
         let args = build_ssh_args(&s, ConnectionMode::Direct, true).unwrap();
-        assert_eq!(args.last().unwrap(), "admin@10.0.0.1");
+        assert_eq!(args.last().unwrap(), "admin@198.51.100.1");
 
         // Jump avec clé + port dans l'hôte
         let mut s2 = base_server();
         s2.ssh_key = "~/.ssh/id_ed25519".into();
-        s2.host = "10.0.0.1:2222".into();
+        s2.host = "198.51.100.1:2222".into();
         s2.jump_host = Some("juser@jump.example.com:22".into());
         let args2 = build_ssh_args(&s2, ConnectionMode::Jump, false).unwrap();
-        assert_eq!(args2.last().unwrap(), "admin@10.0.0.1");
+        assert_eq!(args2.last().unwrap(), "admin@198.51.100.1");
 
         // Direct minimal — destination = dernier arg même sans options
         let s3 = base_server();
         let args3 = build_ssh_args(&s3, ConnectionMode::Direct, false).unwrap();
-        assert_eq!(args3.last().unwrap(), "admin@10.0.0.1");
+        assert_eq!(args3.last().unwrap(), "admin@198.51.100.1");
     }
 }

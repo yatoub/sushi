@@ -6,21 +6,21 @@ susshi can run as a command-line connector without opening the TUI.
 
 ```bash
 # Direct
-susshi --direct root@myserver
-susshi --direct admin@10.0.1.5:2222
+susshi --direct ops-user@app-01.internal.example
+susshi --direct ops-user@198.51.100.5:2222
 
 # Jump
-susshi --jump root@192.168.1.50
+susshi --jump ops-user@198.51.100.50
 
 # Wallix
-susshi --wallix web-01.prod.example.com
+susshi --wallix web-01.internal.example
 ```
 
 ## SSH Overrides
 
 ```bash
-susshi --direct myserver.com --user deploy --port 2222 --key ~/.ssh/deploy_rsa
-susshi --direct myserver.com --verbose
+susshi --direct app-01.internal.example --user deploy --port 2222 --key ~/.ssh/deploy_rsa
+susshi --direct app-01.internal.example --verbose
 ```
 
 ## Alternate Config

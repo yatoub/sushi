@@ -63,6 +63,12 @@ pub struct Strings {
     pub panel_servers: &'static str,
     pub panel_details: &'static str,
     pub details_placeholder: &'static str,
+    /// `{}` = namespace label
+    pub details_namespace: &'static str,
+    /// `{}` = group name
+    pub details_group: &'static str,
+    /// `{}` = group name, `{}` = environment name
+    pub details_environment: &'static str,
 
     // ── Libellés du panneau détails ─────────────────────────────────────────
     pub label_name: &'static str,
@@ -99,6 +105,42 @@ pub struct Strings {
     pub status_normal: &'static str,
     pub status_searching: &'static str,
     pub status_search_active: &'static str,
+
+    // ── Aides clavier (barre de statut) ────────────────────────────────────
+    pub hint_navigate: &'static str,
+    pub hint_validate_cancel: &'static str,
+    pub hint_clear: &'static str,
+    pub hint_connect: &'static str,
+    pub hint_clear_filter: &'static str,
+    pub hint_new_search: &'static str,
+    pub hint_quit: &'static str,
+    pub hint_expand: &'static str,
+    pub hint_search: &'static str,
+    pub hint_mode: &'static str,
+    pub hint_tunnels: &'static str,
+    pub hint_probe: &'static str,
+    pub hint_command: &'static str,
+    pub hint_scp: &'static str,
+    pub hint_copy_ssh: &'static str,
+    pub hint_favorite: &'static str,
+    pub hint_favorites_view: &'static str,
+    pub hint_reload: &'static str,
+    pub hint_recent_sort: &'static str,
+    pub hint_collapse: &'static str,
+    pub hint_verbose: &'static str,
+
+    // ── Overlay sélecteur Wallix ───────────────────────────────────────────
+    pub wallix_selector_title: &'static str,
+    /// `{}` = nom du serveur
+    pub wallix_selector_loading: &'static str,
+    pub wallix_selector_loading_hint: &'static str,
+    pub wallix_selector_cancel_hint: &'static str,
+    /// `{}` = nom du serveur
+    pub wallix_selector_error: &'static str,
+    pub wallix_selector_close_hint: &'static str,
+    /// `{}` = nom du serveur, `{}` = host
+    pub wallix_selector_choose: &'static str,
+    pub wallix_selector_list_hint: &'static str,
 
     // ── Avertissements includes ─────────────────────────────────────────────
     /// `{}` = label, `{}` = chemin, `{}` = erreur
@@ -197,9 +239,15 @@ pub struct Strings {
     pub scp_form_remote_required: &'static str,
     /// `{}` = serveur
     pub scp_direction_title: &'static str,
+    /// Libellé court de direction (ex: "Upload").
+    pub scp_direction_upload_label: &'static str,
+    /// Libellé court de direction (ex: "Download").
+    pub scp_direction_download_label: &'static str,
     pub scp_direction_upload: &'static str,
     pub scp_direction_download: &'static str,
     pub scp_direction_hint: &'static str,
+    /// `{}` = direction label, `{}` = server name
+    pub scp_form_title: &'static str,
     pub scp_form_field_local: &'static str,
     pub scp_form_field_remote: &'static str,
     pub scp_form_hint: &'static str,
@@ -213,6 +261,7 @@ pub struct Strings {
     pub scp_result_hint: &'static str,
     /// `{}` = direction.label()
     pub scp_in_progress: &'static str,
+    pub scp_eta_label: &'static str,
 }
 
 // ─── Français ─────────────────────────────────────────────────────────────────
@@ -242,6 +291,9 @@ pub static STRINGS_FR: Strings = Strings {
     panel_servers: " Serveurs ",
     panel_details: " Détails ",
     details_placeholder: "Sélectionnez un serveur pour voir les détails.",
+    details_namespace: "📦 Namespace : {}",
+    details_group: "Group: {}",
+    details_environment: "Environment: {} / {}",
 
     label_name: "Nom:    ",
     label_host: "Hôte:   ",
@@ -270,6 +322,37 @@ pub static STRINGS_FR: Strings = Strings {
     status_normal: "Navigation : ↑/↓ | Ouvrir : Espace/Entrée | Recherche : / | Mode : Tab/1-3 | v : Verbose | y : Copier | d : Probe | f : Favori | F : Vue favs | r : Recharger | x : Cmd | H : Tri | C : Replier tout | q : Quitter",
     status_searching: "Recherche : Tapez pour filtrer… | Échap : Annuler | Ctrl+U : Effacer | Entrée : Valider",
     status_search_active: "Navigation : ↑/↓ | Effacer : Échap | Nouvelle recherche : / | Verbose : v | Entrée : Connecter | q : Quitter",
+
+    hint_navigate: "naviguer",
+    hint_validate_cancel: "valider / annuler",
+    hint_clear: "effacer",
+    hint_connect: "connexion",
+    hint_clear_filter: "effacer filtre",
+    hint_new_search: "nouvelle recherche",
+    hint_quit: "quitter",
+    hint_expand: "expand",
+    hint_search: "recherche",
+    hint_mode: "mode",
+    hint_tunnels: "tunnels",
+    hint_probe: "probe",
+    hint_command: "commande",
+    hint_scp: "SCP",
+    hint_copy_ssh: "copier SSH",
+    hint_favorite: "favori",
+    hint_favorites_view: "★ vue favoris",
+    hint_reload: "recharger",
+    hint_recent_sort: "tri récent",
+    hint_collapse: "replier",
+    hint_verbose: "verbose",
+
+    wallix_selector_title: " Sélection Wallix ",
+    wallix_selector_loading: "Chargement des entrées Wallix pour {}…",
+    wallix_selector_loading_hint: "Connexion au bastion et lecture du menu interactif.",
+    wallix_selector_cancel_hint: "Esc/q : annuler",
+    wallix_selector_error: "Erreur du sélecteur Wallix pour {}",
+    wallix_selector_close_hint: "Entrée/Esc/q : fermer",
+    wallix_selector_choose: "Sélectionne l'entrée Wallix pour {} ({})",
+    wallix_selector_list_hint: "↑/↓ : naviguer | Entrée : connecter | Esc/q : annuler",
 
     include_warn_load: "Impossible de charger '{}' ({}) : {}",
     include_warn_circular: "Dépendance circulaire ignorée : '{}' ({})",
@@ -336,9 +419,12 @@ pub static STRINGS_FR: Strings = Strings {
     scp_form_local_required: "Le chemin local est obligatoire",
     scp_form_remote_required: "Le chemin distant est obligatoire",
     scp_direction_title: " Transfert SCP — {} ",
+    scp_direction_upload_label: "Envoi",
+    scp_direction_download_label: "Téléchargement",
     scp_direction_upload: "(local → serveur)",
     scp_direction_download: "(serveur → local)",
     scp_direction_hint: "  Esc annuler",
+    scp_form_title: " SCP {} — {} ",
     scp_form_field_local: "  Local   : ",
     scp_form_field_remote: "  Distant : ",
     scp_form_hint: "  Tab changer de champ   Enter confirmer   Esc annuler",
@@ -348,6 +434,7 @@ pub static STRINGS_FR: Strings = Strings {
     scp_result_fail: "Erreur SCP : {}",
     scp_result_hint: "  Enter / Esc  fermer",
     scp_in_progress: "SCP {} en cours...",
+    scp_eta_label: "Restant",
 };
 
 // ─── Anglais ──────────────────────────────────────────────────────────────────
@@ -377,6 +464,9 @@ pub static STRINGS_EN: Strings = Strings {
     panel_servers: " Servers ",
     panel_details: " Details ",
     details_placeholder: "Select a server to view details.",
+    details_namespace: "📦 Namespace: {}",
+    details_group: "Group: {}",
+    details_environment: "Environment: {} / {}",
 
     label_name: "Name:   ",
     label_host: "Host:   ",
@@ -405,6 +495,37 @@ pub static STRINGS_EN: Strings = Strings {
     status_normal: "Navigate: ↑/↓ | Expand: Space/Enter | Search: / | Mode: Tab/1-3 | v: Verbose | y: Copy | d: Probe | f: Fav | F: Favs | r: Reload | x: Cmd | H: Sort | C: Collapse all | q: Quit",
     status_searching: "Search Mode: Type to filter | ESC: Cancel | Ctrl+U: Clear | Enter: Apply",
     status_search_active: "Navigate: ↑/↓ | Clear: ESC | New search: / | Verbose: v | Enter: Connect | q: Quit",
+
+    hint_navigate: "navigate",
+    hint_validate_cancel: "apply / cancel",
+    hint_clear: "clear",
+    hint_connect: "connect",
+    hint_clear_filter: "clear filter",
+    hint_new_search: "new search",
+    hint_quit: "quit",
+    hint_expand: "expand",
+    hint_search: "search",
+    hint_mode: "mode",
+    hint_tunnels: "tunnels",
+    hint_probe: "probe",
+    hint_command: "command",
+    hint_scp: "SCP",
+    hint_copy_ssh: "copy SSH",
+    hint_favorite: "favorite",
+    hint_favorites_view: "★ favorites view",
+    hint_reload: "reload",
+    hint_recent_sort: "recent sort",
+    hint_collapse: "collapse",
+    hint_verbose: "verbose",
+
+    wallix_selector_title: " Wallix Selection ",
+    wallix_selector_loading: "Loading Wallix entries for {}…",
+    wallix_selector_loading_hint: "Contacting the bastion and reading the interactive menu.",
+    wallix_selector_cancel_hint: "Esc/q: cancel",
+    wallix_selector_error: "Wallix selector error for {}",
+    wallix_selector_close_hint: "Enter/Esc/q: close",
+    wallix_selector_choose: "Select the Wallix entry for {} ({})",
+    wallix_selector_list_hint: "↑/↓: navigate | Enter: connect | Esc/q: cancel",
 
     include_warn_load: "Failed to load '{}' ({}) : {}",
     include_warn_circular: "Circular dependency ignored: '{}' ({})",
@@ -471,9 +592,12 @@ pub static STRINGS_EN: Strings = Strings {
     scp_form_local_required: "Local path required",
     scp_form_remote_required: "Remote path required",
     scp_direction_title: " SCP Transfer — {} ",
+    scp_direction_upload_label: "Upload",
+    scp_direction_download_label: "Download",
     scp_direction_upload: "(local → server)",
     scp_direction_download: "(server → local)",
     scp_direction_hint: "  Esc cancel",
+    scp_form_title: " SCP {} — {} ",
     scp_form_field_local: "  Local  : ",
     scp_form_field_remote: "  Remote : ",
     scp_form_hint: "  Tab switch field   Enter confirm   Esc cancel",
@@ -483,6 +607,7 @@ pub static STRINGS_EN: Strings = Strings {
     scp_result_fail: "SCP error: {}",
     scp_result_hint: "  Enter / Esc  close",
     scp_in_progress: "SCP {} in progress...",
+    scp_eta_label: "ETA",
 };
 
 // ─── API publique ─────────────────────────────────────────────────────────────
@@ -629,8 +754,8 @@ mod tests {
     #[test]
     fn fmt_single_arg() {
         assert_eq!(
-            fmt("Copié : {}", &["ssh root@host"]),
-            "Copié : ssh root@host"
+            fmt("Copié : {}", &["ssh ops-user@host"]),
+            "Copié : ssh ops-user@host"
         );
     }
 

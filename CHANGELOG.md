@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.14.0] — 2026-03-25
+
+### Added
+
+- Externalize remaining tui labels for wallix and scp
+
+- Implement deterministic auth flow and targeted fallback
+
+
 ## [0.13.6] — 2026-03-23
 
 ### Fixed

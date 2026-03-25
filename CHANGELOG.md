@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.13.6] — 2026-03-23
+
+### Fixed
+
+- Prepare 0.13.6 release improvements
+
+
 ## [0.13.5] — 2026-03-19
 
 ### Fixed

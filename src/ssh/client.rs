@@ -511,18 +511,16 @@ fn connect_wallix_via_pty_with_selection(
                             selection_completed = true;
                         }
                         Err(err) if server.wallix_fail_if_menu_match_error => {
-                            if is_wallix_menu_matching_error(&err)
-                                && let Some((current, total)) =
-                                    parse_wallix_page_position(&transcript)
-                                && current < total
-                            {
-                                master_writer.write_all(b"n\n")?;
-                                master_writer.flush()?;
-                                transcript.clear();
-                                continue;
-                            }
-
                             if is_wallix_menu_matching_error(&err) {
+                                if let Some((current, total)) = parse_wallix_page_position(&transcript)
+                                    && current < total
+                                {
+                                    master_writer.write_all(b"n\n")?;
+                                    master_writer.flush()?;
+                                    transcript.clear();
+                                    continue;
+                                }
+
                                 // Fallback manuel: l'utilisateur choisit lui-même dans le menu.
                                 selection_completed = true;
                                 continue;
@@ -539,13 +537,11 @@ fn connect_wallix_via_pty_with_selection(
                         }
                     }
                 }
-            } else if !target_address_sent {
-                if contains_wallix_target_address_prompt(&transcript) {
-                    master_writer.write_all(server.host.as_bytes())?;
-                    master_writer.write_all(b"\n")?;
-                    master_writer.flush()?;
-                    target_address_sent = true;
-                }
+            } else if !target_address_sent && contains_wallix_target_address_prompt(&transcript) {
+                master_writer.write_all(server.host.as_bytes())?;
+                master_writer.write_all(b"\n")?;
+                master_writer.flush()?;
+                target_address_sent = true;
             }
 
             if selection_completed

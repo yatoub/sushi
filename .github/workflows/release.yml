@@ -44,32 +44,38 @@ jobs:
             binary_name: susshi
             asset_name: susshi-linux-amd64
             build_tool: cargo
+            openssl_mode: system
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu.2.17
             binary_name: susshi
             asset_name: susshi-linux-amd64-glibc217
             build_tool: zigbuild
+            openssl_mode: vendored
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             binary_name: susshi
             asset_name: susshi-linux-amd64-musl
             build_tool: cargo
+            openssl_mode: vendored
           - os: macos-latest
             target: x86_64-apple-darwin
             binary_name: susshi
             asset_name: susshi-macos-amd64
             build_tool: cargo
+            openssl_mode: system
           - os: macos-14
             target: aarch64-apple-darwin
             binary_name: susshi
             asset_name: susshi-macos-arm64
             build_tool: cargo
+            openssl_mode: system
           # Windows support (optional, but good to have)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             binary_name: susshi.exe
             asset_name: susshi-windows-amd64.exe
             build_tool: cargo
+            openssl_mode: system
 
     steps:
       - name: Checkout repository
@@ -90,7 +96,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install -y musl-tools
+          sudo apt-get install -y musl-tools pkg-config libssl-dev
 
       - name: Setup Zig
         if: matrix.build_tool == 'zigbuild'
@@ -136,13 +142,26 @@ jobs:
           echo "OPENSSL_DIR=/usr/local/opt/openssl@3" >> $GITHUB_ENV
           echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
 
-      - name: Build release
+      - name: Build release (system OpenSSL)
+        if: matrix.openssl_mode == 'system'
         shell: bash
+        env:
+          OPENSSL_NO_VENDOR: "1"
         run: |
           if [ "${{ matrix.build_tool }}" = "zigbuild" ]; then
             cargo zigbuild --release --target ${{ matrix.target }}
           else
             cargo build --release --target ${{ matrix.target }}
+          fi
+
+      - name: Build release (vendored fallback)
+        if: matrix.openssl_mode == 'vendored'
+        shell: bash
+        run: |
+          if [ "${{ matrix.build_tool }}" = "zigbuild" ]; then
+            cargo zigbuild --release --features openssl-vendored --target ${{ matrix.target }}
+          else
+            cargo build --release --features openssl-vendored --target ${{ matrix.target }}
           fi
 
       - name: Check GLIBC compatibility for legacy artifact
@@ -207,15 +226,28 @@ jobs:
           cargo install cargo-deb
           cargo install cross
 
+      - name: Install system OpenSSL toolchain (amd64 package)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libssl-dev
+
       - name: Build amd64 DEB
+        env:
+          OPENSSL_NO_VENDOR: "1"
         run: |
           cargo build --release --target x86_64-unknown-linux-gnu
           cargo deb --no-build --target x86_64-unknown-linux-gnu
 
       - name: Build arm64 DEB (cross)
         run: |
-          cross build --release --target aarch64-unknown-linux-gnu
+          cross build --release --features openssl-vendored --target aarch64-unknown-linux-gnu
           cargo deb --no-build --target aarch64-unknown-linux-gnu
+
+      - name: Smoke test DEB package (amd64)
+        run: |
+          sudo dpkg -i target/debian/susshi_*_amd64.deb
+          susshi --version
+          sudo dpkg -r susshi
 
       - name: Upload DEBs to release
         uses: svenstaro/upload-release-action@v2
@@ -256,6 +288,15 @@ jobs:
         env:
           OPENSSL_NO_VENDOR: "1"
           LIBZ_SYS_USE_PKG_CONFIG: "1"
+
+      - name: Smoke test RPM package
+        shell: bash
+        run: |
+          shopt -s globstar
+          rpm_file=$(ls /github/home/rpmbuild/RPMS/**/*.rpm | head -n1)
+          dnf install -y "${rpm_file}"
+          susshi --version
+          rpm -e susshi
 
       - name: Upload RPMs to release
         uses: svenstaro/upload-release-action@v2

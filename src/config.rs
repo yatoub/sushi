@@ -1188,6 +1188,20 @@ fn resolve_server(
             .join(",")
     });
 
+    // Priorité déterministe pour le groupe Wallix:
+    // 1) server.wallix.group
+    // 2) server.wallix_group (legacy)
+    // 3) héritage déjà fusionné via final_bastion.group (env/group/defaults)
+    let resolved_wallix_group = s
+        .wallix
+        .as_ref()
+        .and_then(|b| b.group.as_deref())
+        .or(s.wallix_group.as_deref())
+        .or(final_bastion.as_ref().and_then(|b| b.group.as_deref()))
+        .map(str::trim)
+        .filter(|g| !g.is_empty())
+        .map(ToOwned::to_owned);
+
     Ok(ResolvedServer {
         namespace: namespace.to_string(),
         group_name: group.to_string(),
@@ -1225,12 +1239,7 @@ fn resolve_server(
             .or(def_post_disconnect_hook)
             .map(|h| shellexpand::tilde(h).into_owned()),
         hook_timeout_secs: def_hook_timeout_secs,
-        wallix_group: s
-            .wallix
-            .as_ref()
-            .and_then(|b| b.group.clone())
-            .or_else(|| s.wallix_group.clone())
-            .or_else(|| final_bastion.as_ref().and_then(|b| b.group.clone())),
+        wallix_group: resolved_wallix_group,
         wallix_account: final_bastion
             .as_ref()
             .and_then(|b| b.account.clone())
@@ -1435,6 +1444,105 @@ mod tests {
 
         let resolved = config.resolve().unwrap();
         assert_eq!(resolved[0].wallix_group.as_deref(), Some("dev-admins"));
+    }
+
+    #[test]
+    fn test_resolve_wallix_group_server_override_wins_over_global() {
+        let config = Config {
+            defaults: Some(Defaults {
+                wallix: Some(BastionConfig {
+                    group: Some("global-admins".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            groups: vec![ConfigEntry::Server(Server {
+                name: "srv".to_string(),
+                host: "srv.example.test".to_string(),
+                wallix: Some(BastionConfig {
+                    group: Some("conn-admins".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })],
+            includes: vec![],
+            vars: Default::default(),
+        };
+
+        let resolved = config.resolve().unwrap();
+        assert_eq!(resolved[0].wallix_group.as_deref(), Some("conn-admins"));
+    }
+
+    #[test]
+    fn test_resolve_wallix_group_env_override_wins_over_global() {
+        let config = Config {
+            defaults: Some(Defaults {
+                wallix: Some(BastionConfig {
+                    group: Some("global-admins".to_string()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            groups: vec![ConfigEntry::Group(Group {
+                name: "G".to_string(),
+                user: None,
+                ssh_key: None,
+                mode: None,
+                ssh_port: None,
+                ssh_options: None,
+                wallix: None,
+                wallix_group: None,
+                jump: None,
+                environments: Some(vec![Environment {
+                    name: "PR-OND".to_string(),
+                    user: None,
+                    ssh_key: None,
+                    mode: None,
+                    ssh_port: None,
+                    ssh_options: None,
+                    wallix: Some(BastionConfig {
+                        group: Some("env-admins".to_string()),
+                        ..Default::default()
+                    }),
+                    wallix_group: None,
+                    jump: None,
+                    servers: vec![Server {
+                        name: "db07".to_string(),
+                        host: "pr-ond-bdd07.onde.example.test".to_string(),
+                        ..Default::default()
+                    }],
+                    probe_filesystems: None,
+                    tunnels: None,
+                    tags: None,
+                }]),
+                servers: None,
+                probe_filesystems: None,
+                tunnels: None,
+                tags: None,
+            })],
+            includes: vec![],
+            vars: Default::default(),
+        };
+
+        let resolved = config.resolve().unwrap();
+        assert_eq!(resolved[0].wallix_group.as_deref(), Some("env-admins"));
+    }
+
+    #[test]
+    fn test_resolve_wallix_group_none_when_missing_everywhere() {
+        let config = Config {
+            defaults: Some(Defaults::default()),
+            groups: vec![ConfigEntry::Server(Server {
+                name: "srv".to_string(),
+                host: "srv.example.test".to_string(),
+                ..Default::default()
+            })],
+            includes: vec![],
+            vars: Default::default(),
+        };
+
+        let resolved = config.resolve().unwrap();
+        assert_eq!(resolved[0].wallix_group, None);
     }
 
     #[test]

@@ -182,18 +182,37 @@ fn wallix_template() {
     let mut s = base_server();
     s.bastion_host = Some("bastion.corp.example.com".into());
     s.bastion_user = Some("bops".into());
+    s.wallix_group = Some("PR-OND-BD_crtech-admins".into());
     // template par défaut : {target_user}@%n:SSH:{bastion_user}
     let args = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap();
 
     let l_pos = args.iter().position(|a| a == "-l").expect("-l attendu");
     assert_eq!(
         args[l_pos + 1],
-        "ops@192.168.1.10:SSH:bops",
+        "ops@192.168.1.10:SSH:PR-OND-BD_crtech-admins:bops",
         "template Wallix incorrect"
     );
     assert!(
         args.contains(&"bastion.corp.example.com".to_string()),
         "bastion host absent"
+    );
+}
+
+/// Mode Wallix : si aucun groupe n'est résolu, la chaîne reste valide sans segment d'autorisation.
+#[test]
+fn wallix_template_without_group() {
+    let mut s = base_server();
+    s.bastion_host = Some("bastion.corp.example.com".into());
+    s.bastion_user = Some("bops".into());
+    s.wallix_group = None;
+
+    let args = build_ssh_args(&s, ConnectionMode::Wallix, false).unwrap();
+    let l_pos = args.iter().position(|a| a == "-l").expect("-l attendu");
+
+    assert_eq!(
+        args[l_pos + 1],
+        "ops@192.168.1.10:SSH:bops",
+        "chaîne Wallix inattendue sans groupe"
     );
 }
 

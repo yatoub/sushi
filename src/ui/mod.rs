@@ -125,7 +125,7 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title(" Wallix Selection ")
+        .title(" Sélection Wallix ")
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(app.theme.sapphire))
@@ -144,18 +144,21 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
                 ])
                 .split(inner);
             f.render_widget(
-                Paragraph::new(format!("Loading Wallix entries for {}…", server.name))
-                    .style(Style::default().fg(app.theme.fg)),
+                Paragraph::new(format!(
+                    "Chargement des entrées Wallix pour {}…",
+                    server.name
+                ))
+                .style(Style::default().fg(app.theme.fg)),
                 chunks[0],
             );
             f.render_widget(
-                Paragraph::new("Contacting the bastion and reading the interactive menu.")
+                Paragraph::new("Connexion au bastion et lecture du menu interactif.")
                     .style(Style::default().fg(app.theme.subtext0))
                     .wrap(Wrap { trim: true }),
                 chunks[1],
             );
             f.render_widget(
-                Paragraph::new("Esc/q: cancel").style(Style::default().fg(app.theme.subtext0)),
+                Paragraph::new("Esc/q : annuler").style(Style::default().fg(app.theme.subtext0)),
                 chunks[2],
             );
         }
@@ -169,7 +172,7 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
                 ])
                 .split(inner);
             f.render_widget(
-                Paragraph::new(format!("Wallix selector error for {}", server.name)).style(
+                Paragraph::new(format!("Erreur du sélecteur Wallix pour {}", server.name)).style(
                     Style::default()
                         .fg(app.theme.red)
                         .add_modifier(Modifier::BOLD),
@@ -183,7 +186,8 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
                 chunks[1],
             );
             f.render_widget(
-                Paragraph::new("Enter/Esc/q: close").style(Style::default().fg(app.theme.subtext0)),
+                Paragraph::new("Entrée/Esc/q : fermer")
+                    .style(Style::default().fg(app.theme.subtext0)),
                 chunks[2],
             );
         }
@@ -203,7 +207,7 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
 
             f.render_widget(
                 Paragraph::new(format!(
-                    "Select the Wallix entry for {} ({})",
+                    "Sélectionne l'entrée Wallix pour {} ({})",
                     server.name, server.host
                 ))
                 .style(Style::default().fg(app.theme.fg)),
@@ -239,7 +243,7 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_widget(List::new(items), chunks[1]);
 
             f.render_widget(
-                Paragraph::new("↑/↓: navigate | Enter: connect | Esc/q: cancel")
+                Paragraph::new("↑/↓ : naviguer | Entrée : connecter | Esc/q : annuler")
                     .style(Style::default().fg(app.theme.subtext0)),
                 chunks[2],
             );

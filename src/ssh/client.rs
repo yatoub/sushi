@@ -18,6 +18,42 @@ use std::{
     io::{Read, Write},
 };
 
+fn build_wallix_login_user(
+    server: &ResolvedServer,
+    bastion_user: &str,
+    target_host: &str,
+) -> String {
+    if server.bastion_template.trim().is_empty()
+        || server.bastion_template == "{target_user}@%n:SSH:{bastion_user}"
+    {
+        let mut login = format!("{}@{}:{}", server.user, target_host, server.wallix_protocol);
+        if let Some(group) = server
+            .wallix_group
+            .as_deref()
+            .map(str::trim)
+            .filter(|g| !g.is_empty())
+        {
+            login.push(':');
+            login.push_str(group);
+        }
+        login.push(':');
+        login.push_str(bastion_user);
+        return login;
+    }
+
+    server
+        .bastion_template
+        .replace("{target_user}", &server.user)
+        .replace("{target_host}", target_host)
+        .replace("{bastion_user}", bastion_user)
+        .replace(
+            "{wallix_group}",
+            server.wallix_group.as_deref().unwrap_or(""),
+        )
+        .replace("{protocol}", &server.wallix_protocol)
+        .replace("%n", target_host)
+}
+
 /// Construit la liste complète des arguments SSH sans lancer de processus.
 /// Séparé de `connect()` pour être testable unitairement.
 ///
@@ -93,12 +129,7 @@ pub fn build_ssh_args(
             }
             let bastion_user = server.bastion_user.as_deref().unwrap_or("root");
             let (t_host, _t_port) = parse_host_port(&server.host);
-            let user_string = server
-                .bastion_template
-                .replace("{target_user}", &server.user)
-                .replace("{target_host}", t_host)
-                .replace("{bastion_user}", bastion_user)
-                .replace("%n", t_host);
+            let user_string = build_wallix_login_user(server, bastion_user, t_host);
             args.push("-l".into());
             args.push(user_string);
             let (b_host, b_port) = parse_host_port(bastion_host_str);
@@ -115,11 +146,6 @@ pub fn build_ssh_args(
 
 /// Lance la connexion SSH en remplaçant le processus courant (`exec`).
 pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> Result<()> {
-    #[cfg(unix)]
-    if should_use_wallix_menu_automation(server, mode) {
-        return connect_wallix_via_pty_with_selection(server, verbose, None);
-    }
-
     let args = build_ssh_args(server, mode, verbose)?;
     let mut command = Command::new("ssh");
     command.args(&args);
@@ -145,11 +171,6 @@ pub fn connect_blocking(
     mode: ConnectionMode,
     verbose: bool,
 ) -> Result<()> {
-    #[cfg(unix)]
-    if should_use_wallix_menu_automation(server, mode) {
-        return connect_wallix_via_pty_with_selection(server, verbose, None);
-    }
-
     let args = build_ssh_args(server, mode, verbose)?;
     Command::new("ssh")
         .args(&args)
@@ -223,11 +244,6 @@ pub fn connect_blocking_wallix_with_selection(
 }
 
 // ─── helpers privés ──────────────────────────────────────────────────────────
-
-#[cfg(unix)]
-fn should_use_wallix_menu_automation(server: &ResolvedServer, mode: ConnectionMode) -> bool {
-    mode == ConnectionMode::Wallix && server.wallix_auto_select
-}
 
 #[cfg(unix)]
 fn build_wallix_bastion_args(server: &ResolvedServer, verbose: bool) -> Result<Vec<String>> {
@@ -305,6 +321,14 @@ fn contains_wallix_target_address_prompt(buffer: &str) -> bool {
     lowered.contains("adresse cible")
         || lowered.contains("target address")
         || lowered.contains("destination address")
+}
+
+#[cfg(unix)]
+fn contains_wallix_return_selector_prompt(buffer: &str) -> bool {
+    let lowered = buffer.to_lowercase();
+    lowered.contains("retour au sélecteur")
+        || lowered.contains("retour au selecteur")
+        || lowered.contains("return to selector")
 }
 
 #[cfg(unix)]
@@ -414,7 +438,11 @@ fn connect_wallix_via_pty_with_selection(
     let mut transcript = String::new();
     let mut selection_completed = false;
     let mut target_address_sent = false;
+    let mut return_selector_prompt_handled = false;
     let mut stdin_closed = false;
+    // Si un ID est déjà connu (fallback TUI), on masque le menu global Wallix
+    // pour éviter l'affichage interactif dans le terminal utilisateur.
+    let hide_menu_output = selected_id.is_some();
     let master_fd = master_reader.as_raw_fd();
     let stdin_fd = std::io::stdin().as_raw_fd();
 
@@ -452,17 +480,21 @@ fn connect_wallix_via_pty_with_selection(
                 break;
             }
 
-            stdout.write_all(&buf[..read])?;
-            stdout.flush()?;
+            let chunk = String::from_utf8_lossy(&buf[..read]);
+            transcript.push_str(&chunk);
+            if transcript.len() > 64 * 1024 {
+                let drain = transcript.len().saturating_sub(64 * 1024);
+                transcript.drain(..drain);
+            }
+
+            // En mode auto-sélection, on n'affiche rien tant que la phase menu
+            // n'est pas terminée afin d'éviter le bruit du menu global.
+            if !hide_menu_output || target_address_sent {
+                stdout.write_all(&buf[..read])?;
+                stdout.flush()?;
+            }
 
             if !selection_completed {
-                let chunk = String::from_utf8_lossy(&buf[..read]);
-                transcript.push_str(&chunk);
-                if transcript.len() > 64 * 1024 {
-                    let drain = transcript.len().saturating_sub(64 * 1024);
-                    transcript.drain(..drain);
-                }
-
                 if contains_wallix_prompt(&transcript) {
                     let selection = if let Some(id) = selected_id {
                         Ok(id.to_string())
@@ -508,13 +540,6 @@ fn connect_wallix_via_pty_with_selection(
                     }
                 }
             } else if !target_address_sent {
-                let chunk = String::from_utf8_lossy(&buf[..read]);
-                transcript.push_str(&chunk);
-                if transcript.len() > 64 * 1024 {
-                    let drain = transcript.len().saturating_sub(64 * 1024);
-                    transcript.drain(..drain);
-                }
-
                 if contains_wallix_target_address_prompt(&transcript) {
                     master_writer.write_all(server.host.as_bytes())?;
                     master_writer.write_all(b"\n")?;
@@ -522,12 +547,28 @@ fn connect_wallix_via_pty_with_selection(
                     target_address_sent = true;
                 }
             }
+
+            if selection_completed
+                && !return_selector_prompt_handled
+                && contains_wallix_return_selector_prompt(&transcript)
+            {
+                // En sortie de session, Wallix peut proposer un retour au sélecteur.
+                // On force un refus explicite pour terminer proprement la connexion.
+                master_writer.write_all(b"n\n")?;
+                master_writer.flush()?;
+                return_selector_prompt_handled = true;
+            }
         }
 
         if pollfds[1].revents & libc::POLLIN != 0 {
             let mut buf = [0_u8; 4096];
             let read = stdin.read(&mut buf)?;
             if read == 0 {
+                // En mode canonique, Ctrl+D peut se traduire par EOF local (read=0).
+                // On relaie explicitement un EOT vers la session distante pour
+                // reproduire le comportement attendu d'un shell interactif.
+                master_writer.write_all(&[0x04])?;
+                master_writer.flush()?;
                 stdin_closed = true;
             } else {
                 master_writer.write_all(&buf[..read])?;
@@ -817,6 +858,13 @@ mod tests {
     fn wallix_target_address_prompt_detection_supports_french_prompt() {
         assert!(contains_wallix_target_address_prompt(
             "Account successfully checked out\nAdresse cible (dans 10.242.23.24/29): "
+        ));
+    }
+
+    #[test]
+    fn wallix_return_selector_prompt_detection_supports_french_prompt() {
+        assert!(contains_wallix_return_selector_prompt(
+            "Session fermée, retour au sélecteur ? [o/N]"
         ));
     }
 

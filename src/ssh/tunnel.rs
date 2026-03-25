@@ -314,7 +314,10 @@ mod tests {
         s.ssh_options = vec!["ServerAliveInterval=30".into()];
         let t = pg_tunnel();
         let args = build_tunnel_args(&s, ConnectionMode::Direct, &t).unwrap();
-        let dest_pos = args.iter().rposition(|a| a == "admin@198.51.100.1").unwrap();
+        let dest_pos = args
+            .iter()
+            .rposition(|a| a == "admin@198.51.100.1")
+            .unwrap();
         let opt_pos = args
             .iter()
             .position(|a| a == "ServerAliveInterval=30")

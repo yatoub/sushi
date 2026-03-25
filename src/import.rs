@@ -356,7 +356,8 @@ mod tests {
 
     #[test]
     fn test_proxy_command_warning() {
-        let f = write_temp("Host legacy\n  HostName 203.0.113.4\n  ProxyCommand ssh -W %h:%p jump\n");
+        let f =
+            write_temp("Host legacy\n  HostName 203.0.113.4\n  ProxyCommand ssh -W %h:%p jump\n");
         let result = import_ssh_config(f.path());
         assert_eq!(result.warnings.len(), 1);
         assert!(result.warnings[0].contains("ProxyCommand"));
@@ -375,7 +376,8 @@ mod tests {
 
     #[test]
     fn test_identity_file() {
-        let f = write_temp("Host secure\n  HostName 198.51.100.6\n  IdentityFile ~/.ssh/prod_key\n");
+        let f =
+            write_temp("Host secure\n  HostName 198.51.100.6\n  IdentityFile ~/.ssh/prod_key\n");
         let result = import_ssh_config(f.path());
         let e = &result.entries[0];
         assert_eq!(e.identity_file, Some("~/.ssh/prod_key".to_string()));

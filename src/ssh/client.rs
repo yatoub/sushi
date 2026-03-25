@@ -512,7 +512,8 @@ fn connect_wallix_via_pty_with_selection(
                         }
                         Err(err) if server.wallix_fail_if_menu_match_error => {
                             if is_wallix_menu_matching_error(&err) {
-                                if let Some((current, total)) = parse_wallix_page_position(&transcript)
+                                if let Some((current, total)) =
+                                    parse_wallix_page_position(&transcript)
                                     && current < total
                                 {
                                     master_writer.write_all(b"n\n")?;

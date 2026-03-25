@@ -15,6 +15,7 @@ use crate::app::{
 };
 use crate::i18n::Strings;
 use crate::probe::{ProbeProfile, ProbeState};
+use crate::ssh::sftp::ScpDirection;
 use crate::ssh::tunnel::TunnelStatus;
 use crate::ui::theme::Theme;
 
@@ -125,7 +126,7 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title(" Sélection Wallix ")
+        .title(app.lang.wallix_selector_title)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(app.theme.sapphire))
@@ -144,21 +145,22 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
                 ])
                 .split(inner);
             f.render_widget(
-                Paragraph::new(format!(
-                    "Chargement des entrées Wallix pour {}…",
-                    server.name
+                Paragraph::new(crate::i18n::fmt(
+                    app.lang.wallix_selector_loading,
+                    &[&server.name],
                 ))
                 .style(Style::default().fg(app.theme.fg)),
                 chunks[0],
             );
             f.render_widget(
-                Paragraph::new("Connexion au bastion et lecture du menu interactif.")
+                Paragraph::new(app.lang.wallix_selector_loading_hint)
                     .style(Style::default().fg(app.theme.subtext0))
                     .wrap(Wrap { trim: true }),
                 chunks[1],
             );
             f.render_widget(
-                Paragraph::new("Esc/q : annuler").style(Style::default().fg(app.theme.subtext0)),
+                Paragraph::new(app.lang.wallix_selector_cancel_hint)
+                    .style(Style::default().fg(app.theme.subtext0)),
                 chunks[2],
             );
         }
@@ -172,7 +174,11 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
                 ])
                 .split(inner);
             f.render_widget(
-                Paragraph::new(format!("Erreur du sélecteur Wallix pour {}", server.name)).style(
+                Paragraph::new(crate::i18n::fmt(
+                    app.lang.wallix_selector_error,
+                    &[&server.name],
+                ))
+                .style(
                     Style::default()
                         .fg(app.theme.red)
                         .add_modifier(Modifier::BOLD),
@@ -186,7 +192,7 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
                 chunks[1],
             );
             f.render_widget(
-                Paragraph::new("Entrée/Esc/q : fermer")
+                Paragraph::new(app.lang.wallix_selector_close_hint)
                     .style(Style::default().fg(app.theme.subtext0)),
                 chunks[2],
             );
@@ -206,9 +212,9 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
                 .split(inner);
 
             f.render_widget(
-                Paragraph::new(format!(
-                    "Sélectionne l'entrée Wallix pour {} ({})",
-                    server.name, server.host
+                Paragraph::new(crate::i18n::fmt(
+                    app.lang.wallix_selector_choose,
+                    &[&server.name, &server.host],
                 ))
                 .style(Style::default().fg(app.theme.fg)),
                 chunks[0],
@@ -243,7 +249,7 @@ fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: Rect) {
             f.render_widget(List::new(items), chunks[1]);
 
             f.render_widget(
-                Paragraph::new("↑/↓ : naviguer | Entrée : connecter | Esc/q : annuler")
+                Paragraph::new(app.lang.wallix_selector_list_hint)
                     .style(Style::default().fg(app.theme.subtext0)),
                 chunks[2],
             );
@@ -563,7 +569,10 @@ fn draw_scp_direction_select(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("  ↑  ", s_active),
-            Span::styled("Upload  ", s_label),
+            Span::styled(
+                format!("{}  ", app.lang.scp_direction_upload_label),
+                s_label,
+            ),
             Span::styled(app.lang.scp_direction_upload, s_sub),
         ])),
         chunks[0],
@@ -571,7 +580,10 @@ fn draw_scp_direction_select(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("  ↓  ", s_active),
-            Span::styled("Download  ", s_label),
+            Span::styled(
+                format!("{}  ", app.lang.scp_direction_download_label),
+                s_label,
+            ),
             Span::styled(app.lang.scp_direction_download, s_sub),
         ])),
         chunks[1],
@@ -606,8 +618,12 @@ fn draw_scp_form(f: &mut Frame, app: &mut App, area: Rect) {
         _ => return,
     };
 
-    let dir_label = direction.label();
-    let title = format!(" SCP {} — {} ", dir_label, server_name);
+    let dir_label = if direction == ScpDirection::Upload {
+        app.lang.scp_direction_upload_label
+    } else {
+        app.lang.scp_direction_download_label
+    };
+    let title = crate::i18n::fmt(app.lang.scp_form_title, &[dir_label, &server_name]);
 
     // 2 champs + 1 erreur + 1 vide + 1 hint + 2 bordures
     let popup_h: u16 = 8;
@@ -700,6 +716,11 @@ fn draw_scp_form(f: &mut Frame, app: &mut App, area: Rect) {
 fn draw_scp_result(f: &mut Frame, app: &mut App, area: Rect) {
     let (icon, color, msg) = match &app.scp_state {
         ScpState::Done { direction, exit_ok } => {
+            let dir_label = if *direction == ScpDirection::Upload {
+                app.lang.scp_direction_upload_label
+            } else {
+                app.lang.scp_direction_download_label
+            };
             let icon = if *exit_ok { "✔" } else { "✗" };
             let color = if *exit_ok {
                 app.theme.green
@@ -707,9 +728,9 @@ fn draw_scp_result(f: &mut Frame, app: &mut App, area: Rect) {
                 app.theme.red
             };
             let msg = if *exit_ok {
-                crate::i18n::fmt(app.lang.scp_result_success, &[direction.label()])
+                crate::i18n::fmt(app.lang.scp_result_success, &[dir_label])
             } else {
-                crate::i18n::fmt(app.lang.scp_result_errors, &[direction.label()])
+                crate::i18n::fmt(app.lang.scp_result_errors, &[dir_label])
             };
             (icon, color, msg)
         }
@@ -1251,6 +1272,11 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     file_size,
                 } = &app.scp_state
                 {
+                    let dir_label = if *direction == ScpDirection::Upload {
+                        app.lang.scp_direction_upload_label
+                    } else {
+                        app.lang.scp_direction_download_label
+                    };
                     const BAR_W: usize = 20;
                     let filled = (*progress as usize * BAR_W / 100).min(BAR_W);
                     let bar_color = if *progress < 60 {
@@ -1261,7 +1287,7 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         app.theme.sapphire
                     };
                     lines.push(Line::from(vec![Span::styled(
-                        crate::i18n::fmt(app.lang.scp_in_progress, &[direction.label()]),
+                        crate::i18n::fmt(app.lang.scp_in_progress, &[dir_label]),
                         Style::default()
                             .fg(app.theme.sapphire)
                             .add_modifier(Modifier::BOLD),
@@ -1310,11 +1336,21 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         let bps = transferred as f64 / elapsed_secs;
                         let eta_secs = (remaining as f64 / bps) as u64;
                         if eta_secs >= 3600 {
-                            format!("ETA {}h{:02}m", eta_secs / 3600, (eta_secs % 3600) / 60)
+                            format!(
+                                "{} {}h{:02}m",
+                                app.lang.scp_eta_label,
+                                eta_secs / 3600,
+                                (eta_secs % 3600) / 60
+                            )
                         } else if eta_secs >= 60 {
-                            format!("ETA {}m{:02}s", eta_secs / 60, eta_secs % 60)
+                            format!(
+                                "{} {}m{:02}s",
+                                app.lang.scp_eta_label,
+                                eta_secs / 60,
+                                eta_secs % 60
+                            )
                         } else {
-                            format!("ETA {}s", eta_secs)
+                            format!("{} {}s", app.lang.scp_eta_label, eta_secs)
                         }
                     } else {
                         String::new()
@@ -1562,16 +1598,22 @@ fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
             }
             ConfigItem::Namespace(label) => {
                 vec![Line::from(vec![Span::styled(
-                    format!("📦 Namespace : {}", label),
+                    crate::i18n::fmt(app.lang.details_namespace, &[label]),
                     Style::default()
                         .fg(app.theme.namespace_header)
                         .add_modifier(Modifier::BOLD),
                 )])]
             }
-            ConfigItem::Group(name, _ns) => vec![Line::from(format!("Group: {}", name))],
-            ConfigItem::Environment(g, e, _ns) => {
-                vec![Line::from(format!("Environment: {} / {}", g, e))]
+            ConfigItem::Group(name, _ns) => {
+                vec![Line::from(crate::i18n::fmt(
+                    app.lang.details_group,
+                    &[name],
+                ))]
             }
+            ConfigItem::Environment(g, e, _ns) => vec![Line::from(crate::i18n::fmt(
+                app.lang.details_environment,
+                &[g, e],
+            ))],
         }
     } else {
         vec![Line::from(app.lang.details_placeholder)]
@@ -1670,9 +1712,9 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let (line1_spans, line2_spans): (Vec<Span>, Vec<Span>) = if app.is_searching {
         (
             [
-                kh("↑↓", "naviguer"),
-                kh("Esc", "valider / annuler"),
-                kh("Ctrl+U", "effacer"),
+                kh("↑↓", app.lang.hint_navigate),
+                kh("Esc", app.lang.hint_validate_cancel),
+                kh("Ctrl+U", app.lang.hint_clear),
             ]
             .into_iter()
             .flatten()
@@ -1682,11 +1724,11 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     } else if !app.search_query.is_empty() {
         (
             [
-                kh("↑↓", "naviguer"),
-                kh("Enter", "connexion"),
-                kh("Esc", "effacer filtre"),
-                kh("/", "nouvelle recherche"),
-                kh("q", "quitter"),
+                kh("↑↓", app.lang.hint_navigate),
+                kh("Enter", app.lang.hint_connect),
+                kh("Esc", app.lang.hint_clear_filter),
+                kh("/", app.lang.hint_new_search),
+                kh("q", app.lang.hint_quit),
             ]
             .into_iter()
             .flatten()
@@ -1696,29 +1738,29 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     } else {
         // Ligne 1 — actions principales
         let line1 = [
-            kh("Enter", "connexion"),
-            kh("Space", "expand"),
-            kh("↑↓ jk", "naviguer"),
-            kh("/", "recherche"),
-            kh("Tab 1-3", "mode"),
-            kh("T", "tunnels"),
-            kh("q", "quitter"),
+            kh("Enter", app.lang.hint_connect),
+            kh("Space", app.lang.hint_expand),
+            kh("↑↓ jk", app.lang.hint_navigate),
+            kh("/", app.lang.hint_search),
+            kh("Tab 1-3", app.lang.hint_mode),
+            kh("T", app.lang.hint_tunnels),
+            kh("q", app.lang.hint_quit),
         ]
         .into_iter()
         .flatten()
         .collect();
         // Ligne 2 — actions secondaires
         let line2 = [
-            kh("d", "probe"),
-            kh("x", "commande"),
-            kh("s", "SCP"),
-            kh("y", "copier SSH"),
-            kh("f", "favori"),
-            kh("F", "★ vue favoris"),
-            kh("r", "recharger"),
-            kh("H", "tri récent"),
-            kh("C", "replier"),
-            kh("v", "verbose"),
+            kh("d", app.lang.hint_probe),
+            kh("x", app.lang.hint_command),
+            kh("s", app.lang.hint_scp),
+            kh("y", app.lang.hint_copy_ssh),
+            kh("f", app.lang.hint_favorite),
+            kh("F", app.lang.hint_favorites_view),
+            kh("r", app.lang.hint_reload),
+            kh("H", app.lang.hint_recent_sort),
+            kh("C", app.lang.hint_collapse),
+            kh("v", app.lang.hint_verbose),
         ]
         .into_iter()
         .flatten()

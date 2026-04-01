@@ -38,7 +38,7 @@ jobs:
           sed -i "s/^b2sums=(.*/b2sums=(${{ steps.b2sum.outputs.sum }})/" PKGBUILD
 
       - name: Publish to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
         with:
           pkgname: susshi
           pkgbuild: ./PKGBUILD
@@ -92,7 +92,7 @@ jobs:
           sed -i "s/^b2sums_x86_64=(.*/b2sums_x86_64=(${{ steps.b2sums.outputs.bin }})/" PKGBUILD
 
       - name: Publish susshi-bin to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
         with:
           pkgname: susshi-bin
           pkgbuild: ./PKGBUILD

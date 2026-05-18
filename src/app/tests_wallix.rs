@@ -98,7 +98,7 @@ fn wallix_poll_auto_resolves_to_pending_connection() {
     assert!(app.wallix_selector.is_none());
     let pending = app.take_pending_wallix_connection();
     assert!(pending.is_some());
-    let (_, selected_id) = pending.unwrap();
+    let (_, selected_id, _) = pending.unwrap();
     assert_eq!(selected_id, "42");
     assert_eq!(
         app.wallix_selection_cache.get(&App::server_key(&server)),
@@ -228,7 +228,7 @@ fn wallix_poll_uses_cached_selection_when_available() {
     assert!(app.wallix_selector.is_none());
     let pending = app.take_pending_wallix_connection();
     assert!(pending.is_some());
-    let (_, selected_id) = pending.unwrap();
+    let (_, selected_id, _) = pending.unwrap();
     assert_eq!(selected_id, "77");
 }
 

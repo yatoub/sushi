@@ -2,6 +2,7 @@ use crate::config::{
     Config, ConfigEntry, ConfigError, ConnectionMode, IncludeWarning, ResolvedServer, ThemeVariant,
     TunnelConfig, ValidationWarning,
 };
+use crate::fl;
 use crate::probe::{ProbeResult, ProbeState};
 use crate::ssh::sftp::{self as ssh_sftp, ScpDirection, ScpEvent};
 use crate::ssh::tunnel::{self as ssh_tunnel, TunnelHandle, TunnelStatus};
@@ -49,12 +50,27 @@ mod expansion_state;
 mod core_state;
 
 /// Mode courant de l'application.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default)]
 pub enum AppMode {
     #[default]
     Normal,
     /// Affiche un panneau d'erreur bloquant jusqu'à la confirmation.
     Error(String),
+    /// Saisie d'un credential SSH (passphrase de clé ou mot de passe) avant connexion.
+    CredentialInput {
+        server: Box<ResolvedServer>,
+        mode: ConnectionMode,
+        verbose: bool,
+        /// `true` = passphrase de clé, `false` = mot de passe
+        is_passphrase: bool,
+        input: String,
+    },
+}
+
+impl PartialEq for AppMode {
+    fn eq(&self, other: &Self) -> bool {
+        matches!((self, other), (Self::Normal, Self::Normal) | (Self::Error(_), Self::Error(_)))
+    }
 }
 
 /// État d'une commande SSH ad-hoc (touche `x`).
@@ -161,17 +177,17 @@ impl TunnelForm {
     }
 
     /// Valide les champs et retourne un `TunnelConfig` ou un message d'erreur.
-    pub fn validate(&self, lang: &crate::i18n::Strings) -> Result<TunnelConfig, String> {
+    pub fn validate(&self) -> Result<TunnelConfig, String> {
         let local_port = self
             .local_port
             .trim()
             .parse::<u16>()
             .ok()
             .filter(|&p| p >= 1)
-            .ok_or_else(|| lang.tunnel_form_local_port_invalid.to_string())?;
+            .ok_or_else(|| fl!("tunnel-form-local-port-invalid"))?;
 
         if self.remote_host.trim().is_empty() {
-            return Err(lang.tunnel_form_remote_host_empty.to_string());
+            return Err(fl!("tunnel-form-remote-host-empty"));
         }
 
         let remote_port = self
@@ -180,7 +196,7 @@ impl TunnelForm {
             .parse::<u16>()
             .ok()
             .filter(|&p| p >= 1)
-            .ok_or_else(|| lang.tunnel_form_remote_port_invalid.to_string())?;
+            .ok_or_else(|| fl!("tunnel-form-remote-port-invalid"))?;
 
         Ok(TunnelConfig {
             local_port,
@@ -207,7 +223,10 @@ pub enum TunnelOverlayState {
 #[derive(Debug, Clone)]
 pub enum WallixSelectorState {
     /// Récupération des entrées depuis le bastion.
-    Loading { server: Box<ResolvedServer> },
+    Loading {
+        server: Box<ResolvedServer>,
+        verbose: bool,
+    },
     /// Liste des entrées Wallix disponibles.
     List {
         server: Box<ResolvedServer>,
@@ -331,9 +350,6 @@ pub struct App {
     /// Récepteur du thread de diagnostic (présent seulement quand Running).
     pub probe_rx: Option<mpsc::Receiver<Result<ProbeResult, String>>>,
 
-    /// Jeu de chaînes localisées détecté au démarrage.
-    pub lang: &'static crate::i18n::Strings,
-
     /// Chemin du fichier de configuration principal (pour le rechargement).
     pub config_path: PathBuf,
 
@@ -389,6 +405,9 @@ pub struct App {
     pub wallix_selection_cache: HashMap<String, String>,
     /// Connexion Wallix prête à démarrer (résolue automatiquement ou via choix utilisateur).
     wallix_pending_connection: Option<(ResolvedServer, String)>,
+    /// Credential SSH temporaire (passphrase ou mot de passe) à utiliser pour la prochaine
+    /// connexion Wallix. Effacé après usage dans `take_pending_wallix_connection`.
+    pub wallix_pending_auth: Option<String>,
 }
 
 type WallixMenuLoadResult = (ResolvedServer, Result<Vec<WallixMenuEntry>, String>);
@@ -408,6 +427,10 @@ mod tests_search;
 #[cfg(test)]
 #[path = "app/tests_visibility.rs"]
 mod tests_visibility;
+
+#[cfg(test)]
+#[path = "app/tests_credential_input.rs"]
+mod tests_credential_input;
 
 #[cfg(test)]
 #[path = "app/tests_reload.rs"]

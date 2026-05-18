@@ -14,6 +14,7 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 use susshi::app::{
     App, AppMode, CmdState, ConfigItem, ScpState, TunnelOverlayState, WallixSelectorState,
 };
+use susshi::fl;
 use susshi::config::{Config, ConnectionMode, IncludeWarning, ResolvedServer, undefined_vars};
 use susshi::handlers::{get_layout, handle_mouse_event, is_in_rect};
 use susshi::import;
@@ -412,6 +413,8 @@ fn build_adhoc_server(
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 fn main() -> io::Result<()> {
+    susshi::i18n::init();
+
     let cli = Cli::parse();
 
     // Résolution du chemin de config
@@ -477,7 +480,7 @@ fn main() -> io::Result<()> {
             return Err(io::Error::other(e.to_string()));
         }
         // post_disconnect_hook non supporté ici : exec() remplace le processus.
-        if let Err(e) = susshi::ssh::client::connect(&server, mode, cli.verbose) {
+        if let Err(e) = susshi::ssh::client::connect(&server, mode, cli.verbose, None) {
             eprintln!("SSH Connection Error: {}", e);
             return Err(io::Error::other(e.to_string()));
         }
@@ -521,7 +524,7 @@ fn main() -> io::Result<()> {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
                     } else {
                         if let Err(e) =
-                            susshi::ssh::client::connect_blocking(&server, mode, verbose)
+                            susshi::ssh::client::connect_blocking(&server, mode, verbose, None)
                         {
                             eprintln!("SSH Connection Error: {}", e);
                         }
@@ -540,14 +543,14 @@ fn main() -> io::Result<()> {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
                     } else {
                         // post_disconnect_hook non supporté ici : exec() remplace le processus.
-                        if let Err(e) = susshi::ssh::client::connect(&server, mode, verbose) {
+                        if let Err(e) = susshi::ssh::client::connect(&server, mode, verbose, None) {
                             eprintln!("SSH Connection Error: {}", e);
                         }
                     }
                     break;
                 }
             }
-            Ok(AppResult::ConnectWallixSelected(server, verbose, selected_id)) => {
+            Ok(AppResult::ConnectWallixSelected(server, verbose, selected_id, auth)) => {
                 if app.keep_open {
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
@@ -559,6 +562,7 @@ fn main() -> io::Result<()> {
                             &server,
                             verbose,
                             &selected_id,
+                            auth.as_deref(),
                         ) {
                             eprintln!("SSH Connection Error: {}", e);
                         }
@@ -577,6 +581,45 @@ fn main() -> io::Result<()> {
                         &server,
                         verbose,
                         &selected_id,
+                        auth.as_deref(),
+                    ) {
+                        eprintln!("SSH Connection Error: {}", e);
+                    }
+                    break;
+                }
+            }
+            Ok(AppResult::ConnectWithAuth(server, mode, verbose, cred)) => {
+                if app.keep_open {
+                    if let Err(e) = susshi::hooks::run_hook(
+                        server.pre_connect_hook.as_deref().unwrap_or(""),
+                        &server,
+                    ) {
+                        eprintln!("Hook pre_connect a annulé la connexion : {e}");
+                    } else {
+                        if let Err(e) = susshi::ssh::client::connect_blocking(
+                            &server,
+                            mode,
+                            verbose,
+                            Some(cred.as_str()),
+                        ) {
+                            eprintln!("SSH Connection Error: {}", e);
+                        }
+                        let _ = susshi::hooks::run_hook(
+                            server.post_disconnect_hook.as_deref().unwrap_or(""),
+                            &server,
+                        );
+                    }
+                } else {
+                    if let Err(e) = susshi::hooks::run_hook(
+                        server.pre_connect_hook.as_deref().unwrap_or(""),
+                        &server,
+                    ) {
+                        eprintln!("Hook pre_connect a annulé la connexion : {e}");
+                    } else if let Err(e) = susshi::ssh::client::connect(
+                        &server,
+                        mode,
+                        verbose,
+                        Some(cred.as_str()),
                     ) {
                         eprintln!("SSH Connection Error: {}", e);
                     }
@@ -598,7 +641,9 @@ fn main() -> io::Result<()> {
 pub enum AppResult {
     Exit,
     Connect(Box<susshi::config::ResolvedServer>, ConnectionMode, bool),
-    ConnectWallixSelected(Box<susshi::config::ResolvedServer>, bool, String),
+    ConnectWallixSelected(Box<susshi::config::ResolvedServer>, bool, String, Option<String>),
+    /// Connexion avec un credential (passphrase ou mot de passe) saisi dans la TUI.
+    ConnectWithAuth(Box<susshi::config::ResolvedServer>, ConnectionMode, bool, String),
 }
 
 fn run_app(
@@ -638,12 +683,13 @@ fn run_app(
         // Lit le résultat du chargement du menu Wallix si un thread tourne
         app.poll_wallix_selector();
 
-        if let Some((server, selected_id)) = app.take_pending_wallix_connection() {
+        if let Some((server, selected_id, auth)) = app.take_pending_wallix_connection() {
             app.record_connection(&server);
             return Ok(AppResult::ConnectWallixSelected(
                 Box::new(server),
                 app.verbose_mode,
                 selected_id,
+                auth,
             ));
         }
 
@@ -656,7 +702,33 @@ fn run_app(
         if event::poll(Duration::from_millis(250))? {
             match event::read()? {
                 Event::Key(key) => {
-                    if app.app_mode != AppMode::Normal {
+                    if let AppMode::CredentialInput { .. } = &app.app_mode {
+                        match key.code {
+                            KeyCode::Esc => {
+                                app.cancel_credential_input();
+                            }
+                            KeyCode::Enter => {
+                                if let Some((server, mode, verbose, cred)) =
+                                    app.submit_credential_input()
+                                {
+                                    app.record_connection(&server);
+                                    return Ok(AppResult::ConnectWithAuth(
+                                        Box::new(server),
+                                        mode,
+                                        verbose,
+                                        cred,
+                                    ));
+                                }
+                            }
+                            KeyCode::Char(c) => {
+                                app.credential_input_push(c);
+                            }
+                            KeyCode::Backspace => {
+                                app.credential_input_backspace();
+                            }
+                            _ => {}
+                        }
+                    } else if app.app_mode != AppMode::Normal {
                         // En mode erreur : n'importe quelle touche ferme le panneau
                         match key.code {
                             KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') => app.clear_error(),
@@ -754,6 +826,7 @@ fn run_app(
                                         Box::new(server),
                                         app.verbose_mode,
                                         selected_id,
+                                        app.wallix_pending_auth.take(),
                                     ));
                                 }
                             }
@@ -848,23 +921,27 @@ fn run_app(
                                             match app.clipboard.as_mut().map(|cb| cb.set_text(&cmd))
                                             {
                                                 Some(Ok(_)) => app.set_status_message(
-                                                    app.lang.copied.replacen("{}", &cmd, 1),
+                                                    fl!("copied", cmd = cmd.as_str()),
                                                 ),
-                                                Some(Err(e)) => app.set_status_message(
-                                                    app.lang.clipboard_error.replacen(
-                                                        "{}",
-                                                        &e.to_string(),
-                                                        1,
-                                                    ),
-                                                ),
+                                                Some(Err(e)) => {
+                                                    let err = e.to_string();
+                                                    app.set_status_message(fl!(
+                                                        "clipboard-error",
+                                                        error = err.as_str()
+                                                    ));
+                                                }
                                                 None => app.set_status_message(
-                                                    app.lang.clipboard_unavailable.to_string(),
+                                                    fl!("clipboard-unavailable"),
                                                 ),
                                             }
                                         }
-                                        Err(e) => app.set_status_message(
-                                            app.lang.ssh_error.replacen("{}", &e.to_string(), 1),
-                                        ),
+                                        Err(e) => {
+                                            let err = e.to_string();
+                                            app.set_status_message(fl!(
+                                                "ssh-error",
+                                                error = err.as_str()
+                                            ));
+                                        }
                                     }
                                 }
                             }
@@ -873,11 +950,7 @@ fn run_app(
                             }
                             KeyCode::Char('r') => match app.reload() {
                                 Ok(()) => {}
-                                Err(e) => app.set_status_message(
-                                    app.lang
-                                        .config_reload_error
-                                        .replacen("{}", &e.to_string(), 1),
-                                ),
+                                Err(_) => app.set_status_message(fl!("config-reload-error")),
                             },
                             KeyCode::Char('f') => {
                                 app.toggle_favorite();
@@ -892,11 +965,21 @@ fn run_app(
                                 app.sort_by_recent = !app.sort_by_recent;
                                 app.items_dirty = true;
                                 let msg = if app.sort_by_recent {
-                                    app.lang.sort_recent_on
+                                    fl!("sort-recent-on")
                                 } else {
-                                    app.lang.sort_recent_off
+                                    fl!("sort-recent-off")
                                 };
                                 app.set_status_message(msg);
+                            }
+                            KeyCode::Char('p') => {
+                                // Prompt de credential SSH (passphrase clé ou mot de passe)
+                                let items = app.get_visible_items();
+                                if let Some(ConfigItem::Server(server)) =
+                                    items.get(app.selected_index)
+                                {
+                                    let has_key = !server.ssh_key.is_empty();
+                                    app.open_credential_input(has_key);
+                                }
                             }
                             KeyCode::Char('x') => {
                                 // Lance la saisie de commande ad-hoc

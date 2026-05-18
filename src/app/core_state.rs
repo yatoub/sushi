@@ -27,6 +27,64 @@ impl App {
         self.app_mode = AppMode::Normal;
     }
 
+    /// Ouvre le dialog de saisie de credential SSH (passphrase ou mot de passe)
+    /// pour le serveur et le mode de connexion actuellement sélectionnés.
+    pub fn open_credential_input(&mut self, is_passphrase: bool) {
+        if let Some(server) = self.selected_server() {
+            self.app_mode = AppMode::CredentialInput {
+                server: Box::new(server.clone()),
+                mode: self.connection_mode,
+                verbose: self.verbose_mode,
+                is_passphrase,
+                input: String::new(),
+            };
+        }
+    }
+
+    /// Ajoute un caractère au buffer du credential en cours de saisie.
+    pub fn credential_input_push(&mut self, c: char) {
+        if let AppMode::CredentialInput { input, .. } = &mut self.app_mode {
+            input.push(c);
+        }
+    }
+
+    /// Supprime le dernier caractère du buffer de saisie.
+    pub fn credential_input_backspace(&mut self) {
+        if let AppMode::CredentialInput { input, .. } = &mut self.app_mode {
+            input.pop();
+        }
+    }
+
+    /// Annule la saisie et revient en mode Normal.
+    pub fn cancel_credential_input(&mut self) {
+        self.app_mode = AppMode::Normal;
+    }
+
+    /// Valide la saisie et retourne `(server, mode, verbose, credential)` si le buffer
+    /// n'est pas vide. Laisse le mode inchangé si le buffer est vide.
+    pub fn submit_credential_input(
+        &mut self,
+    ) -> Option<(ResolvedServer, crate::config::ConnectionMode, bool, String)> {
+        let AppMode::CredentialInput {
+            server,
+            mode,
+            verbose,
+            input,
+            ..
+        } = &self.app_mode
+        else {
+            return None;
+        };
+
+        if input.is_empty() {
+            return None;
+        }
+
+        let result = ((**server).clone(), *mode, *verbose, input.clone());
+        self.app_mode = AppMode::Normal;
+        Some(result)
+    }
+
     /// Calcule la cle unique d'un serveur (stable, independante de l'ordre de config).
     pub fn server_key(server: &ResolvedServer) -> String {
         let mut key = String::new();

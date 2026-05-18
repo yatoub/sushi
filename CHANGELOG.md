@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.0] — 2026-05-18
+
+### Added
+
+- SSH credential prompt (passphrase / password) in TUI
+
+
+### Changed
+
+- Split app and ui god modules
+
+
+### build
+
+- Bump libc from 0.2.184 to 0.2.186
+
+- Bump libc from 0.2.183 to 0.2.184
+
+
 ## [0.14.0] — 2026-03-25
 
 ### Added

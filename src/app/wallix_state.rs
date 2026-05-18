@@ -9,7 +9,9 @@ fn wallix_matching_error(message: &str) -> bool {
 }
 
 fn group_suffix_matches(entry_group: &str, configured_group: &str) -> bool {
-    entry_group == configured_group || entry_group.ends_with(&format!("_{configured_group}"))
+    let entry_lower = entry_group.to_ascii_lowercase();
+    let conf_lower = configured_group.to_ascii_lowercase();
+    entry_lower == conf_lower || entry_lower.ends_with(&format!("_{conf_lower}"))
 }
 
 fn score_entry(
@@ -21,7 +23,7 @@ fn score_entry(
 
     if expected_targets
         .iter()
-        .any(|target| target == &entry.target)
+        .any(|target| target.eq_ignore_ascii_case(&entry.target))
     {
         score += 10;
     }
@@ -32,7 +34,7 @@ fn score_entry(
         .map(str::trim)
         .filter(|g| !g.is_empty())
     {
-        if entry.group == group {
+        if entry.group.eq_ignore_ascii_case(group) {
             score += 4;
         } else if group_suffix_matches(&entry.group, group) {
             score += 2;
@@ -53,7 +55,7 @@ pub(super) fn targeted_wallix_entries(
         .filter(|entry| {
             expected_targets
                 .iter()
-                .any(|target| target == &entry.target)
+                .any(|target| target.eq_ignore_ascii_case(&entry.target))
         })
         .cloned()
         .collect();
@@ -89,16 +91,31 @@ impl App {
     }
 
     pub fn open_wallix_selector(&mut self, server: ResolvedServer, verbose: bool) {
+        self.open_wallix_selector_with_auth(server, verbose, None);
+    }
+
+    /// Relance le fetch du menu Wallix en fournissant un credential (passphrase ou mot de passe).
+    pub fn open_wallix_selector_with_auth(
+        &mut self,
+        server: ResolvedServer,
+        verbose: bool,
+        auth: Option<String>,
+    ) {
         self.wallix_pending_connection = None;
         let (tx, rx) = mpsc::channel();
         self.wallix_selector = Some(WallixSelectorState::Loading {
             server: Box::new(server.clone()),
+            verbose,
         });
         self.wallix_selector_rx = Some(rx);
 
         std::thread::spawn(move || {
-            let result = crate::ssh::client::fetch_wallix_menu_entries(&server, verbose)
-                .map_err(|e| e.to_string());
+            let result = crate::ssh::client::fetch_wallix_menu_entries(
+                &server,
+                verbose,
+                auth.as_deref(),
+            )
+            .map_err(|e| e.to_string());
             let _ = tx.send((server, result));
         });
     }
@@ -157,10 +174,28 @@ impl App {
                     }
                 }
                 Err(message) => {
-                    self.wallix_selector = Some(WallixSelectorState::Error {
-                        server: Box::new(server),
-                        message,
-                    });
+                    if let Some(prompt_text) = message.strip_prefix("SSH_AUTH_REQUIRED:") {
+                        let is_passphrase = prompt_text
+                            .to_ascii_lowercase()
+                            .contains("enter passphrase for key");
+                        let verbose = match &self.wallix_selector {
+                            Some(WallixSelectorState::Loading { verbose, .. }) => *verbose,
+                            _ => false,
+                        };
+                        self.wallix_selector = None;
+                        self.app_mode = AppMode::CredentialInput {
+                            server: Box::new(server),
+                            mode: ConnectionMode::Wallix,
+                            verbose,
+                            is_passphrase,
+                            input: String::new(),
+                        };
+                    } else {
+                        self.wallix_selector = Some(WallixSelectorState::Error {
+                            server: Box::new(server),
+                            message,
+                        });
+                    }
                 }
             }
             self.wallix_selector_rx = None;
@@ -172,8 +207,14 @@ impl App {
         self.wallix_selector_rx = None;
     }
 
-    pub fn take_pending_wallix_connection(&mut self) -> Option<(ResolvedServer, String)> {
-        self.wallix_pending_connection.take()
+    /// Prend la connexion Wallix en attente ainsi que le credential éventuel.
+    /// Efface les deux champs après retour.
+    pub fn take_pending_wallix_connection(
+        &mut self,
+    ) -> Option<(ResolvedServer, String, Option<String>)> {
+        self.wallix_pending_connection
+            .take()
+            .map(|(server, id)| (server, id, self.wallix_pending_auth.take()))
     }
 
     pub fn remember_wallix_selection(&mut self, server: &ResolvedServer, selected_id: &str) {

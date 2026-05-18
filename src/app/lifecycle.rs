@@ -1,4 +1,5 @@
 use super::*;
+use crate::fl;
 
 /// Uses a non-cryptographic hash to detect config file changes.
 /// Returns 0 on read error so reload logic stays conservative.
@@ -62,7 +63,6 @@ impl App {
             clipboard: arboard::Clipboard::new().ok(),
             probe_state: ProbeState::Idle,
             probe_rx: None,
-            lang: crate::i18n::get_strings(crate::i18n::detect_lang()),
             warnings,
             config_path,
             config_hash,
@@ -83,6 +83,7 @@ impl App {
             wallix_selector_rx: None,
             wallix_selection_cache: HashMap::new(),
             wallix_pending_connection: None,
+            wallix_pending_auth: None,
         };
 
         app.list_state.select(Some(0));
@@ -108,17 +109,12 @@ impl App {
                 .warnings
                 .iter()
                 .map(|w| match w {
-                    crate::config::IncludeWarning::LoadError { label, path, error } => app
-                        .lang
-                        .include_warn_load
-                        .replacen("{}", label, 1)
-                        .replacen("{}", path, 1)
-                        .replacen("{}", error, 1),
-                    crate::config::IncludeWarning::Circular { label, path } => app
-                        .lang
-                        .include_warn_circular
-                        .replacen("{}", label, 1)
-                        .replacen("{}", path, 1),
+                    crate::config::IncludeWarning::LoadError { label, path, error } => {
+                        fl!("include-warn-load", label = label.as_str(), path = path.as_str(), error = error.as_str())
+                    }
+                    crate::config::IncludeWarning::Circular { label, path } => {
+                        fl!("include-warn-circular", label = label.as_str(), path = path.as_str())
+                    }
                 })
                 .collect();
             app.app_mode = AppMode::Error(lines.join("\n"));
@@ -154,7 +150,8 @@ impl App {
         self.selected_index = old_idx;
         self.list_state.select(Some(old_idx));
 
-        self.set_status_message(self.lang.config_reloaded);
+        let count = self.resolved_servers.len();
+        self.set_status_message(fl!("config-reloaded", count = (count as i64)));
         Ok(())
     }
 }

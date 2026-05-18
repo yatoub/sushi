@@ -7,6 +7,7 @@ use ratatui::{
 };
 
 use crate::app::{App, CmdState, ConfigItem, ScpState};
+use crate::fl;
 use crate::probe::{ProbeProfile, ProbeState};
 use crate::ssh::sftp::ScpDirection;
 use crate::ui::theme::Theme;
@@ -22,13 +23,13 @@ pub(crate) fn draw_connection_mode_area(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
-    let titles = vec![app.lang.tab_direct, app.lang.tab_jump, app.lang.tab_wallix];
+    let titles = vec![fl!("tab-direct"), fl!("tab-jump"), fl!("tab-wallix")];
     let tabs = Tabs::new(titles)
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .title(app.lang.tab_title)
+                .title(fl!("tab-title"))
                 .border_style(Style::default().fg(app.theme.border)),
         )
         .select(app.connection_mode.index())
@@ -44,7 +45,7 @@ fn draw_tabs(f: &mut Frame, app: &App, area: Rect) {
 
 fn draw_verbose_toggle(f: &mut Frame, app: &App, area: Rect) {
     let checkbox = if app.verbose_mode { "☑" } else { "☐" };
-    let text = format!("{} {}", checkbox, app.lang.verbose_label);
+    let text = format!("{} {}", checkbox, fl!("verbose-label"));
 
     let style = if app.verbose_mode {
         Style::default()
@@ -58,7 +59,7 @@ fn draw_verbose_toggle(f: &mut Frame, app: &App, area: Rect) {
         Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .title(app.lang.verbose_title)
+            .title(fl!("verbose-title"))
             .border_style(Style::default().fg(app.theme.border)),
     );
     f.render_widget(verbose, area);
@@ -75,45 +76,35 @@ pub(crate) fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
     let (search_text, title) = if app.is_searching {
         let cursor = "│";
         let text = if app.search_query.is_empty() {
-            format!("{}  {}", cursor, app.lang.search_placeholder)
+            format!("{}  {}", cursor, fl!("search-placeholder"))
         } else {
             format!("{}{}", app.search_query, cursor)
         };
 
         let title_text = if app.search_query.is_empty() {
-            app.lang
-                .search_title_active
-                .replacen("{}", &total_servers.to_string(), 1)
+            fl!("search-title-active", total = (total_servers as i64))
         } else if server_count == 0 {
-            app.lang
-                .search_no_results
-                .replacen("{}", &app.search_query, 1)
+            fl!("search-no-results", query = app.search_query.as_str())
         } else if server_count == total_servers {
-            app.lang
-                .search_all_match
-                .replacen("{}", &server_count.to_string(), 1)
+            fl!("search-all-match", count = (server_count as i64))
         } else {
-            app.lang
-                .search_partial
-                .replacen("{}", &server_count.to_string(), 1)
-                .replacen("{}", &total_servers.to_string(), 1)
+            fl!("search-partial", found = (server_count as i64), total = (total_servers as i64))
         };
 
         (text, title_text)
     } else {
         let text = if app.search_query.is_empty() {
-            app.lang.search_idle_hint.to_string()
+            fl!("search-idle-hint")
         } else {
             let title_text = if server_count == total_servers {
-                app.lang
-                    .search_result_all
-                    .replacen("{}", &server_count.to_string(), 1)
+                fl!("search-result-all", count = (server_count as i64))
             } else {
-                app.lang
-                    .search_result_partial
-                    .replacen("{}", &server_count.to_string(), 1)
-                    .replacen("{}", &total_servers.to_string(), 1)
-                    .replacen("{}", &app.search_query, 1)
+                fl!(
+                    "search-result-partial",
+                    found = (server_count as i64),
+                    total = (total_servers as i64),
+                    query = app.search_query.as_str()
+                )
             };
             return draw_search_with_results(
                 f,
@@ -124,7 +115,7 @@ pub(crate) fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
                 app.theme,
             );
         };
-        (text, app.lang.search_title_idle.to_string())
+        (text, fl!("search-title-idle"))
     };
 
     let border_color = if app.is_searching {
@@ -274,9 +265,9 @@ pub(crate) fn draw_tree(f: &mut Frame, app: &mut App, area: Rect) {
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .title(if app.favorites_only {
-                    app.lang.favorites_title
+                    fl!("favorites-title")
                 } else {
-                    app.lang.panel_servers
+                    fl!("panel-servers")
                 })
                 .border_style(Style::default().fg(app.theme.border)),
         )
@@ -295,7 +286,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .title(app.lang.panel_details)
+        .title(fl!("panel-details"))
         .border_style(Style::default().fg(app.theme.border));
 
     let visible_items = app.get_visible_items();
@@ -313,7 +304,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                 let mut lines = vec![
                     Line::from(vec![
                         Span::styled(
-                            app.lang.label_name,
+                            fl!("label-name"),
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -322,7 +313,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]),
                     Line::from(vec![
                         Span::styled(
-                            app.lang.label_host,
+                            fl!("label-host"),
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -331,7 +322,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]),
                     Line::from(vec![
                         Span::styled(
-                            app.lang.label_port,
+                            fl!("label-port"),
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -340,7 +331,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]),
                     Line::from(vec![
                         Span::styled(
-                            app.lang.label_user,
+                            fl!("label-user"),
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -349,7 +340,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]),
                     Line::from(vec![
                         Span::styled(
-                            app.lang.label_mode,
+                            fl!("label-mode"),
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -361,7 +352,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     ]),
                     Line::from(vec![
                         Span::styled(
-                            app.lang.label_key,
+                            fl!("label-key"),
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -373,7 +364,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                 if let Some(jump) = &server.jump_host {
                     lines.push(Line::from(vec![
                         Span::styled(
-                            app.lang.label_jump,
+                            fl!("label-jump"),
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -389,7 +380,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     };
                     lines.push(Line::from(vec![
                         Span::styled(
-                            app.lang.label_wallix,
+                            fl!("label-wallix"),
                             Style::default()
                                 .add_modifier(Modifier::BOLD)
                                 .fg(app.theme.fg),
@@ -401,7 +392,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
 
                 if !server.ssh_options.is_empty() {
                     lines.push(Line::from(vec![Span::styled(
-                        app.lang.label_options,
+                        fl!("label-options"),
                         Style::default()
                             .add_modifier(Modifier::BOLD)
                             .fg(app.theme.fg),
@@ -421,7 +412,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         .unwrap_or(0);
                     let elapsed = now.saturating_sub(ts);
                     if elapsed < 60 {
-                        app.lang.last_seen_just_now.to_string()
+                        fl!("last-seen-just-now")
                     } else {
                         let minutes = elapsed / 60;
                         let hours = minutes / 60;
@@ -433,14 +424,14 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         } else {
                             format!("{} min", minutes)
                         };
-                        app.lang.last_seen_ago.replacen("{}", &ago_str, 1)
+                        fl!("last-seen-ago", duration = ago_str.as_str())
                     }
                 } else {
-                    app.lang.last_seen_never.to_string()
+                    fl!("last-seen-never")
                 };
                 lines.push(Line::from(vec![
                     Span::styled(
-                        app.lang.last_seen_label,
+                        fl!("last-seen-label"),
                         Style::default()
                             .add_modifier(Modifier::BOLD)
                             .fg(app.theme.fg),
@@ -455,28 +446,17 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         let (badge_fg, badge_text) = if n_run > 0 {
                             (
                                 app.theme.green,
-                                crate::i18n::fmt(
-                                    app.lang.tunnel_badge_active,
-                                    &[
-                                        &n_run.to_string(),
-                                        if n_run > 1 { "s" } else { "" },
-                                        &n_cfg.to_string(),
-                                        if n_cfg > 1 { "s" } else { "" },
-                                    ],
-                                ),
+                                fl!("tunnel-badge-active", n_run = (n_run as i64), n_cfg = (n_cfg as i64)),
                             )
                         } else {
                             (
                                 app.theme.subtext0,
-                                crate::i18n::fmt(
-                                    app.lang.tunnel_badge_none,
-                                    &[&n_cfg.to_string(), if n_cfg > 1 { "s" } else { "" }],
-                                ),
+                                fl!("tunnel-badge-none", n_cfg = (n_cfg as i64)),
                             )
                         };
                         lines.push(Line::from(vec![
                             Span::styled(
-                                app.lang.tunnel_badge_label,
+                                fl!("tunnel-badge-label"),
                                 Style::default()
                                     .add_modifier(Modifier::BOLD)
                                     .fg(app.theme.fg),
@@ -495,9 +475,9 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                 } = &app.scp_state
                 {
                     let dir_label = if *direction == ScpDirection::Upload {
-                        app.lang.scp_direction_upload_label
+                        fl!("scp-direction-upload-label")
                     } else {
-                        app.lang.scp_direction_download_label
+                        fl!("scp-direction-download-label")
                     };
                     const BAR_W: usize = 20;
                     let filled = (*progress as usize * BAR_W / 100).min(BAR_W);
@@ -509,7 +489,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         app.theme.sapphire
                     };
                     lines.push(Line::from(vec![Span::styled(
-                        crate::i18n::fmt(app.lang.scp_in_progress, &[dir_label]),
+                        fl!("scp-in-progress", direction = dir_label.as_str()),
                         Style::default()
                             .fg(app.theme.sapphire)
                             .add_modifier(Modifier::BOLD),
@@ -546,6 +526,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     } else {
                         "-".to_string()
                     };
+                    let eta_label = fl!("scp-eta-label");
                     let eta_str = if elapsed_secs >= 1.0
                         && *progress > 0
                         && *progress < 100
@@ -557,19 +538,19 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         if eta_secs >= 3600 {
                             format!(
                                 "{} {}h{:02}m",
-                                app.lang.scp_eta_label,
+                                eta_label,
                                 eta_secs / 3600,
                                 (eta_secs % 3600) / 60
                             )
                         } else if eta_secs >= 60 {
                             format!(
                                 "{} {}m{:02}s",
-                                app.lang.scp_eta_label,
+                                eta_label,
                                 eta_secs / 60,
                                 eta_secs % 60
                             )
                         } else {
-                            format!("{} {}s", app.lang.scp_eta_label, eta_secs)
+                            format!("{} {}s", eta_label, eta_secs)
                         }
                     } else {
                         String::new()
@@ -603,7 +584,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
 
                 lines.push(Line::from(""));
                 match &app.cmd_state {
-                    CmdState::Running(cmd) => {
+                    CmdState::Running(_cmd) => {
                         let ms = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .map(|d| d.subsec_millis())
@@ -619,7 +600,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                 Style::default().fg(app.theme.sapphire),
                             ),
                             Span::styled(
-                                app.lang.cmd_running.replacen("{}", cmd, 1),
+                                fl!("cmd-running"),
                                 Style::default().fg(app.theme.subtext0),
                             ),
                         ]));
@@ -661,7 +642,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     _ => match &app.probe_state {
                         ProbeState::Idle => {
                             lines.push(Line::from(vec![Span::styled(
-                                app.lang.probe_hint,
+                                fl!("probe-hint"),
                                 Style::default().fg(app.theme.subtext0),
                             )]));
                         }
@@ -678,7 +659,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                     Style::default().fg(app.theme.sapphire),
                                 ),
                                 Span::styled(
-                                    app.lang.probe_running,
+                                    fl!("probe-running"),
                                     Style::default().fg(app.theme.subtext0),
                                 ),
                             ]));
@@ -686,7 +667,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         ProbeState::Done(r) => {
                             let theme = app.theme;
                             lines.push(Line::from(vec![Span::styled(
-                                app.lang.probe_section,
+                                fl!("probe-section"),
                                 Style::default().fg(theme.border),
                             )]));
                             if r.profile == ProbeProfile::Wallix {
@@ -709,47 +690,47 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                             } else {
                                 lines.push(Line::from(vec![
                                     Span::styled(
-                                        app.lang.probe_kernel,
+                                        fl!("probe-kernel"),
                                         Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
                                     ),
                                     Span::raw(r.kernel.clone()),
                                 ]));
                                 lines.push(Line::from(vec![
                                     Span::styled(
-                                        app.lang.probe_os,
+                                        fl!("probe-os"),
                                         Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
                                     ),
                                     Span::raw(r.os_name.clone()),
                                 ]));
                                 lines.push(Line::from(vec![
                                     Span::styled(
-                                        app.lang.probe_cpu,
+                                        fl!("probe-cpu"),
                                         Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
                                     ),
                                     Span::raw(r.cpu_model.clone()),
                                 ]));
                                 lines.push(Line::from(vec![
                                     Span::styled(
-                                        app.lang.probe_cpu_cores,
+                                        fl!("probe-cpu-cores"),
                                         Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
                                     ),
                                     Span::raw(r.cpu_cores.to_string()),
                                 ]));
                                 lines.push(Line::from(vec![
                                     Span::styled(
-                                        app.lang.probe_load,
+                                        fl!("probe-load"),
                                         Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
                                     ),
                                     Span::raw(r.load.clone()),
                                 ]));
                                 lines.push(probe_bar(
-                                    app.lang.probe_ram,
+                                    &fl!("probe-ram"),
                                     r.ram_pct,
                                     r.ram_total_gb,
                                     theme,
                                 ));
                                 lines.push(probe_bar(
-                                    app.lang.probe_disk,
+                                    &fl!("probe-disk"),
                                     r.disk_pct,
                                     r.disk_total_gb,
                                     theme,
@@ -757,10 +738,9 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                 for fs_entry in &r.extra_fs {
                                     match &fs_entry.usage {
                                         Some(usage) => {
-                                            let label = app.lang.probe_disk_extra.replacen(
-                                                "{}",
-                                                &fs_entry.mountpoint,
-                                                1,
+                                            let label = fl!(
+                                                "probe-disk-extra",
+                                                mount = fs_entry.mountpoint.as_str()
                                             );
                                             lines.push(probe_bar(
                                                 &label,
@@ -771,10 +751,9 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                         }
                                         None => {
                                             lines.push(Line::from(vec![Span::styled(
-                                                app.lang.probe_fs_absent.replacen(
-                                                    "{}",
-                                                    &fs_entry.mountpoint,
-                                                    1,
+                                                fl!(
+                                                    "probe-fs-absent",
+                                                    mount = fs_entry.mountpoint.as_str()
                                                 ),
                                                 Style::default()
                                                     .fg(theme.yellow)
@@ -787,7 +766,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         }
                         ProbeState::Error(msg) => {
                             lines.push(Line::from(vec![Span::styled(
-                                app.lang.probe_section,
+                                fl!("probe-section"),
                                 Style::default().fg(app.theme.border),
                             )]));
                             lines.push(Line::from(vec![
@@ -802,27 +781,25 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
             }
             ConfigItem::Namespace(label) => {
                 vec![Line::from(vec![Span::styled(
-                    crate::i18n::fmt(app.lang.details_namespace, &[label]),
+                    fl!("details-namespace", label = label.as_str()),
                     Style::default()
                         .fg(app.theme.namespace_header)
                         .add_modifier(Modifier::BOLD),
                 )])]
             }
             ConfigItem::Group(name, _ns) => {
-                vec![Line::from(crate::i18n::fmt(
-                    app.lang.details_group,
-                    &[name],
-                ))]
+                vec![Line::from(fl!("details-group", name = name.as_str()))]
             }
             ConfigItem::Environment(g, e, _ns) => {
-                vec![Line::from(crate::i18n::fmt(
-                    app.lang.details_environment,
-                    &[g, e],
+                vec![Line::from(fl!(
+                    "details-environment",
+                    group = g.as_str(),
+                    env = e.as_str()
                 ))]
             }
         }
     } else {
-        vec![Line::from(app.lang.details_placeholder)]
+        vec![Line::from(fl!("details-placeholder"))]
     };
 
     let paragraph = Paragraph::new(text)
@@ -862,7 +839,7 @@ fn probe_bar(label: &str, pct: u8, total_gb: f32, theme: &Theme) -> Line<'static
 
 pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     if let CmdState::Prompting(buf) = &app.cmd_state {
-        let prompt = format!("{} {}\u{2588}", app.lang.cmd_prompt, buf);
+        let prompt = format!("{} {}\u{2588}", fl!("cmd-prompt"), buf);
         let paragraph =
             Paragraph::new(prompt).style(Style::default().bg(app.theme.bg).fg(app.theme.yellow));
         f.render_widget(paragraph, area);
@@ -892,7 +869,7 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let theme = app.theme;
     let bg = theme.selection_bg;
 
-    let kh = |key: &str, desc: &str| -> Vec<Span<'static>> {
+    let kh = |key: &str, desc: String| -> Vec<Span<'static>> {
         vec![
             Span::styled(
                 format!("[{}]", key),
@@ -911,9 +888,9 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let (line1_spans, line2_spans): (Vec<Span>, Vec<Span>) = if app.is_searching {
         (
             [
-                kh("↑↓", app.lang.hint_navigate),
-                kh("Esc", app.lang.hint_validate_cancel),
-                kh("Ctrl+U", app.lang.hint_clear),
+                kh("↑↓", fl!("hint-navigate")),
+                kh("Esc", fl!("hint-validate-cancel")),
+                kh("Ctrl+U", fl!("hint-clear")),
             ]
             .into_iter()
             .flatten()
@@ -923,11 +900,11 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
     } else if !app.search_query.is_empty() {
         (
             [
-                kh("↑↓", app.lang.hint_navigate),
-                kh("Enter", app.lang.hint_connect),
-                kh("Esc", app.lang.hint_clear_filter),
-                kh("/", app.lang.hint_new_search),
-                kh("q", app.lang.hint_quit),
+                kh("↑↓", fl!("hint-navigate")),
+                kh("Enter", fl!("hint-connect")),
+                kh("Esc", fl!("hint-clear-filter")),
+                kh("/", fl!("hint-new-search")),
+                kh("q", fl!("hint-quit")),
             ]
             .into_iter()
             .flatten()
@@ -936,28 +913,28 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         )
     } else {
         let line1 = [
-            kh("Enter", app.lang.hint_connect),
-            kh("Space", app.lang.hint_expand),
-            kh("↑↓ jk", app.lang.hint_navigate),
-            kh("/", app.lang.hint_search),
-            kh("Tab 1-3", app.lang.hint_mode),
-            kh("T", app.lang.hint_tunnels),
-            kh("q", app.lang.hint_quit),
+            kh("Enter", fl!("hint-connect")),
+            kh("Space", fl!("hint-expand")),
+            kh("↑↓ jk", fl!("hint-navigate")),
+            kh("/", fl!("hint-search")),
+            kh("Tab 1-3", fl!("hint-mode")),
+            kh("T", fl!("hint-tunnels")),
+            kh("q", fl!("hint-quit")),
         ]
         .into_iter()
         .flatten()
         .collect();
         let line2 = [
-            kh("d", app.lang.hint_probe),
-            kh("x", app.lang.hint_command),
-            kh("s", app.lang.hint_scp),
-            kh("y", app.lang.hint_copy_ssh),
-            kh("f", app.lang.hint_favorite),
-            kh("F", app.lang.hint_favorites_view),
-            kh("r", app.lang.hint_reload),
-            kh("H", app.lang.hint_recent_sort),
-            kh("C", app.lang.hint_collapse),
-            kh("v", app.lang.hint_verbose),
+            kh("d", fl!("hint-probe")),
+            kh("x", fl!("hint-command")),
+            kh("s", fl!("hint-scp")),
+            kh("y", fl!("hint-copy-ssh")),
+            kh("f", fl!("hint-favorite")),
+            kh("F", fl!("hint-favorites-view")),
+            kh("r", fl!("hint-reload")),
+            kh("H", fl!("hint-recent-sort")),
+            kh("C", fl!("hint-collapse")),
+            kh("v", fl!("hint-verbose")),
         ]
         .into_iter()
         .flatten()

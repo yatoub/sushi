@@ -14,7 +14,7 @@ fn valid_form() -> TunnelForm {
 
 #[test]
 fn form_validate_ok() {
-    let cfg = valid_form().validate(&crate::i18n::STRINGS_FR).unwrap();
+    let cfg = valid_form().validate().unwrap();
     assert_eq!(cfg.local_port, 5433);
     assert_eq!(cfg.remote_host, "127.0.0.1");
     assert_eq!(cfg.remote_port, 5432);
@@ -25,26 +25,26 @@ fn form_validate_ok() {
 fn form_validate_bad_local_port() {
     let mut f = valid_form();
     f.local_port = "abc".into();
-    assert!(f.validate(&crate::i18n::STRINGS_FR).is_err());
+    assert!(f.validate().is_err());
     f.local_port = "0".into();
-    assert!(f.validate(&crate::i18n::STRINGS_FR).is_err());
+    assert!(f.validate().is_err());
     f.local_port = "65536".into();
-    assert!(f.validate(&crate::i18n::STRINGS_FR).is_err());
+    assert!(f.validate().is_err());
 }
 
 #[test]
 fn form_validate_empty_remote_host() {
     let mut f = valid_form();
     f.remote_host = "   ".into();
-    let err = f.validate(&crate::i18n::STRINGS_FR).unwrap_err();
-    assert!(err.contains("obligatoire"));
+    let err = f.validate().unwrap_err();
+    assert!(!err.is_empty());
 }
 
 #[test]
 fn form_validate_bad_remote_port() {
     let mut f = valid_form();
     f.remote_port = "not_a_port".into();
-    assert!(f.validate(&crate::i18n::STRINGS_FR).is_err());
+    assert!(f.validate().is_err());
 }
 
 #[test]

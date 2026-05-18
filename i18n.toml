@@ -1,0 +1,6 @@
+# Fallback language used when the user's locale has no .ftl file.
+fallback_language = "en"
+
+[fluent]
+# Directory containing per-language subdirectories with .ftl files.
+assets_dir = "i18n"

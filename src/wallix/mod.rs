@@ -211,7 +211,10 @@ pub fn select_id_by_target_and_group(
     target: &str,
     group: &str,
 ) -> Result<String> {
-    let target_matches: Vec<_> = entries.iter().filter(|e| e.target == target).collect();
+    let target_matches: Vec<_> = entries
+        .iter()
+        .filter(|e| e.target.eq_ignore_ascii_case(target))
+        .collect();
 
     if target_matches.is_empty() {
         return Err(anyhow!(
@@ -225,7 +228,10 @@ pub fn select_id_by_target_and_group(
         ));
     }
 
-    let group_matches: Vec<_> = target_matches.iter().filter(|e| e.group == group).collect();
+    let group_matches: Vec<_> = target_matches
+        .iter()
+        .filter(|e| e.group.eq_ignore_ascii_case(group))
+        .collect();
 
     match group_matches.len() {
         0 => Err(anyhow!(
@@ -300,7 +306,9 @@ pub fn build_expected_groups(server: &ResolvedServer) -> Result<Vec<String>> {
 }
 
 fn group_suffix_matches(entry_group: &str, configured_group: &str) -> bool {
-    entry_group == configured_group || entry_group.ends_with(&format!("_{configured_group}"))
+    let entry_lower = entry_group.to_ascii_lowercase();
+    let conf_lower = configured_group.to_ascii_lowercase();
+    entry_lower == conf_lower || entry_lower.ends_with(&format!("_{conf_lower}"))
 }
 
 /// Select a Wallix menu entry directly from a resolved server configuration.
@@ -321,8 +329,10 @@ pub fn select_id_for_server(
     let mut available_groups_for_matching_targets: Vec<String> = Vec::new();
 
     for target in &targets {
-        let target_entries: Vec<&WallixMenuEntry> =
-            entries.iter().filter(|e| &e.target == target).collect();
+        let target_entries: Vec<&WallixMenuEntry> = entries
+            .iter()
+            .filter(|e| e.target.eq_ignore_ascii_case(target))
+            .collect();
         if target_entries.is_empty() {
             continue;
         }
@@ -338,7 +348,7 @@ pub fn select_id_for_server(
         for group in &groups {
             let exact: Vec<_> = target_entries
                 .iter()
-                .filter(|entry| entry.group == *group)
+                .filter(|entry| entry.group.eq_ignore_ascii_case(group))
                 .collect();
             match exact.len() {
                 1 => return Ok(exact[0].id.clone()),
@@ -414,6 +424,12 @@ mod tests {
             "APP-ANSCORE_ops-admins",
             "dev-admins"
         ));
+    }
+
+    #[test]
+    fn test_group_suffix_matches_case_insensitive() {
+        assert!(group_suffix_matches("APP-ANSCORE_DEV-ADMINS", "dev-admins"));
+        assert!(group_suffix_matches("Dev-Admins", "dev-admins"));
     }
 
     #[test]
@@ -811,6 +827,50 @@ mod tests {
         };
 
         assert_eq!(select_id_for_server(&entries, &server).unwrap(), "1");
+    }
+
+    #[test]
+    fn test_select_id_for_server_case_insensitive_target() {
+        let entries = vec![WallixMenuEntry {
+            id: "42".to_string(),
+            target: "PCOLLIN@DEFAULT@PR-AUT-ANSCORE02:SSH".to_string(),
+            group: "CES3S-ADMINS".to_string(),
+        }];
+
+        let server = ResolvedServer {
+            namespace: String::new(),
+            group_name: String::new(),
+            env_name: String::new(),
+            name: "anscore02".to_string(),
+            host: "pr-aut-anscore02.ste.in.phm.education.gouv.fr".to_string(),
+            user: "pcollin".to_string(),
+            port: 22,
+            ssh_key: String::new(),
+            ssh_options: vec![],
+            default_mode: crate::config::ConnectionMode::Wallix,
+            jump_host: None,
+            bastion_host: Some("ssh.in.phm.education.gouv.fr".to_string()),
+            bastion_user: Some("pcollin".to_string()),
+            bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
+            wallix_group: Some("ces3s-admins".to_string()),
+            wallix_account: "default".to_string(),
+            wallix_protocol: "SSH".to_string(),
+            wallix_auto_select: true,
+            wallix_fail_if_menu_match_error: true,
+            wallix_selection_timeout_secs: 8,
+            use_system_ssh_config: false,
+            probe_filesystems: vec![],
+            tunnels: vec![],
+            tags: vec![],
+            control_master: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
+        };
+
+        assert_eq!(select_id_for_server(&entries, &server).unwrap(), "42");
     }
 
     #[test]

@@ -52,8 +52,13 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         overlays::draw_wallix_selector_overlay(f, app, f.area());
     }
 
+    // Overlay saisie credential — au-dessus de tout sauf les erreurs
+    if matches!(&app.app_mode, AppMode::CredentialInput { .. }) {
+        overlays::draw_credential_input_overlay(f, app, f.area());
+    }
+
     // Overlay erreur — rendu en dernier pour être au-dessus de tout
     if let AppMode::Error(msg) = &app.app_mode {
-        overlays::draw_error_overlay(f, msg.clone(), f.area(), app.theme, app.lang);
+        overlays::draw_error_overlay(f, msg.clone(), f.area(), app.theme);
     }
 }

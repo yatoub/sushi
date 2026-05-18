@@ -145,7 +145,19 @@ pub fn build_ssh_args(
 }
 
 /// Lance la connexion SSH en remplaçant le processus courant (`exec`).
-pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> Result<()> {
+///
+/// Si `credential` est fourni, le processus courant est remplacé par un sous-processus
+/// bloquant (pas d'`exec`) afin de pouvoir configurer `SSH_ASKPASS` et nettoyer le script
+/// temporaire après la session.
+pub fn connect(
+    server: &ResolvedServer,
+    mode: ConnectionMode,
+    verbose: bool,
+    credential: Option<&str>,
+) -> Result<()> {
+    if let Some(cred) = credential {
+        return connect_blocking(server, mode, verbose, Some(cred));
+    }
     let args = build_ssh_args(server, mode, verbose)?;
     let mut command = Command::new("ssh");
     command.args(&args);
@@ -166,31 +178,78 @@ pub fn connect(server: &ResolvedServer, mode: ConnectionMode, verbose: bool) -> 
 /// Lance la connexion SSH dans un sous-processus bloquant (sans `exec`).
 /// Contrairement à [`connect`], retourne après la fin de la session SSH —
 /// utilisé quand `keep_open` est actif pour revenir à la TUI ensuite.
+///
+/// Si `credential` est fourni, `SSH_ASKPASS` est configuré pour l'injecter
+/// automatiquement lorsque SSH demande une passphrase ou un mot de passe.
 pub fn connect_blocking(
     server: &ResolvedServer,
     mode: ConnectionMode,
     verbose: bool,
+    credential: Option<&str>,
 ) -> Result<()> {
     let args = build_ssh_args(server, mode, verbose)?;
-    Command::new("ssh")
-        .args(&args)
+    let mut command = Command::new("ssh");
+    command.args(&args);
+
+    #[cfg(unix)]
+    let askpass_path = if let Some(cred) = credential {
+        let p = setup_askpass_script(cred)?;
+        command.env("SSH_ASKPASS", &p);
+        command.env("SSH_ASKPASS_REQUIRE", "force");
+        Some(p)
+    } else {
+        None
+    };
+
+    let result = command
         .status()
         .map(|_| ())
-        .map_err(|e| anyhow::Error::new(e).context("Failed to spawn ssh command"))
+        .map_err(|e| anyhow::Error::new(e).context("Failed to spawn ssh command"));
+
+    #[cfg(unix)]
+    if let Some(p) = askpass_path {
+        let _ = std::fs::remove_file(p);
+    }
+
+    result
 }
 
 /// Récupère les entrées du menu Wallix affichées par le bastion sans ouvrir de shell distant.
+///
+/// `auth` est un credential optionnel (passphrase de clé SSH ou mot de passe) à injecter
+/// automatiquement si SSH le demande avant d'afficher le menu.
+/// Si `auth` est `None` et qu'un prompt d'authentification est détecté, retourne une erreur
+/// avec le préfixe `"SSH_AUTH_REQUIRED: "` pour que la TUI affiche le dialog de saisie.
 #[cfg(unix)]
 pub fn fetch_wallix_menu_entries(
     server: &ResolvedServer,
     verbose: bool,
+    auth: Option<&str>,
 ) -> Result<Vec<WallixMenuEntry>> {
     let args = build_wallix_bastion_args(server, verbose)?;
     let (child, mut master_reader, mut master_writer) = spawn_wallix_pty(&args)?;
     let mut transcript = String::new();
 
     loop {
-        let page = read_until_wallix_prompt(&mut master_reader)?;
+        let page = read_until_wallix_prompt_or_auth(&mut master_reader)?;
+
+        if let Some(auth_prompt) = page.strip_prefix("SSH_AUTH_REQUIRED:") {
+            if let Some(cred) = auth {
+                master_writer.write_all(cred.as_bytes())?;
+                master_writer.write_all(b"\n")?;
+                master_writer.flush()?;
+                // Continuer à lire jusqu'au menu Wallix
+                transcript.clear();
+                continue;
+            } else {
+                unsafe {
+                    libc::kill(child.as_raw(), libc::SIGTERM);
+                }
+                let _ = waitpid(child, Some(WaitPidFlag::WNOHANG));
+                return Err(anyhow::anyhow!("SSH_AUTH_REQUIRED: {}", auth_prompt.trim()));
+            }
+        }
+
         transcript.push_str(&page);
 
         match parse_wallix_page_position(&page) {
@@ -213,23 +272,28 @@ pub fn fetch_wallix_menu_entries(
 pub fn fetch_wallix_menu_entries(
     _server: &ResolvedServer,
     _verbose: bool,
+    _auth: Option<&str>,
 ) -> Result<Vec<WallixMenuEntry>> {
     anyhow::bail!("Wallix menu fetching is only supported on Unix")
 }
 
 /// Lance une session Wallix en forçant un ID déjà choisi côté TUI.
+///
+/// `auth` est un credential optionnel (passphrase ou mot de passe) à injecter
+/// automatiquement si SSH le demande pendant la session.
 pub fn connect_wallix_with_selection(
     server: &ResolvedServer,
     verbose: bool,
     selected_id: &str,
+    auth: Option<&str>,
 ) -> Result<()> {
     #[cfg(unix)]
     {
-        connect_wallix_via_pty_with_selection(server, verbose, Some(selected_id))
+        connect_wallix_via_pty_with_selection(server, verbose, Some(selected_id), auth)
     }
     #[cfg(not(unix))]
     {
-        let _ = (server, verbose, selected_id);
+        let _ = (server, verbose, selected_id, auth);
         anyhow::bail!("Wallix menu automation is only supported on Unix")
     }
 }
@@ -239,11 +303,28 @@ pub fn connect_blocking_wallix_with_selection(
     server: &ResolvedServer,
     verbose: bool,
     selected_id: &str,
+    auth: Option<&str>,
 ) -> Result<()> {
-    connect_wallix_with_selection(server, verbose, selected_id)
+    connect_wallix_with_selection(server, verbose, selected_id, auth)
 }
 
 // ─── helpers privés ──────────────────────────────────────────────────────────
+
+/// Crée un script shell temporaire qui affiche `credential` sur stdout, utilisé
+/// comme `SSH_ASKPASS`. Le script est créé avec les permissions 700.
+/// L'appelant est responsable de supprimer le fichier après usage.
+#[cfg(unix)]
+fn setup_askpass_script(credential: &str) -> Result<std::path::PathBuf> {
+    use std::io::Write as _;
+    use std::os::unix::fs::PermissionsExt as _;
+    let path = std::env::temp_dir().join(format!("susshi-askpass-{}", std::process::id()));
+    let escaped = credential.replace('\'', r"'\''");
+    let script = format!("#!/bin/sh\nprintf '%s\\n' '{}'\n", escaped);
+    let mut f = std::fs::File::create(&path)?;
+    f.write_all(script.as_bytes())?;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700))?;
+    Ok(path)
+}
 
 #[cfg(unix)]
 fn build_wallix_bastion_args(server: &ResolvedServer, verbose: bool) -> Result<Vec<String>> {
@@ -305,6 +386,14 @@ fn current_winsize() -> Option<Winsize> {
 
     let rc = unsafe { libc::ioctl(libc::STDIN_FILENO, libc::TIOCGWINSZ, &mut winsize) };
     if rc == 0 { Some(winsize) } else { None }
+}
+
+/// Détecte une demande d'authentification SSH (passphrase de clé ou mot de passe).
+/// Utilisé pour intercepter ces prompts dans la boucle PTY Wallix.
+#[cfg(unix)]
+fn contains_ssh_auth_prompt(buffer: &str) -> bool {
+    let lower = buffer.to_ascii_lowercase();
+    lower.contains("enter passphrase for key") || lower.contains("password:")
 }
 
 #[cfg(unix)]
@@ -399,6 +488,7 @@ fn spawn_wallix_pty(args: &[String]) -> Result<(nix::unistd::Pid, std::fs::File,
 }
 
 #[cfg(unix)]
+#[allow(dead_code)]
 fn read_until_wallix_prompt(master_reader: &mut std::fs::File) -> Result<String> {
     let mut transcript = String::new();
     loop {
@@ -425,11 +515,45 @@ fn read_until_wallix_prompt(master_reader: &mut std::fs::File) -> Result<String>
     ))
 }
 
+/// Variante de [`read_until_wallix_prompt`] qui s'arrête aussi sur un prompt d'auth SSH.
+/// Retourne un résultat préfixé par `"SSH_AUTH_REQUIRED:"` si un tel prompt est détecté.
+#[cfg(unix)]
+fn read_until_wallix_prompt_or_auth(master_reader: &mut std::fs::File) -> Result<String> {
+    let mut transcript = String::new();
+    loop {
+        let mut buf = [0_u8; 4096];
+        let read = master_reader.read(&mut buf)?;
+        if read == 0 {
+            break;
+        }
+
+        let chunk = String::from_utf8_lossy(&buf[..read]);
+        transcript.push_str(&chunk);
+        if transcript.len() > 64 * 1024 {
+            let drain = transcript.len().saturating_sub(64 * 1024);
+            transcript.drain(..drain);
+        }
+
+        if contains_wallix_prompt(&transcript) {
+            return Ok(transcript);
+        }
+
+        if contains_ssh_auth_prompt(&transcript) {
+            return Ok(format!("SSH_AUTH_REQUIRED:{transcript}"));
+        }
+    }
+
+    Err(anyhow::anyhow!(
+        "Wallix session exited before the selection prompt was displayed"
+    ))
+}
+
 #[cfg(unix)]
 fn connect_wallix_via_pty_with_selection(
     server: &ResolvedServer,
     verbose: bool,
     selected_id: Option<&str>,
+    auth: Option<&str>,
 ) -> Result<()> {
     let args = build_wallix_bastion_args(server, verbose)?;
     let (child, mut master_reader, mut master_writer) = spawn_wallix_pty(&args)?;
@@ -443,6 +567,10 @@ fn connect_wallix_via_pty_with_selection(
     // Si un ID est déjà connu (fallback TUI), on masque le menu global Wallix
     // pour éviter l'affichage interactif dans le terminal utilisateur.
     let hide_menu_output = selected_id.is_some();
+    // `auth_prompted` devient true dès qu'un prompt SSH auth est détecté.
+    // Quand true, on affiche toujours la sortie et on active stdin pour que
+    // l'utilisateur puisse répondre (ou pour injecter le credential automatiquement).
+    let mut auth_prompted = false;
     let master_fd = master_reader.as_raw_fd();
     let stdin_fd = std::io::stdin().as_raw_fd();
 
@@ -454,7 +582,9 @@ fn connect_wallix_via_pty_with_selection(
                 revents: 0,
             },
             libc::pollfd {
-                fd: if stdin_closed || !selection_completed {
+                fd: if stdin_closed
+                    || !(selection_completed || auth_prompted && auth.is_none())
+                {
                     -1
                 } else {
                     stdin_fd
@@ -487,9 +617,23 @@ fn connect_wallix_via_pty_with_selection(
                 transcript.drain(..drain);
             }
 
+            // Détection d'un prompt d'auth SSH avant le menu Wallix.
+            if !auth_prompted && !selection_completed && contains_ssh_auth_prompt(&transcript) {
+                auth_prompted = true;
+                if let Some(cred) = auth {
+                    // Credential connu → injection automatique silencieuse.
+                    master_writer.write_all(cred.as_bytes())?;
+                    master_writer.write_all(b"\n")?;
+                    master_writer.flush()?;
+                }
+                // Si auth.is_none(), stdin est activé dans pollfds (voir ci-dessus)
+                // et l'output est affiché ci-dessous pour que l'utilisateur voit le prompt.
+            }
+
             // En mode auto-sélection, on n'affiche rien tant que la phase menu
             // n'est pas terminée afin d'éviter le bruit du menu global.
-            if !hide_menu_output || target_address_sent {
+            // Exception : toujours montrer les prompts d'auth sans credential connu.
+            if !hide_menu_output || target_address_sent || (auth_prompted && auth.is_none()) {
                 stdout.write_all(&buf[..read])?;
                 stdout.flush()?;
             }

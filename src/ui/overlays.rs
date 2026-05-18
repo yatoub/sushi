@@ -7,29 +7,23 @@ use ratatui::{
 };
 
 use crate::app::{
-    App, ConfigItem, ScpFormField, ScpState, TunnelFormField, TunnelOverlayState,
+    App, AppMode, ConfigItem, ScpFormField, ScpState, TunnelFormField, TunnelOverlayState,
     WallixSelectorState,
 };
-use crate::i18n::Strings;
+use crate::fl;
 use crate::ssh::sftp::ScpDirection;
 use crate::ssh::tunnel::TunnelStatus;
 use crate::ui::theme::Theme;
 
-/// Rectangle centre de taille fixe dans `area`.
+/// Rectangle centré de taille fixe dans `area`.
 fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     let x = area.x + area.width.saturating_sub(width) / 2;
     let y = area.y + area.height.saturating_sub(height) / 2;
     Rect::new(x, y, width.min(area.width), height.min(area.height))
 }
 
-/// Panneau d'erreur centre, affiche par-dessus l'interface normale.
-pub(crate) fn draw_error_overlay(
-    f: &mut Frame,
-    msg: String,
-    area: Rect,
-    theme: &Theme,
-    lang: &Strings,
-) {
+/// Panneau d'erreur centré, affiché par-dessus l'interface normale.
+pub(crate) fn draw_error_overlay(f: &mut Frame, msg: String, area: Rect, theme: &Theme) {
     let lines: Vec<&str> = msg.lines().collect();
     let inner_h = (lines.len() as u16).max(1);
     let popup_h = inner_h + 5;
@@ -41,7 +35,7 @@ pub(crate) fn draw_error_overlay(
     f.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title(lang.error_title)
+        .title(fl!("error-title"))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.red))
@@ -62,7 +56,7 @@ pub(crate) fn draw_error_overlay(
     let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
     f.render_widget(paragraph, chunks[0]);
 
-    let hint = Paragraph::new(lang.error_dismiss).style(Style::default().fg(theme.subtext0));
+    let hint = Paragraph::new(fl!("error-dismiss")).style(Style::default().fg(theme.subtext0));
     f.render_widget(hint, chunks[1]);
 }
 
@@ -75,7 +69,7 @@ pub(crate) fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: R
     f.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title(app.lang.wallix_selector_title)
+        .title(fl!("wallix-selector-title"))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(app.theme.sapphire))
@@ -84,7 +78,7 @@ pub(crate) fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: R
     f.render_widget(block, popup_area);
 
     match state {
-        WallixSelectorState::Loading { server } => {
+        WallixSelectorState::Loading { server, .. } => {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
@@ -94,21 +88,18 @@ pub(crate) fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: R
                 ])
                 .split(inner);
             f.render_widget(
-                Paragraph::new(crate::i18n::fmt(
-                    app.lang.wallix_selector_loading,
-                    &[&server.name],
-                ))
-                .style(Style::default().fg(app.theme.fg)),
+                Paragraph::new(fl!("wallix-selector-loading", server = server.name.as_str()))
+                    .style(Style::default().fg(app.theme.fg)),
                 chunks[0],
             );
             f.render_widget(
-                Paragraph::new(app.lang.wallix_selector_loading_hint)
+                Paragraph::new(fl!("wallix-selector-loading-hint"))
                     .style(Style::default().fg(app.theme.subtext0))
                     .wrap(Wrap { trim: true }),
                 chunks[1],
             );
             f.render_widget(
-                Paragraph::new(app.lang.wallix_selector_cancel_hint)
+                Paragraph::new(fl!("wallix-selector-cancel-hint"))
                     .style(Style::default().fg(app.theme.subtext0)),
                 chunks[2],
             );
@@ -123,15 +114,12 @@ pub(crate) fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: R
                 ])
                 .split(inner);
             f.render_widget(
-                Paragraph::new(crate::i18n::fmt(
-                    app.lang.wallix_selector_error,
-                    &[&server.name],
-                ))
-                .style(
-                    Style::default()
-                        .fg(app.theme.red)
-                        .add_modifier(Modifier::BOLD),
-                ),
+                Paragraph::new(fl!("wallix-selector-error", server = server.name.as_str()))
+                    .style(
+                        Style::default()
+                            .fg(app.theme.red)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 chunks[0],
             );
             f.render_widget(
@@ -141,7 +129,7 @@ pub(crate) fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: R
                 chunks[1],
             );
             f.render_widget(
-                Paragraph::new(app.lang.wallix_selector_close_hint)
+                Paragraph::new(fl!("wallix-selector-close-hint"))
                     .style(Style::default().fg(app.theme.subtext0)),
                 chunks[2],
             );
@@ -161,9 +149,10 @@ pub(crate) fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: R
                 .split(inner);
 
             f.render_widget(
-                Paragraph::new(crate::i18n::fmt(
-                    app.lang.wallix_selector_choose,
-                    &[&server.name, &server.host],
+                Paragraph::new(fl!(
+                    "wallix-selector-choose",
+                    server = server.name.as_str(),
+                    host = server.host.as_str()
                 ))
                 .style(Style::default().fg(app.theme.fg)),
                 chunks[0],
@@ -198,7 +187,7 @@ pub(crate) fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: R
             f.render_widget(List::new(items), chunks[1]);
 
             f.render_widget(
-                Paragraph::new(app.lang.wallix_selector_list_hint)
+                Paragraph::new(fl!("wallix-selector-list-hint"))
                     .style(Style::default().fg(app.theme.subtext0)),
                 chunks[2],
             );
@@ -206,7 +195,7 @@ pub(crate) fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: R
     }
 }
 
-/// Overlay flottant centre listant les tunnels SSH d'un serveur.
+/// Overlay flottant centré listant les tunnels SSH d'un serveur.
 pub(crate) fn draw_tunnel_overlay(f: &mut Frame, app: &mut App, area: Rect) {
     match &app.tunnel_overlay {
         Some(TunnelOverlayState::Form(_)) => {
@@ -319,7 +308,7 @@ pub(crate) fn draw_tunnel_overlay(f: &mut Frame, app: &mut App, area: Rect) {
         app.theme.green
     };
     list_items.push(ListItem::new(Line::from(Span::styled(
-        app.lang.tunnel_overlay_new,
+        fl!("tunnel-overlay-new"),
         Style::default().fg(plus_fg).bg(plus_bg),
     ))));
 
@@ -332,16 +321,16 @@ pub(crate) fn draw_tunnel_overlay(f: &mut Frame, app: &mut App, area: Rect) {
 
     let s = Style::default().fg(app.theme.subtext0);
     f.render_widget(
-        Paragraph::new(app.lang.tunnel_overlay_hints1).style(s),
+        Paragraph::new(fl!("tunnel-overlay-hints1")).style(s),
         hint_chunks[0],
     );
     f.render_widget(
-        Paragraph::new(app.lang.tunnel_overlay_hints2).style(s),
+        Paragraph::new(fl!("tunnel-overlay-hints2")).style(s),
         hint_chunks[1],
     );
 }
 
-/// Formulaire d'edition / creation d'un tunnel SSH.
+/// Formulaire d'édition / création d'un tunnel SSH.
 fn draw_tunnel_form(f: &mut Frame, app: &mut App, area: Rect) {
     let items = app.get_visible_items();
     let server = match items.get(app.selected_index) {
@@ -355,9 +344,9 @@ fn draw_tunnel_form(f: &mut Frame, app: &mut App, area: Rect) {
 
     let is_edit = form.editing_index.is_some();
     let title = if is_edit {
-        crate::i18n::fmt(app.lang.tunnel_form_edit_title, &[&server.name])
+        fl!("tunnel-form-edit-title", server = server.name.as_str())
     } else {
-        crate::i18n::fmt(app.lang.tunnel_form_new_title, &[&server.name])
+        fl!("tunnel-form-new-title", server = server.name.as_str())
     };
 
     let popup_h: u16 = 11;
@@ -389,27 +378,16 @@ fn draw_tunnel_form(f: &mut Frame, app: &mut App, area: Rect) {
         ])
         .split(inner);
 
+    let label_label = fl!("tunnel-form-field-label");
+    let label_lp = fl!("tunnel-form-field-local-port");
+    let label_rh = fl!("tunnel-form-field-remote-host");
+    let label_rp = fl!("tunnel-form-field-remote-port");
+
     let fields: &[(&str, &str, TunnelFormField)] = &[
-        (
-            app.lang.tunnel_form_field_label,
-            &form.label,
-            TunnelFormField::Label,
-        ),
-        (
-            app.lang.tunnel_form_field_local_port,
-            &form.local_port,
-            TunnelFormField::LocalPort,
-        ),
-        (
-            app.lang.tunnel_form_field_remote_host,
-            &form.remote_host,
-            TunnelFormField::RemoteHost,
-        ),
-        (
-            app.lang.tunnel_form_field_remote_port,
-            &form.remote_port,
-            TunnelFormField::RemotePort,
-        ),
+        (&label_label, &form.label, TunnelFormField::Label),
+        (&label_lp, &form.local_port, TunnelFormField::LocalPort),
+        (&label_rh, &form.remote_host, TunnelFormField::RemoteHost),
+        (&label_rp, &form.remote_port, TunnelFormField::RemotePort),
     ];
 
     for (i, (label, value, field)) in fields.iter().enumerate() {
@@ -441,12 +419,84 @@ fn draw_tunnel_form(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     f.render_widget(
-        Paragraph::new(app.lang.tunnel_form_hint).style(Style::default().fg(app.theme.subtext0)),
+        Paragraph::new(fl!("tunnel-form-hint"))
+            .style(Style::default().fg(app.theme.subtext0)),
         chunks[6],
     );
 }
 
-/// Dispatch entre la selection de direction et le formulaire SCP.
+/// Overlay de saisie de credential SSH (passphrase de clé ou mot de passe).
+///
+/// Affiché lorsque l'utilisateur appuie sur `p` avant une connexion, ou lorsque
+/// le flow Wallix détecte un prompt SSH et que l'utilisateur n'a pas de credential.
+pub(crate) fn draw_credential_input_overlay(f: &mut Frame, app: &App, area: Rect) {
+    let AppMode::CredentialInput {
+        server,
+        is_passphrase,
+        input,
+        ..
+    } = &app.app_mode
+    else {
+        return;
+    };
+
+    let popup_h: u16 = 6;
+    let popup_w: u16 = 56.min(area.width.saturating_sub(4));
+    let popup_area = centered_rect(popup_w, popup_h, area);
+
+    f.render_widget(Clear, popup_area);
+
+    let title = if *is_passphrase {
+        fl!("credential-input-title-passphrase", server = server.name.as_str())
+    } else {
+        fl!("credential-input-title-password", server = server.name.as_str())
+    };
+
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(app.theme.yellow))
+        .style(Style::default().bg(app.theme.bg));
+
+    let inner = block.inner(popup_area);
+    f.render_widget(block, popup_area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    let label = if *is_passphrase {
+        fl!("credential-input-prompt-passphrase")
+    } else {
+        fl!("credential-input-prompt-password")
+    };
+
+    // Affiche des astérisques à la place des caractères saisis
+    let masked: String = "*".repeat(input.len());
+    let line = Line::from(vec![
+        Span::styled(label, Style::default().fg(app.theme.yellow)),
+        Span::styled(
+            format!("{}█", masked),
+            Style::default().fg(app.theme.fg).bg(app.theme.selection_bg),
+        ),
+    ]);
+    f.render_widget(Paragraph::new(line), chunks[1]);
+
+    f.render_widget(
+        Paragraph::new(fl!("credential-input-hint"))
+            .style(Style::default().fg(app.theme.subtext0)),
+        chunks[3],
+    );
+}
+
+/// Dispatch entre la sélection de direction et le formulaire SCP.
 pub(crate) fn draw_scp_overlay(f: &mut Frame, app: &mut App, area: Rect) {
     match &app.scp_state {
         ScpState::SelectingDirection => draw_scp_direction_select(f, app, area),
@@ -456,7 +506,7 @@ pub(crate) fn draw_scp_overlay(f: &mut Frame, app: &mut App, area: Rect) {
     }
 }
 
-/// Petit overlay de selection de direction (Upload / Download).
+/// Petit overlay de sélection de direction (Upload / Download).
 fn draw_scp_direction_select(f: &mut Frame, app: &mut App, area: Rect) {
     let items = app.get_visible_items();
     let server = match items.get(app.selected_index) {
@@ -471,7 +521,7 @@ fn draw_scp_direction_select(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title(crate::i18n::fmt(app.lang.scp_direction_title, &[&server]))
+        .title(fl!("scp-direction-title", server = server.as_str()))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(app.theme.sapphire))
@@ -500,10 +550,10 @@ fn draw_scp_direction_select(f: &mut Frame, app: &mut App, area: Rect) {
         Paragraph::new(Line::from(vec![
             Span::styled("  ↑  ", s_active),
             Span::styled(
-                format!("{}  ", app.lang.scp_direction_upload_label),
+                format!("{}  ", fl!("scp-direction-upload-label")),
                 s_label,
             ),
-            Span::styled(app.lang.scp_direction_upload, s_sub),
+            Span::styled(fl!("scp-direction-upload"), s_sub),
         ])),
         chunks[0],
     );
@@ -511,15 +561,15 @@ fn draw_scp_direction_select(f: &mut Frame, app: &mut App, area: Rect) {
         Paragraph::new(Line::from(vec![
             Span::styled("  ↓  ", s_active),
             Span::styled(
-                format!("{}  ", app.lang.scp_direction_download_label),
+                format!("{}  ", fl!("scp-direction-download-label")),
                 s_label,
             ),
-            Span::styled(app.lang.scp_direction_download, s_sub),
+            Span::styled(fl!("scp-direction-download"), s_sub),
         ])),
         chunks[1],
     );
     f.render_widget(
-        Paragraph::new(app.lang.scp_direction_hint).style(s_sub),
+        Paragraph::new(fl!("scp-direction-hint")).style(s_sub),
         chunks[3],
     );
 }
@@ -549,11 +599,15 @@ fn draw_scp_form(f: &mut Frame, app: &mut App, area: Rect) {
     };
 
     let dir_label = if direction == ScpDirection::Upload {
-        app.lang.scp_direction_upload_label
+        fl!("scp-direction-upload-label")
     } else {
-        app.lang.scp_direction_download_label
+        fl!("scp-direction-download-label")
     };
-    let title = crate::i18n::fmt(app.lang.scp_form_title, &[dir_label, &server_name]);
+    let title = fl!(
+        "scp-form-title",
+        direction = dir_label.as_str(),
+        server = server_name.as_str()
+    );
 
     let popup_h: u16 = 8;
     let popup_w: u16 = 64.min(area.width.saturating_sub(4));
@@ -582,13 +636,12 @@ fn draw_scp_form(f: &mut Frame, app: &mut App, area: Rect) {
         ])
         .split(inner);
 
+    let label_local = fl!("scp-form-field-local");
+    let label_remote = fl!("scp-form-field-remote");
+
     let fields: &[(&str, &str, ScpFormField)] = &[
-        (app.lang.scp_form_field_local, &local, ScpFormField::Local),
-        (
-            app.lang.scp_form_field_remote,
-            &remote,
-            ScpFormField::Remote,
-        ),
+        (&label_local, &local, ScpFormField::Local),
+        (&label_remote, &remote, ScpFormField::Remote),
     ];
 
     let inner_w = popup_area.width.saturating_sub(2) as usize;
@@ -634,19 +687,20 @@ fn draw_scp_form(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     f.render_widget(
-        Paragraph::new(app.lang.scp_form_hint).style(Style::default().fg(app.theme.subtext0)),
+        Paragraph::new(fl!("scp-form-hint"))
+            .style(Style::default().fg(app.theme.subtext0)),
         chunks[4],
     );
 }
 
-/// Overlay de resultat SCP (Done / Error) — ferme avec Esc / Enter / q.
+/// Overlay de résultat SCP (Done / Error) — ferme avec Esc / Enter / q.
 fn draw_scp_result(f: &mut Frame, app: &mut App, area: Rect) {
     let (icon, color, msg) = match &app.scp_state {
         ScpState::Done { direction, exit_ok } => {
             let dir_label = if *direction == ScpDirection::Upload {
-                app.lang.scp_direction_upload_label
+                fl!("scp-direction-upload-label")
             } else {
-                app.lang.scp_direction_download_label
+                fl!("scp-direction-download-label")
             };
             let icon = if *exit_ok { "✔" } else { "✗" };
             let color = if *exit_ok {
@@ -655,16 +709,16 @@ fn draw_scp_result(f: &mut Frame, app: &mut App, area: Rect) {
                 app.theme.red
             };
             let msg = if *exit_ok {
-                crate::i18n::fmt(app.lang.scp_result_success, &[dir_label])
+                fl!("scp-result-success", direction = dir_label.as_str())
             } else {
-                crate::i18n::fmt(app.lang.scp_result_errors, &[dir_label])
+                fl!("scp-result-errors", direction = dir_label.as_str())
             };
             (icon, color, msg)
         }
         ScpState::Error(e) => (
             "✗",
             app.theme.red,
-            crate::i18n::fmt(app.lang.scp_result_fail, &[e]),
+            fl!("scp-result-fail", error = e.as_str()),
         ),
         _ => return,
     };
@@ -676,7 +730,7 @@ fn draw_scp_result(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title(app.lang.scp_result_title)
+        .title(fl!("scp-result-title"))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(color))
@@ -702,7 +756,8 @@ fn draw_scp_result(f: &mut Frame, app: &mut App, area: Rect) {
         chunks[0],
     );
     f.render_widget(
-        Paragraph::new(app.lang.scp_result_hint).style(Style::default().fg(app.theme.subtext0)),
+        Paragraph::new(fl!("scp-result-hint"))
+            .style(Style::default().fg(app.theme.subtext0)),
         chunks[2],
     );
 }

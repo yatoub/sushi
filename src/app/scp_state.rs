@@ -1,4 +1,5 @@
 use super::*;
+use crate::fl;
 
 impl App {
     /// Ouvre l'etape de selection de la direction SCP pour le serveur selectionne.
@@ -6,7 +7,7 @@ impl App {
     /// Sans effet si aucun serveur n'est selectionne ou si le mode Wallix est actif.
     pub fn open_scp_select_direction(&mut self) {
         if self.connection_mode == ConnectionMode::Wallix {
-            self.set_status_message(self.lang.scp_wallix_unavailable);
+            self.set_status_message(fl!("scp-wallix-unavailable"));
             return;
         }
         if self.selected_server().is_some() {
@@ -110,13 +111,13 @@ impl App {
 
         if local.is_empty() {
             if let ScpState::FillingForm { ref mut error, .. } = self.scp_state {
-                *error = self.lang.scp_form_local_required.to_string();
+                *error = fl!("scp-form-local-required");
             }
             return;
         }
         if remote.is_empty() {
             if let ScpState::FillingForm { ref mut error, .. } = self.scp_state {
-                *error = self.lang.scp_form_remote_required.to_string();
+                *error = fl!("scp-form-remote-required");
             }
             return;
         }
@@ -191,9 +192,9 @@ impl App {
                 }
                 Ok(ScpEvent::Done(ok)) => {
                     if ok {
-                        self.set_status_message(self.lang.scp_done_ok);
+                        self.set_status_message(fl!("scp-done-ok"));
                     } else {
-                        self.set_status_message(self.lang.scp_done_err);
+                        self.set_status_message(fl!("scp-done-err"));
                     }
                     let direction = if let ScpState::Running { ref direction, .. } = self.scp_state
                     {
@@ -209,7 +210,7 @@ impl App {
                     break;
                 }
                 Ok(ScpEvent::Error(e)) => {
-                    self.set_status_message(crate::i18n::fmt(self.lang.scp_failed, &[&e]));
+                    self.set_status_message(fl!("scp-failed", error = e.as_str()));
                     self.scp_state = ScpState::Error(e);
                     self.scp_rx = None;
                     break;

@@ -18,6 +18,10 @@ openssl-vendored = ["ssh2/vendored-openssl"]
 
 [dependencies]
 anyhow = "1.0.102"
+i18n-embed = { version = "0.16", features = ["fluent-system", "desktop-requester"] }
+i18n-embed-fl = "0.10"
+rust-embed = "8"
+unic-langid = { version = "0.9", features = ["macros"] }
 arboard = { version = "3", default-features = false }
 catppuccin = "2.8.0"
 clap = { version = "4", features = ["derive"] }

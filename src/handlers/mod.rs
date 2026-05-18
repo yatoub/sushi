@@ -1,5 +1,6 @@
 use crate::app::App;
 use crate::config::ConnectionMode;
+use crate::fl;
 use crossterm::event::MouseEvent;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use std::io;
@@ -42,7 +43,10 @@ pub fn handle_mouse_event(mouse: MouseEvent, app: &mut App, size: Rect) -> io::R
     let layout = get_layout(size);
 
     if is_in_rect(mouse.column, mouse.row, layout.tabs_area) {
-        let titles = [app.lang.tab_direct, app.lang.tab_jump, app.lang.tab_wallix];
+        let tab_direct = fl!("tab-direct");
+        let tab_jump = fl!("tab-jump");
+        let tab_wallix = fl!("tab-wallix");
+        let titles = [tab_direct, tab_jump, tab_wallix];
         let separator_width = 1;
 
         // Tabs block has Borders::ALL, so content starts at x+1

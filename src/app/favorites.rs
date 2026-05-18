@@ -1,4 +1,5 @@
 use super::*;
+use crate::fl;
 
 impl App {
     /// Indique si le serveur selectionne est un favori.
@@ -16,10 +17,10 @@ impl App {
             let key = Self::server_key(&server);
             if self.favorites.contains(&key) {
                 self.favorites.remove(&key);
-                self.set_status_message(self.lang.favorite_removed.replacen("{}", &server.name, 1));
+                self.set_status_message(fl!("favorite-removed"));
             } else {
                 self.favorites.insert(key);
-                self.set_status_message(self.lang.favorite_added.replacen("{}", &server.name, 1));
+                self.set_status_message(fl!("favorite-added"));
             }
         }
     }
@@ -31,9 +32,9 @@ impl App {
         self.selected_index = 0;
         self.list_state.select(Some(0));
         let msg = if self.favorites_only {
-            self.lang.favorites_title
+            fl!("favorites-title")
         } else {
-            self.lang.status_normal
+            fl!("status-normal")
         };
         self.set_status_message(msg);
     }

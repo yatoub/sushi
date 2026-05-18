@@ -1,4 +1,5 @@
 use super::*;
+use crate::fl;
 
 impl App {
     /// Retourne la liste effective des tunnels pour un serveur :
@@ -124,16 +125,13 @@ impl App {
     /// est deja en cours d'execution.
     pub fn start_tunnel(&mut self, server: &ResolvedServer, effective_idx: usize) {
         if self.connection_mode == ConnectionMode::Wallix {
-            self.set_status_message(self.lang.tunnel_wallix_unavailable);
+            self.set_status_message(fl!("tunnel-wallix-unavailable"));
             return;
         }
 
         let tunnels = self.effective_tunnels(server);
         let Some(et) = tunnels.get(effective_idx) else {
-            self.set_status_message(crate::i18n::fmt(
-                self.lang.tunnel_not_found,
-                &[&effective_idx.to_string()],
-            ));
+            self.set_status_message(fl!("tunnel-not-found", index = (effective_idx as i64)));
             return;
         };
 
@@ -144,9 +142,11 @@ impl App {
             && let Some(h) = handles.iter().find(|h| h.user_idx == effective_idx)
             && h.is_running()
         {
-            self.set_status_message(crate::i18n::fmt(
-                self.lang.tunnel_already_active,
-                &[&et.config.label, &et.config.local_port.to_string()],
+            let port_str = et.config.local_port.to_string();
+            self.set_status_message(fl!(
+                "tunnel-already-active",
+                label = et.config.label.as_str(),
+                port = port_str.as_str()
             ));
             return;
         }
@@ -172,16 +172,16 @@ impl App {
                     .entry(Self::server_key(server))
                     .or_default()
                     .push(handle);
-                self.set_status_message(crate::i18n::fmt(
-                    self.lang.tunnel_started,
-                    &[&label, &local_port.to_string()],
+                let port_str = local_port.to_string();
+                self.set_status_message(fl!(
+                    "tunnel-started",
+                    label = label.as_str(),
+                    port = port_str.as_str()
                 ));
             }
             Err(e) => {
-                self.set_status_message(crate::i18n::fmt(
-                    self.lang.tunnel_error,
-                    &[&e.to_string()],
-                ));
+                let err = e.to_string();
+                self.set_status_message(fl!("tunnel-error", error = err.as_str()));
             }
         }
     }
@@ -194,9 +194,11 @@ impl App {
             let label = h.config.label.clone();
             let port = h.config.local_port;
             h.kill();
-            self.set_status_message(crate::i18n::fmt(
-                self.lang.tunnel_stopped,
-                &[&label, &port.to_string()],
+            let port_str = port.to_string();
+            self.set_status_message(fl!(
+                "tunnel-stopped",
+                label = label.as_str(),
+                port = port_str.as_str()
             ));
         }
     }
@@ -229,9 +231,12 @@ impl App {
         }
 
         for (reason, label, port) in dead {
-            self.set_status_message(crate::i18n::fmt(
-                self.lang.tunnel_died,
-                &[&label, &port.to_string(), &reason],
+            let port_str = port.to_string();
+            self.set_status_message(fl!(
+                "tunnel-died",
+                label = label.as_str(),
+                port = port_str.as_str(),
+                reason = reason.as_str()
             ));
         }
     }
@@ -250,7 +255,7 @@ impl App {
     /// Sans effet si aucun serveur n'est selectionne ou si le mode Wallix est actif.
     pub fn open_tunnel_overlay(&mut self) {
         if self.connection_mode == ConnectionMode::Wallix {
-            self.set_status_message(self.lang.tunnel_wallix_unavailable);
+            self.set_status_message(fl!("tunnel-wallix-unavailable"));
             return;
         }
         if self.selected_server().is_some() {
@@ -364,7 +369,7 @@ impl App {
                 *sel = new_list_len - 1;
             }
         }
-        self.set_status_message(self.lang.tunnel_deleted);
+        self.set_status_message(fl!("tunnel-deleted"));
     }
 
     /// Ouvre le formulaire d'edition pour le tunnel selectionne dans la liste.
@@ -448,7 +453,7 @@ impl App {
         // Clone les donnees du formulaire pour liberer le borrow.
         let (editing_index, validation_result) =
             if let Some(TunnelOverlayState::Form(form)) = &self.tunnel_overlay {
-                (form.editing_index, form.validate(self.lang))
+                (form.editing_index, form.validate())
             } else {
                 return;
             };
@@ -469,13 +474,13 @@ impl App {
                             let yaml_index = et.yaml_index;
                             let user_idx = et.user_idx;
                             self.update_tunnel_override(&server, yaml_index, user_idx, config);
-                            self.set_status_message(self.lang.tunnel_updated);
+                            self.set_status_message(fl!("tunnel-updated"));
                         }
                     }
                     None => {
                         // Creation.
                         self.add_tunnel_override(&server, config);
-                        self.set_status_message(self.lang.tunnel_added);
+                        self.set_status_message(fl!("tunnel-added"));
                     }
                 }
                 // Revient a la liste, selection sur le dernier element ajoute/edite.

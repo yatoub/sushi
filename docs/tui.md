@@ -44,6 +44,8 @@ Search behavior:
 | `v` | Toggle verbose SSH mode |
 | `y` | Copy generated SSH command |
 
+If the clipboard is unavailable (headless session, missing `wl-clipboard`, etc.), an overlay displays the command for manual copy. Dismiss with `Enter` or `Esc`.
+
 ## Productivity Features
 
 | Key | Action |

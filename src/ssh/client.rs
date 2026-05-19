@@ -156,6 +156,32 @@ pub fn build_ssh_args(
     Ok(args)
 }
 
+/// Vérifie si un socket ControlMaster SSH est actif pour ce serveur.
+///
+/// Retourne `true` si `ssh -O check` réussit (exit 0), `false` sinon.
+/// Non bloquant : délai max ~1 s (timeout SSH interne).
+pub fn is_control_master_active(server: &ResolvedServer) -> bool {
+    if !server.control_master || server.control_path.is_empty() {
+        return false;
+    }
+    let path = shellexpand::tilde(&server.control_path).into_owned();
+    // Remplace les tokens SSH dans le chemin (%h, %p, %r) pour trouver le bon socket.
+    let path = path
+        .replace("%h", &server.host)
+        .replace("%p", &server.port.to_string())
+        .replace("%r", &server.user);
+    if !std::path::Path::new(&path).exists() {
+        return false;
+    }
+    Command::new("ssh")
+        .args(["-O", "check", "-S", &path, &server.host])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Lance la connexion SSH en remplaçant le processus courant (`exec`).
 ///
 /// Si `credential` est fourni, le processus courant est remplacé par un sous-processus
@@ -1125,5 +1151,30 @@ mod tests {
         let s3 = base_server();
         let args3 = build_ssh_args(&s3, ConnectionMode::Direct, false).unwrap();
         assert_eq!(args3.last().unwrap(), "admin@198.51.100.1");
+    }
+
+    // ── ControlMaster ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn control_master_inactive_when_disabled() {
+        // control_master: false → retourne false sans vérification filesystem
+        let s = base_server();
+        assert!(!is_control_master_active(&s));
+    }
+
+    #[test]
+    fn control_master_inactive_when_socket_absent() {
+        let mut s = base_server();
+        s.control_master = true;
+        s.control_path = "/tmp/susshi-test-nonexistent-socket-%h_%p_%r".into();
+        assert!(!is_control_master_active(&s));
+    }
+
+    #[test]
+    fn control_master_inactive_when_path_empty() {
+        let mut s = base_server();
+        s.control_master = true;
+        s.control_path = String::new();
+        assert!(!is_control_master_active(&s));
     }
 }

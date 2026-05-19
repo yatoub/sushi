@@ -773,16 +773,14 @@ fn run_app(
                                     }
                                 }
                             }
-                            KeyCode::Up => {
-                                if !app.cmd_history.is_empty() {
-                                    let cursor = match app.cmd_history_cursor {
-                                        None => app.cmd_history.len() - 1,
-                                        Some(c) => c.saturating_sub(1),
-                                    };
-                                    app.cmd_history_cursor = Some(cursor);
-                                    let entry = app.cmd_history[cursor].clone();
-                                    app.cmd_state = CmdState::Prompting(entry);
-                                }
+                            KeyCode::Up if !app.cmd_history.is_empty() => {
+                                let cursor = match app.cmd_history_cursor {
+                                    None => app.cmd_history.len() - 1,
+                                    Some(c) => c.saturating_sub(1),
+                                };
+                                app.cmd_history_cursor = Some(cursor);
+                                let entry = app.cmd_history[cursor].clone();
+                                app.cmd_state = CmdState::Prompting(entry);
                             }
                             KeyCode::Down => {
                                 if let Some(cursor) = app.cmd_history_cursor {

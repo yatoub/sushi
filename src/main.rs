@@ -408,6 +408,8 @@ fn build_adhoc_server(
             .as_ref()
             .and_then(|b| b.selection_timeout_secs)
             .unwrap_or(8),
+        wallix_direct: d.wallix.as_ref().and_then(|b| b.direct).unwrap_or(false),
+        wallix_authorization: d.wallix.as_ref().and_then(|b| b.authorization.clone()),
     }
 }
 

@@ -27,14 +27,22 @@ fn build_wallix_login_user(
         || server.bastion_template == "{target_user}@%n:SSH:{bastion_user}"
     {
         let mut login = format!("{}@{}:{}", server.user, target_host, server.wallix_protocol);
-        if let Some(group) = server
-            .wallix_group
+        // wallix_authorization (exact name) takes priority over wallix_group (short name).
+        let qualifier = server
+            .wallix_authorization
             .as_deref()
             .map(str::trim)
-            .filter(|g| !g.is_empty())
-        {
+            .filter(|a| !a.is_empty())
+            .or_else(|| {
+                server
+                    .wallix_group
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|g| !g.is_empty())
+            });
+        if let Some(q) = qualifier {
             login.push(':');
-            login.push_str(group);
+            login.push_str(q);
         }
         login.push(':');
         login.push_str(bastion_user);
@@ -232,36 +240,99 @@ pub fn fetch_wallix_menu_entries(
 ) -> Result<Vec<WallixMenuEntry>> {
     let args = build_wallix_bastion_args(server, verbose)?;
     let (child, mut master_reader, mut master_writer) = spawn_wallix_pty(&args)?;
+    let master_fd = master_reader.as_raw_fd();
     let mut transcript = String::new();
+    let mut auth_injected = false;
+    let timeout_secs = server.wallix_selection_timeout_secs;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
 
-    loop {
-        let page = read_until_wallix_prompt_or_auth(&mut master_reader)?;
-
-        if let Some(auth_prompt) = page.strip_prefix("SSH_AUTH_REQUIRED:") {
-            if let Some(cred) = auth {
-                master_writer.write_all(cred.as_bytes())?;
-                master_writer.write_all(b"\n")?;
-                master_writer.flush()?;
-                // Continuer à lire jusqu'au menu Wallix
-                transcript.clear();
-                continue;
-            } else {
-                unsafe {
-                    libc::kill(child.as_raw(), libc::SIGTERM);
-                }
+    'outer: loop {
+        // Poll with 200ms slices so we can check the deadline regularly.
+        loop {
+            if std::time::Instant::now() >= deadline {
+                unsafe { libc::kill(child.as_raw(), libc::SIGTERM) };
                 let _ = waitpid(child, Some(WaitPidFlag::WNOHANG));
-                return Err(anyhow::anyhow!("SSH_AUTH_REQUIRED: {}", auth_prompt.trim()));
+                return Err(anyhow::anyhow!(
+                    "Wallix menu fetch timed out after {}s without showing a selection prompt",
+                    timeout_secs
+                ));
             }
-        }
 
-        transcript.push_str(&page);
-
-        match parse_wallix_page_position(&page) {
-            Some((current, total)) if current < total => {
-                master_writer.write_all(b"n\n")?;
-                master_writer.flush()?;
+            let mut pfd = libc::pollfd {
+                fd: master_fd,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let rc = unsafe { libc::poll(&mut pfd, 1, 200) };
+            if rc < 0 {
+                let err = std::io::Error::last_os_error();
+                if err.kind() == std::io::ErrorKind::Interrupted {
+                    continue;
+                }
+                unsafe { libc::kill(child.as_raw(), libc::SIGTERM) };
+                let _ = waitpid(child, Some(WaitPidFlag::WNOHANG));
+                return Err(err.into());
             }
-            _ => break,
+            if rc == 0 {
+                // timeout slice — check deadline on next iteration
+                continue;
+            }
+
+            // Data available.
+            let mut buf = [0_u8; 4096];
+            let read = match master_reader.read(&mut buf) {
+                Ok(0) => break 'outer, // PTY closed
+                Ok(n) => n,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                Err(e) => {
+                    unsafe { libc::kill(child.as_raw(), libc::SIGTERM) };
+                    let _ = waitpid(child, Some(WaitPidFlag::WNOHANG));
+                    return Err(e.into());
+                }
+            };
+
+            let chunk = String::from_utf8_lossy(&buf[..read]);
+            transcript.push_str(&chunk);
+            if transcript.len() > 128 * 1024 {
+                let drain = transcript.len().saturating_sub(128 * 1024);
+                transcript.drain(..drain);
+            }
+
+            // Auth prompt before the menu.
+            if !auth_injected && contains_ssh_auth_prompt(&transcript) {
+                if let Some(cred) = auth {
+                    master_writer.write_all(cred.as_bytes())?;
+                    master_writer.write_all(b"\n")?;
+                    master_writer.flush()?;
+                    auth_injected = true;
+                    transcript.clear();
+                } else {
+                    unsafe { libc::kill(child.as_raw(), libc::SIGTERM) };
+                    let _ = waitpid(child, Some(WaitPidFlag::WNOHANG));
+                    return Err(anyhow::anyhow!("SSH_AUTH_REQUIRED: {}", transcript.trim()));
+                }
+                continue;
+            }
+
+            if wallix_connected_directly(&transcript) {
+                // The filtered login caused Wallix to connect directly without showing a menu.
+                // Kill the probe PTY (the real shell is already open and then closed).
+                unsafe { libc::kill(child.as_raw(), libc::SIGTERM) };
+                let _ = waitpid(child, Some(WaitPidFlag::WNOHANG));
+                return Err(anyhow::anyhow!("WALLIX_DIRECT_CONNECTION"));
+            }
+
+            if contains_wallix_prompt(&transcript) {
+                // Check if there are more pages to fetch.
+                match parse_wallix_page_position(&transcript) {
+                    Some((current, total)) if current < total => {
+                        master_writer.write_all(b"n\n")?;
+                        master_writer.flush()?;
+                        break; // go back to outer loop for next page
+                    }
+                    _ => break 'outer,
+                }
+            }
         }
     }
 
@@ -269,6 +340,11 @@ pub fn fetch_wallix_menu_entries(
         libc::kill(child.as_raw(), libc::SIGTERM);
     }
     let _ = waitpid(child, Some(WaitPidFlag::WNOHANG));
+
+    if std::env::var("SUSSHI_WALLIX_DEBUG").is_ok() {
+        let _ = std::fs::write("/tmp/susshi-wallix-debug.txt", &transcript);
+    }
+
     parse_wallix_menu(&transcript)
 }
 
@@ -291,6 +367,29 @@ pub fn connect_wallix_with_selection(
     selected_id: &str,
     auth: Option<&str>,
 ) -> Result<()> {
+    // WALLIX_DIRECT: the filtered login (bastion_user@host:protocol:bastion_user) already
+    // connects without a menu. Reuse build_wallix_bastion_args so the login is identical
+    // to the probe that succeeded — build_wallix_login_user uses a different format.
+    if selected_id == "WALLIX_DIRECT" {
+        #[cfg(unix)]
+        {
+            let args = build_wallix_bastion_args(server, verbose)?;
+            let mut command = Command::new("ssh");
+            command.args(&args);
+            if let Some(cred) = auth {
+                let p = setup_askpass_script(cred)?;
+                command.env("SSH_ASKPASS", &p);
+                command.env("SSH_ASKPASS_REQUIRE", "force");
+                let result = command.status().map(|_| ()).map_err(anyhow::Error::from);
+                let _ = std::fs::remove_file(p);
+                return result;
+            }
+            let err = std::os::unix::process::CommandExt::exec(&mut command);
+            return Err(anyhow::Error::new(err).context("Failed to exec ssh command"));
+        }
+        #[cfg(not(unix))]
+        return connect(server, ConnectionMode::Wallix, verbose, auth);
+    }
     #[cfg(unix)]
     {
         connect_wallix_via_pty_with_selection(server, verbose, Some(selected_id), auth)
@@ -367,7 +466,27 @@ fn build_wallix_bastion_args(server: &ResolvedServer, verbose: bool) -> Result<V
 
     let bastion_user = server.bastion_user.as_deref().unwrap_or("root");
     args.push("-l".into());
-    args.push(bastion_user.to_string());
+    // Pass target host in the login to let Wallix filter the menu server-side.
+    // When wallix_authorization is set (e.g. "STI-ANSCORE_ces3s-admins"), include it so
+    // Wallix connects directly without showing a selection menu.
+    // Without authorization, target-only filtering reduces a 27-page menu to 1-2 entries.
+    let (t_host, _) = parse_host_port(&server.host);
+    let filtered_login = if let Some(auth) = server
+        .wallix_authorization
+        .as_deref()
+        .filter(|a| !a.is_empty())
+    {
+        format!(
+            "{}@{}:{}:{}:{}",
+            bastion_user, t_host, server.wallix_protocol, auth, bastion_user
+        )
+    } else {
+        format!(
+            "{}@{}:{}:{}",
+            bastion_user, t_host, server.wallix_protocol, bastion_user
+        )
+    };
+    args.push(filtered_login);
 
     let (b_host, b_port) = parse_host_port(bastion_host_str);
     if let Some(p) = b_port {
@@ -377,6 +496,16 @@ fn build_wallix_bastion_args(server: &ResolvedServer, verbose: bool) -> Result<V
     args.push(b_host.to_string());
 
     Ok(args)
+}
+
+#[cfg(unix)]
+fn wallix_connected_directly(buffer: &str) -> bool {
+    let clean = crate::wallix::strip_ansi(buffer);
+    let lower = clean.to_ascii_lowercase();
+    // Wallix prints this after bypassing the menu and opening a direct shell.
+    lower.contains("account successfully checked out")
+        && !lower.contains("tapez h pour")
+        && !lower.contains("type h for")
 }
 
 #[cfg(unix)]
@@ -402,7 +531,8 @@ fn contains_ssh_auth_prompt(buffer: &str) -> bool {
 
 #[cfg(unix)]
 fn contains_wallix_prompt(buffer: &str) -> bool {
-    let trimmed = buffer.trim_end();
+    let clean = crate::wallix::strip_ansi(buffer);
+    let trimmed = clean.trim_end();
     trimmed.ends_with(" >")
         || trimmed.ends_with(">")
         || trimmed.lines().rev().find(|line| !line.trim().is_empty()) == Some(">")
@@ -410,7 +540,8 @@ fn contains_wallix_prompt(buffer: &str) -> bool {
 
 #[cfg(unix)]
 fn contains_wallix_target_address_prompt(buffer: &str) -> bool {
-    let lowered = buffer.to_ascii_lowercase();
+    let clean = crate::wallix::strip_ansi(buffer);
+    let lowered = clean.to_ascii_lowercase();
     lowered.contains("adresse cible")
         || lowered.contains("target address")
         || lowered.contains("destination address")
@@ -418,7 +549,8 @@ fn contains_wallix_target_address_prompt(buffer: &str) -> bool {
 
 #[cfg(unix)]
 fn contains_wallix_return_selector_prompt(buffer: &str) -> bool {
-    let lowered = buffer.to_lowercase();
+    let clean = crate::wallix::strip_ansi(buffer);
+    let lowered = clean.to_lowercase();
     lowered.contains("retour au sélecteur")
         || lowered.contains("retour au selecteur")
         || lowered.contains("return to selector")
@@ -426,7 +558,8 @@ fn contains_wallix_return_selector_prompt(buffer: &str) -> bool {
 
 #[cfg(unix)]
 fn parse_wallix_page_position(buffer: &str) -> Option<(u32, u32)> {
-    let lowered = buffer.to_ascii_lowercase();
+    let clean = crate::wallix::strip_ansi(buffer);
+    let lowered = clean.to_ascii_lowercase();
     let marker = "page ";
     let start = lowered.rfind(marker)? + marker.len();
     let tail = &lowered[start..];
@@ -489,67 +622,6 @@ fn spawn_wallix_pty(args: &[String]) -> Result<(nix::unistd::Pid, std::fs::File,
             Ok((child, master_reader, master_writer))
         }
     }
-}
-
-#[cfg(unix)]
-#[allow(dead_code)]
-fn read_until_wallix_prompt(master_reader: &mut std::fs::File) -> Result<String> {
-    let mut transcript = String::new();
-    loop {
-        let mut buf = [0_u8; 4096];
-        let read = master_reader.read(&mut buf)?;
-        if read == 0 {
-            break;
-        }
-
-        let chunk = String::from_utf8_lossy(&buf[..read]);
-        transcript.push_str(&chunk);
-        if transcript.len() > 64 * 1024 {
-            let drain = transcript.len().saturating_sub(64 * 1024);
-            transcript.drain(..drain);
-        }
-
-        if contains_wallix_prompt(&transcript) {
-            return Ok(transcript);
-        }
-    }
-
-    Err(anyhow::anyhow!(
-        "Wallix session exited before the selection prompt was displayed"
-    ))
-}
-
-/// Variante de [`read_until_wallix_prompt`] qui s'arrête aussi sur un prompt d'auth SSH.
-/// Retourne un résultat préfixé par `"SSH_AUTH_REQUIRED:"` si un tel prompt est détecté.
-#[cfg(unix)]
-fn read_until_wallix_prompt_or_auth(master_reader: &mut std::fs::File) -> Result<String> {
-    let mut transcript = String::new();
-    loop {
-        let mut buf = [0_u8; 4096];
-        let read = master_reader.read(&mut buf)?;
-        if read == 0 {
-            break;
-        }
-
-        let chunk = String::from_utf8_lossy(&buf[..read]);
-        transcript.push_str(&chunk);
-        if transcript.len() > 64 * 1024 {
-            let drain = transcript.len().saturating_sub(64 * 1024);
-            transcript.drain(..drain);
-        }
-
-        if contains_wallix_prompt(&transcript) {
-            return Ok(transcript);
-        }
-
-        if contains_ssh_auth_prompt(&transcript) {
-            return Ok(format!("SSH_AUTH_REQUIRED:{transcript}"));
-        }
-    }
-
-    Err(anyhow::anyhow!(
-        "Wallix session exited before the selection prompt was displayed"
-    ))
 }
 
 #[cfg(unix)]
@@ -632,10 +704,12 @@ fn connect_wallix_via_pty_with_selection(
                 // et l'output est affiché ci-dessous pour que l'utilisateur voit le prompt.
             }
 
-            // En mode auto-sélection, on n'affiche rien tant que la phase menu
-            // n'est pas terminée afin d'éviter le bruit du menu global.
+            // En mode auto-sélection, on n'affiche rien tant que la sélection n'est pas
+            // envoyée afin d'éviter le bruit du menu global. Dès que selection_completed,
+            // on affiche tout — le password prompt peut arriver sans "Adresse cible" selon
+            // la config Wallix.
             // Exception : toujours montrer les prompts d'auth sans credential connu.
-            if !hide_menu_output || target_address_sent || (auth_prompted && auth.is_none()) {
+            if !hide_menu_output || selection_completed || (auth_prompted && auth.is_none()) {
                 stdout.write_all(&buf[..read])?;
                 stdout.flush()?;
             }
@@ -798,6 +872,8 @@ mod tests {
             wallix_auto_select: true,
             wallix_fail_if_menu_match_error: true,
             wallix_selection_timeout_secs: 8,
+            wallix_direct: false,
+            wallix_authorization: None,
         }
     }
 
@@ -985,7 +1061,11 @@ mod tests {
         let args = build_wallix_bastion_args(&s, false).unwrap();
 
         assert!(args.contains(&"-l".to_string()));
-        assert!(args.contains(&"demo_user".to_string()));
+        // Login includes target host for server-side Wallix filtering (avoids paginating all entries).
+        assert!(
+            args.iter()
+                .any(|a| a.starts_with("demo_user@") && a.contains(":SSH:demo_user"))
+        );
         assert!(args.contains(&"-p".to_string()));
         assert!(args.contains(&"8022".to_string()));
         assert_eq!(args.last().unwrap(), "bastion.example.com");

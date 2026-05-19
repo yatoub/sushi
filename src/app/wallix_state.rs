@@ -73,8 +73,7 @@ pub(super) fn targeted_wallix_entries(
 }
 
 impl App {
-    pub fn should_open_wallix_selector(&self, server: &ResolvedServer) -> bool {
-        let _ = server;
+    pub fn should_open_wallix_selector(&self, _server: &ResolvedServer) -> bool {
         if self.connection_mode != ConnectionMode::Wallix {
             return false;
         }
@@ -91,6 +90,10 @@ impl App {
     }
 
     pub fn open_wallix_selector(&mut self, server: ResolvedServer, verbose: bool) {
+        if server.wallix_direct {
+            self.wallix_pending_connection = Some((server, "WALLIX_DIRECT".to_string()));
+            return;
+        }
         self.open_wallix_selector_with_auth(server, verbose, None);
     }
 
@@ -171,7 +174,18 @@ impl App {
                     }
                 }
                 Err(message) => {
-                    if let Some(prompt_text) = message.strip_prefix("SSH_AUTH_REQUIRED:") {
+                    if message == "WALLIX_DIRECT_CONNECTION" {
+                        // The filtered login caused Wallix to connect directly — trigger
+                        // connection immediately using a sentinel ID that bypasses menu nav.
+                        let verbose = match &self.wallix_selector {
+                            Some(WallixSelectorState::Loading { verbose, .. }) => *verbose,
+                            _ => false,
+                        };
+                        self.wallix_selector = None;
+                        self.wallix_pending_connection =
+                            Some((server, "WALLIX_DIRECT".to_string()));
+                        let _ = verbose;
+                    } else if let Some(prompt_text) = message.strip_prefix("SSH_AUTH_REQUIRED:") {
                         let is_passphrase = prompt_text
                             .to_ascii_lowercase()
                             .contains("enter passphrase for key");

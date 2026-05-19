@@ -87,11 +87,49 @@ When automatic resolution fails (no match or ambiguity), susshi opens a focused 
 - If Wallix asks for a secondary prompt like `Adresse cible`, susshi auto-fills the configured server host.
 - If no reliable match is found, susshi falls back to manual in-session selection.
 
+## Forcing a Specific Authorization
+
+When a target has multiple Wallix authorizations (different groups), set `wallix.authorization` to the exact authorization name shown in the Wallix menu:
+
+```yaml
+groups:
+  - name: "Secured Perimeter"
+    wallix:
+      group: "ces3s-admins"         # short form — used for menu scoring
+    servers:
+      - name: "anscore02"
+        host: "anscore02.internal.example"
+        mode: "wallix"
+        wallix:
+          authorization: "STI-ANSCORE_ces3s-admins"  # exact name from the Wallix menu
+          direct: true
+```
+
+`authorization` takes priority over `group` and is passed verbatim in the SSH login string. Combined with `direct: true`, this gives instant zero-delay connections for servers where the authorization is known in advance.
+
+**When to use:** When `auto_select` resolves the wrong entry, or when a server has multiple authorizations and you want to pin the right one without going through the menu.
+
+## Direct Connection Mode
+
+Set `wallix.direct: true` to bypass the menu probe entirely and connect in zero delay.
+
+```yaml
+defaults:
+  wallix:
+    host: "bastion.example.com"
+    user: "bastion-user"
+    direct: true          # skip menu probe — Wallix connects directly
+```
+
+**When to use:** When Wallix is configured to connect the target directly without presenting a selection menu, or when `wallix.authorization` is set and Wallix will always resolve to a single entry. Without `direct: true`, susshi still detects direct connections automatically — it just takes a few extra seconds.
+
 ## Behavior Controls
 
 - `auto_select`: enable automatic selection attempts.
 - `fail_if_menu_match_error`: keep trying (including pagination) before falling back.
 - `selection_timeout_secs`: menu parsing timeout budget.
+- `authorization`: exact Wallix authorization name — bypasses group matching and pins the entry.
+- `direct`: skip the menu probe and connect immediately (zero-delay).
 
 ## Troubleshooting
 

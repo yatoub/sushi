@@ -2,9 +2,9 @@ name: "CI"
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -66,7 +66,7 @@ jobs:
             openssl_mode: vendored
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            openssl_mode: vendored
+            openssl_mode: system
           - os: macos-15-intel
             target: x86_64-apple-darwin
             openssl_mode: system
@@ -95,6 +95,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools pkg-config libssl-dev
 
+      - name: Set OpenSSL paths (Windows — use Strawberry Perl's OpenSSL)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          "OPENSSL_DIR=C:\Strawberry\c" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build (system OpenSSL)
         if: matrix.openssl_mode == 'system'

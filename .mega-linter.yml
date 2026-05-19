@@ -3,30 +3,31 @@
 
 FLAVOR: rust
 
-# Linters actifs dans la flavour rust
 ENABLE_LINTERS:
-  - RUST_CLIPPY
   - YAML_PRETTIER
   - YAML_YAMLLINT
   - MARKDOWN_MARKDOWNLINT
   - REPOSITORY_SECRETLINT
   - REPOSITORY_TRIVY
 
-# fmt est géré par cargo fmt dans le job Test Suite — pas besoin de le doubler
+# RUST_CLIPPY: runs in a musl container without system OpenSSL — fails to
+#   compile the crate. Clippy is already enforced in the Test Suite job.
+# RUST_RUSTFMT: already enforced in the Test Suite job.
 DISABLE_LINTERS:
+  - RUST_CLIPPY
   - RUST_RUSTFMT
 
-# Ne pas bloquer sur les linters "info only"
+# Trivy is informational only
 DISABLE_ERRORS_LINTERS:
   - REPOSITORY_TRIVY
 
-# Exclure les dossiers générés
 FILTER_REGEX_EXCLUDE: "(target/|Cargo\\.lock)"
 
-# Affichage
+# Use our custom yamllint config tuned for GitHub Actions line lengths
+YAML_YAMLLINT_CONFIG_FILE: .yamllint.yml
+
 PRINT_ALL_FILES: false
 SHOW_ELAPSED_TIME: true
 
-# Reporter GitHub pour annoter directement la PR
 GITHUB_STATUS_REPORTER: true
 GITHUB_COMMENT_REPORTER: false

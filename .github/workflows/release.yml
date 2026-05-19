@@ -91,7 +91,6 @@ jobs:
         shell: bash
         run: cargo install cargo-zigbuild
 
-
       - name: Build release (system OpenSSL)
         if: matrix.openssl_mode == 'system'
         shell: bash

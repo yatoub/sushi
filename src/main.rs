@@ -685,6 +685,17 @@ fn run_app(
             app.probe_rx = None;
         }
 
+        // Lit le résultat du diagnostic du serveur épinglé
+        if let Some(rx) = &app.pinned_probe_rx
+            && let Ok(result) = rx.try_recv()
+        {
+            app.pinned_probe_state = match result {
+                Ok(probe) => ProbeState::Done(probe),
+                Err(msg) => ProbeState::Error(msg),
+            };
+            app.pinned_probe_rx = None;
+        }
+
         // Lit le résultat de la commande ad-hoc si un thread tourne
         app.poll_cmd();
 
@@ -1011,14 +1022,25 @@ fn run_app(
                                 let items = app.get_visible_items();
                                 match items.get(app.selected_index) {
                                     Some(ConfigItem::Server(server)) => {
-                                        if app.pinned_server.as_deref().map(|s| s.name == server.name).unwrap_or(false) {
+                                        if app
+                                            .pinned_server
+                                            .as_deref()
+                                            .map(|s| s.name == server.name)
+                                            .unwrap_or(false)
+                                        {
                                             app.pinned_server = None;
+                                            app.pinned_probe_state = ProbeState::Idle;
+                                            app.pinned_probe_rx = None;
                                         } else {
                                             app.pinned_server = Some(server.clone());
+                                            app.pinned_probe_state = ProbeState::Idle;
+                                            app.pinned_probe_rx = None;
                                         }
                                     }
                                     _ => {
                                         app.pinned_server = None;
+                                        app.pinned_probe_state = ProbeState::Idle;
+                                        app.pinned_probe_rx = None;
                                     }
                                 }
                             }
@@ -1106,6 +1128,18 @@ fn run_app(
                                     let (tx, rx) = std::sync::mpsc::channel();
                                     app.probe_rx = Some(rx);
                                     app.probe_state = ProbeState::Running;
+                                    std::thread::spawn(move || {
+                                        let result = susshi::probe::probe(&server_clone, mode)
+                                            .map_err(|e| e.to_string());
+                                        let _ = tx.send(result);
+                                    });
+                                }
+                                if let Some(pinned) = &app.pinned_server {
+                                    let server_clone = (**pinned).clone();
+                                    let mode = app.connection_mode;
+                                    let (tx, rx) = std::sync::mpsc::channel();
+                                    app.pinned_probe_rx = Some(rx);
+                                    app.pinned_probe_state = ProbeState::Running;
                                     std::thread::spawn(move || {
                                         let result = susshi::probe::probe(&server_clone, mode)
                                             .map_err(|e| e.to_string());

@@ -86,6 +86,8 @@ impl App {
             wallix_pending_auth: None,
             show_help: false,
             pinned_server: None,
+            pinned_probe_state: ProbeState::Idle,
+            pinned_probe_rx: None,
             cmd_history: Vec::new(),
             cmd_history_cursor: None,
             overview: None,

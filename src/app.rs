@@ -310,7 +310,11 @@ pub enum ScpState {
 #[derive(Debug, Clone)]
 pub enum OverviewStatus {
     Pending,
-    Ok { load: String, ram_pct: u8, disk_pct: u8 },
+    Ok {
+        load: String,
+        ram_pct: u8,
+        disk_pct: u8,
+    },
     Error(String),
 }
 
@@ -447,6 +451,11 @@ pub struct App {
 
     /// Serveur épinglé dans le split pane droit (None = pas de split).
     pub pinned_server: Option<Box<ResolvedServer>>,
+
+    /// État du diagnostic SSH pour le serveur épinglé.
+    pub pinned_probe_state: ProbeState,
+    /// Récepteur du thread de diagnostic du serveur épinglé.
+    pub pinned_probe_rx: Option<mpsc::Receiver<Result<ProbeResult, String>>>,
 
     /// État du dashboard overview (None = fermé).
     pub overview: Option<OverviewState>,

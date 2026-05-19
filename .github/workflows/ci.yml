@@ -66,7 +66,7 @@ jobs:
             openssl_mode: vendored
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            openssl_mode: system
+            openssl_mode: vendored
           - os: macos-15-intel
             target: x86_64-apple-darwin
             openssl_mode: system
@@ -95,24 +95,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools pkg-config libssl-dev
 
-      - name: Install OpenSSL (Windows)
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        shell: pwsh
-        run: |
-          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
-          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
-            $vcpkgRoot = "C:\\vcpkg"
-          }
-          $vcpkg = "$vcpkgRoot\\vcpkg.exe"
-          if (-not (Test-Path $vcpkg)) {
-            Write-Error "vcpkg not found at $vcpkg"
-          }
-          & $vcpkg install openssl:x64-windows-static-md
-          "OPENSSL_NO_VENDOR=1" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VCPKGRS_DYNAMIC=0" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VCPKGRS_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build (system OpenSSL)
         if: matrix.openssl_mode == 'system'

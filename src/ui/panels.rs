@@ -753,6 +753,30 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                     r.disk_total_gb,
                                     theme,
                                 ));
+                                if server.control_master {
+                                    let (cm_icon, cm_label, cm_style) = if r.control_master_active {
+                                        (
+                                            "⬡ ",
+                                            fl!("probe-cm-active"),
+                                            Style::default().fg(theme.green),
+                                        )
+                                    } else {
+                                        (
+                                            "⬡ ",
+                                            fl!("probe-cm-inactive"),
+                                            Style::default().fg(theme.subtext0),
+                                        )
+                                    };
+                                    lines.push(Line::from(vec![
+                                        Span::styled(
+                                            fl!("probe-cm-label"),
+                                            Style::default()
+                                                .add_modifier(Modifier::BOLD)
+                                                .fg(theme.fg),
+                                        ),
+                                        Span::styled(format!("{}{}", cm_icon, cm_label), cm_style),
+                                    ]));
+                                }
                                 for fs_entry in &r.extra_fs {
                                     match &fs_entry.usage {
                                         Some(usage) => {

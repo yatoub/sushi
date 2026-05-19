@@ -118,7 +118,10 @@ For a complete config example, see [examples/full_config.yaml](examples/full_con
 - SCP transfer form (`s`) with live progress.
 - Wallix authorization auto-resolution with targeted fallback popup.
 - Hooks (`pre_connect_hook`, `post_disconnect_hook`).
-- `~/.ssh/config` import and export (`--export openssh`), Ansible inventory export, and CSV export (`--export csv`).
+- `~/.ssh/config` import and inventory export to Ansible, Terraform, and Nmap target lists.
+- `--list --json`: dump all servers as JSON for `jq` / `fzf` pipelines.
+- `--exec-group <group> --exec-cmd <cmd>`: run a non-interactive SSH command on a whole group in parallel.
+- Remote includes over HTTPS: `path: https://…` in the `includes` section.
 - Variable interpolation with `_vars` and built-in `{{ index }}`.
 - **SSH certificate support** (`ssh_cert`): pass a signed certificate alongside the private key.
 - **SSH agent socket** (`ssh_agent_sock`): route a server's connections through a dedicated agent socket (GPG, per-server isolation); sets `SSH_AUTH_SOCK` and `-o IdentityAgent`.
@@ -254,6 +257,18 @@ susshi --direct app-01.internal.example --user deploy --port 2222 --key ~/.ssh/d
 
 # Alternate config file
 susshi --config ~/work/.susshi.yml
+
+# List all servers as JSON (pipe to jq / fzf)
+susshi --list
+susshi --list --list-filter "#prod" | jq -r '.[].host'
+
+# Run a command on all servers in a group (parallel)
+susshi --exec-group prod --exec-cmd "uptime"
+
+# Export inventory
+susshi --export ansible --export-output ~/inventory.yml
+susshi --export terraform --export-output ~/inventory.json
+susshi --export nmap | nmap -iL - -p 22 -sV
 
 # Show all options
 susshi --help

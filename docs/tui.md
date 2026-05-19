@@ -52,6 +52,7 @@ Search behavior:
 | `f` | Toggle favorite |
 | `F` | Favorites-only view |
 | `C` | Collapse all groups/environments/namespaces |
+| `E` | Expand all groups/environments/namespaces |
 | `H` | Toggle recent-sort view |
 | `h` | Toggle keyboard help overlay |
 | `o` | Open group overview dashboard |

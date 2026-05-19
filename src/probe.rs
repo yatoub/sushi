@@ -229,7 +229,24 @@ pub fn probe(server: &ResolvedServer, mode: ConnectionMode) -> Result<ProbeResul
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("SSH probe échoué : {}", stderr.trim());
+        let stderr = stderr.trim();
+        // Produire des messages lisibles pour les erreurs known_host courantes.
+        if stderr.contains("REMOTE HOST IDENTIFICATION HAS CHANGED") {
+            anyhow::bail!(
+                "La clé SSH de cet hôte a changé.\n\
+                 Supprimez l'ancienne entrée avec :\n\
+                 ssh-keygen -R {}",
+                server.host
+            );
+        }
+        if stderr.contains("Host key verification failed") {
+            anyhow::bail!(
+                "Vérification de la clé SSH échouée pour {}.\n\
+                 Vérifiez ~/.ssh/known_hosts.",
+                server.host
+            );
+        }
+        anyhow::bail!("SSH probe échoué : {}", stderr);
     }
 
     let mut result = ProbeResult::parse(

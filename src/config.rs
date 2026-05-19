@@ -172,6 +172,8 @@ pub struct Defaults {
     pub ssh_key: Option<String>,
     /// Certificat SSH signé à passer avec `-i` (en complément de ssh_key).
     pub ssh_cert: Option<String>,
+    /// Socket de l'agent SSH à utiliser pour ce serveur (remplace SSH_AUTH_SOCK).
+    pub ssh_agent_sock: Option<String>,
     pub mode: Option<ConnectionMode>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
@@ -301,6 +303,8 @@ pub struct Server {
     pub ssh_key: Option<String>,
     /// Certificat SSH signé (complément de ssh_key).
     pub ssh_cert: Option<String>,
+    /// Socket de l'agent SSH à utiliser pour ce serveur.
+    pub ssh_agent_sock: Option<String>,
     pub ssh_port: Option<u16>,
     pub ssh_options: Option<Vec<String>>,
     pub mode: Option<ConnectionMode>,
@@ -332,6 +336,8 @@ pub struct ResolvedServer {
     pub ssh_key: String,
     /// Certificat SSH signé (vide = non configuré).
     pub ssh_cert: String,
+    /// Socket de l'agent SSH (vide = utiliser SSH_AUTH_SOCK système).
+    pub ssh_agent_sock: String,
     pub ssh_options: Vec<String>,
     pub default_mode: ConnectionMode,
     /// Chaîne prête à passer à `-J` : `"user1@host1:port,user2@host2"` pour un ou plusieurs sauts.
@@ -662,6 +668,7 @@ fn resolve_entries(
                             user: e_user,
                             key: e_key,
                             cert: d.ssh_cert.as_deref(),
+                            agent_sock: d.ssh_agent_sock.as_deref(),
                             mode: e_mode,
                             port: e_port,
                             opts: e_opts.as_ref(),
@@ -695,6 +702,7 @@ fn resolve_entries(
                         user: g_user,
                         key: g_key,
                         cert: d.ssh_cert.as_deref(),
+                        agent_sock: d.ssh_agent_sock.as_deref(),
                         mode: g_mode,
                         port: g_port,
                         opts: g_opts.as_ref(),
@@ -725,6 +733,7 @@ fn resolve_entries(
                     user: d.user.as_deref(),
                     key: d.ssh_key.as_deref(),
                     cert: d.ssh_cert.as_deref(),
+                    agent_sock: d.ssh_agent_sock.as_deref(),
                     mode: d.mode,
                     port: d.ssh_port,
                     opts: d.ssh_options.as_ref(),
@@ -875,6 +884,10 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
         user: overrides.user.clone().or_else(|| base.user.clone()),
         ssh_key: overrides.ssh_key.clone().or_else(|| base.ssh_key.clone()),
         ssh_cert: overrides.ssh_cert.clone().or_else(|| base.ssh_cert.clone()),
+        ssh_agent_sock: overrides
+            .ssh_agent_sock
+            .clone()
+            .or_else(|| base.ssh_agent_sock.clone()),
         mode: overrides.mode.or(base.mode),
         ssh_port: overrides.ssh_port.or(base.ssh_port),
         ssh_options: overrides
@@ -1150,6 +1163,7 @@ struct ServerDefaults<'a> {
     user: Option<&'a str>,
     key: Option<&'a str>,
     cert: Option<&'a str>,
+    agent_sock: Option<&'a str>,
     mode: Option<ConnectionMode>,
     port: Option<u16>,
     opts: Option<&'a Vec<String>>,
@@ -1178,6 +1192,7 @@ fn resolve_server(
     let def_user = def.user;
     let def_key = def.key;
     let def_cert = def.cert;
+    let def_agent_sock = def.agent_sock;
     let def_mode = def.mode;
     let def_port = def.port;
     let def_opts = def.opts;
@@ -1204,6 +1219,12 @@ fn resolve_server(
         .ssh_cert
         .as_deref()
         .or(def_cert)
+        .map(|c| shellexpand::tilde(c).into_owned())
+        .unwrap_or_default();
+    let agent_sock = s
+        .ssh_agent_sock
+        .as_deref()
+        .or(def_agent_sock)
         .map(|c| shellexpand::tilde(c).into_owned())
         .unwrap_or_default();
 
@@ -1269,6 +1290,7 @@ fn resolve_server(
         port,
         ssh_key: key,
         ssh_cert: cert,
+        ssh_agent_sock: agent_sock,
         ssh_options: opts,
         default_mode: mode,
         jump_host,
@@ -1506,6 +1528,7 @@ mod tests {
                     pre_connect_hook: None,
                     post_disconnect_hook: None,
                     notes: None,
+                    ssh_agent_sock: None,
                 }]),
                 probe_filesystems: None,
                 tunnels: None,

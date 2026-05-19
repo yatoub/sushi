@@ -121,6 +121,7 @@ For a complete config example, see [examples/full_config.yaml](examples/full_con
 - `~/.ssh/config` import and Ansible inventory export.
 - Variable interpolation with `_vars` and built-in `{{ index }}`.
 - **SSH certificate support** (`ssh_cert`): pass a signed certificate alongside the private key.
+- **SSH agent socket** (`ssh_agent_sock`): route a server's connections through a dedicated agent socket (GPG, per-server isolation); sets `SSH_AUTH_SOCK` and `-o IdentityAgent`.
 - **Server notes** (`notes`): free-form description per server, shown in the detail panel.
 - **Live theme toggle** (`Ctrl+Y`): cycle Catppuccin variants without editing the config file.
 

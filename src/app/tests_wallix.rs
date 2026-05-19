@@ -38,6 +38,7 @@ fn wallix_test_server(group: Option<&str>) -> ResolvedServer {
         hook_timeout_secs: 5,
         ssh_cert: String::new(),
         notes: String::new(),
+        ssh_agent_sock: String::new(),
     }
 }
 

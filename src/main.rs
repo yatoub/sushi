@@ -1071,6 +1071,9 @@ fn run_app(
                             KeyCode::Char('C') => {
                                 app.collapse_all();
                             }
+                            KeyCode::Char('E') => {
+                                app.expand_all();
+                            }
                             KeyCode::Char('H') => {
                                 app.sort_by_recent = !app.sort_by_recent;
                                 app.items_dirty = true;

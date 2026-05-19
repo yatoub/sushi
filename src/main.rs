@@ -707,6 +707,9 @@ fn run_app(
         // Sonde les évènements du transfert SCP en cours
         app.poll_scp_events();
 
+        // Sonde les résultats des probes parallèles du dashboard overview
+        app.poll_overview();
+
         if event::poll(Duration::from_millis(250))? {
             match event::read()? {
                 Event::Key(key) => {
@@ -759,12 +762,38 @@ fn run_app(
                                     }
                                 }
                             }
+                            KeyCode::Up => {
+                                if !app.cmd_history.is_empty() {
+                                    let cursor = match app.cmd_history_cursor {
+                                        None => app.cmd_history.len() - 1,
+                                        Some(c) => c.saturating_sub(1),
+                                    };
+                                    app.cmd_history_cursor = Some(cursor);
+                                    let entry = app.cmd_history[cursor].clone();
+                                    app.cmd_state = CmdState::Prompting(entry);
+                                }
+                            }
+                            KeyCode::Down => {
+                                if let Some(cursor) = app.cmd_history_cursor {
+                                    if cursor + 1 < app.cmd_history.len() {
+                                        let next = cursor + 1;
+                                        app.cmd_history_cursor = Some(next);
+                                        let entry = app.cmd_history[next].clone();
+                                        app.cmd_state = CmdState::Prompting(entry);
+                                    } else {
+                                        app.cmd_history_cursor = None;
+                                        app.cmd_state = CmdState::Prompting(String::new());
+                                    }
+                                }
+                            }
                             KeyCode::Char(c) => {
+                                app.cmd_history_cursor = None;
                                 if let CmdState::Prompting(ref mut buf) = app.cmd_state {
                                     buf.push(c);
                                 }
                             }
                             KeyCode::Backspace => {
+                                app.cmd_history_cursor = None;
                                 if let CmdState::Prompting(ref mut buf) = app.cmd_state {
                                     buf.pop();
                                 }
@@ -894,10 +923,18 @@ fn run_app(
                                 return Ok(AppResult::Exit);
                             }
                             KeyCode::Down | KeyCode::Char('j') => {
-                                app.next();
+                                if app.overview.is_some() {
+                                    app.overview_scroll_down();
+                                } else {
+                                    app.next();
+                                }
                             }
                             KeyCode::Up | KeyCode::Char('k') => {
-                                app.previous();
+                                if app.overview.is_some() {
+                                    app.overview_scroll_up();
+                                } else {
+                                    app.previous();
+                                }
                             }
                             KeyCode::Tab => {
                                 app.connection_mode = app.connection_mode.next();
@@ -956,6 +993,37 @@ fn run_app(
                             }
                             KeyCode::Char('/') => {
                                 app.is_searching = true;
+                            }
+                            KeyCode::Char('h') => {
+                                app.show_help = !app.show_help;
+                            }
+                            KeyCode::Esc if app.show_help => {
+                                app.show_help = false;
+                            }
+                            KeyCode::Char('o') => {
+                                if app.overview.is_some() {
+                                    app.close_overview();
+                                } else {
+                                    app.open_overview();
+                                }
+                            }
+                            KeyCode::Char('|') => {
+                                let items = app.get_visible_items();
+                                match items.get(app.selected_index) {
+                                    Some(ConfigItem::Server(server)) => {
+                                        if app.pinned_server.as_deref().map(|s| s.name == server.name).unwrap_or(false) {
+                                            app.pinned_server = None;
+                                        } else {
+                                            app.pinned_server = Some(server.clone());
+                                        }
+                                    }
+                                    _ => {
+                                        app.pinned_server = None;
+                                    }
+                                }
+                            }
+                            KeyCode::Esc if app.overview.is_some() => {
+                                app.close_overview();
                             }
                             KeyCode::Char('r') => match app.reload() {
                                 Ok(()) => {}

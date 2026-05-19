@@ -53,6 +53,9 @@ Search behavior:
 | `F` | Favorites-only view |
 | `C` | Collapse all groups/environments/namespaces |
 | `H` | Toggle recent-sort view |
+| `h` | Toggle keyboard help overlay |
+| `o` | Open group overview dashboard |
+| `\|` | Pin/unpin server in split pane |
 
 State is persisted in `~/.susshi_state.json` (favorites, expanded nodes, sort mode, last seen connection timestamps, tunnel overrides).
 
@@ -60,8 +63,8 @@ State is persisted in `~/.susshi_state.json` (favorites, expanded nodes, sort mo
 
 | Key | Action |
 | --- | --- |
-| `d` | Run quick diagnostics |
-| `x` | Run ad-hoc SSH command |
+| `d` | Run quick diagnostics on the selected server |
+| `x` | Run ad-hoc SSH command on the selected server |
 
 Diagnostics include:
 
@@ -70,6 +73,37 @@ Diagnostics include:
 - Extra filesystem checks from `probe_filesystems`.
 
 Ad-hoc command output is displayed in the detail pane (up to 20 lines) with colored exit status.
+
+### Command history
+
+When the ad-hoc command prompt (`x`) is open, use `↑` and `↓` to navigate previously run commands. The history is deduplicated (identical consecutive commands are not duplicated) and persists for the duration of the session.
+
+## Group Overview Dashboard
+
+Press `o` when a **group** or **environment** header is selected to open the overview dashboard.
+
+susshi launches a parallel SSH probe on every server in the group and displays results in a live-updating overlay:
+
+| Column | Description |
+| --- | --- |
+| ✓ / ✗ | Connection success or failure |
+| Name | Server name |
+| Host | SSH hostname |
+| Status | Load average, RAM %, disk % on success; first line of error message on failure |
+
+- Results arrive as threads complete; pending servers show `…`.
+- Use `j`/`↓` and `k`/`↑` to scroll the list.
+- Press `o` again or `Esc` to close.
+
+The probe uses the current connection mode (Direct/Jump) selected in the tab bar.
+
+## Split Pane
+
+Press `|` on any **server** to pin it to a dedicated right panel.
+
+The layout switches from a 2-column view (tree + details) to a 3-column view (tree + current details + pinned server). The pinned server panel shows name, host, user, port, group/environment, and connection mode.
+
+Press `|` again on the same server (or on any non-server item) to unpin and return to the standard layout.
 
 ## Tunnels and SCP
 
@@ -88,6 +122,10 @@ SCP:
 
 - Upload/download from an in-TUI form.
 - Live transfer progress through PTY-backed OpenSSH output.
+
+## Keyboard Help Overlay
+
+Press `h` at any time to open an in-TUI reference of all keybindings. Press `h` again or `Esc` to close it.
 
 ## Error Overlay
 

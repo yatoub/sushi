@@ -110,7 +110,10 @@ For a complete config example, see [examples/full_config.yaml](examples/full_con
 ### Advanced Features
 
 - Quick diagnostics (`d`) with system stats and filesystem checks.
-- Ad-hoc non-interactive SSH command runner (`x`).
+- Ad-hoc non-interactive SSH command runner (`x`) with **command history** (↑/↓ to navigate).
+- **Group overview dashboard** (`o`): parallel SSH probe of all servers in the selected group — live ✓/✗ status, load average, RAM%, disk%.
+- **Split pane** (`|`): pin a server to a dedicated right panel while browsing the rest of the tree.
+- **Keyboard help overlay** (`h`): full reference of all keybindings, displayed in-app.
 - SSH tunnel manager (`T`) with persistent user overrides.
 - SCP transfer form (`s`) with live progress.
 - Wallix authorization auto-resolution with targeted fallback popup.
@@ -275,7 +278,10 @@ Detailed CLI examples: [docs/cli.md](docs/cli.md)
 | --- | --- |
 | `Tab`, `1`, `2`, `3` | Switch connection mode |
 | `d` | Quick diagnostics |
-| `x` | Ad-hoc SSH command |
+| `x` | Ad-hoc SSH command (↑/↓ = history navigation) |
+| `o` | Group overview dashboard (parallel probe) |
+| `\|` | Pin/unpin server in split pane |
+| `h` | Toggle keyboard help overlay |
 | `T` | Tunnel manager |
 | `s` | SCP transfer form |
 | `f` / `F` | Favorite toggle / favorites-only view |

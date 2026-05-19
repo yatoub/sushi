@@ -959,3 +959,48 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         chunks[1],
     );
 }
+
+/// Panneau droit du split pane — affiche le serveur épinglé.
+pub(crate) fn draw_pinned_server(f: &mut Frame, app: &App, area: Rect) {
+    let Some(server) = &app.pinned_server else { return };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title(format!(" 📌 {} ", server.name))
+        .border_style(Style::default().fg(app.theme.yellow));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let lines = vec![
+        Line::from(vec![
+            Span::styled("Name   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+            Span::raw(server.name.as_str()),
+        ]),
+        Line::from(vec![
+            Span::styled("Host   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+            Span::raw(server.host.as_str()),
+        ]),
+        Line::from(vec![
+            Span::styled("User   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+            Span::raw(server.user.as_str()),
+        ]),
+        Line::from(vec![
+            Span::styled("Port   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+            Span::raw(server.port.to_string()),
+        ]),
+        Line::from(vec![
+            Span::styled("Group  ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+            Span::raw(format!("{} / {}", server.group_name, server.env_name)),
+        ]),
+        Line::from(vec![
+            Span::styled("Mode   ", Style::default().add_modifier(Modifier::BOLD).fg(app.theme.fg)),
+            Span::raw(format!("{:?}", server.default_mode)),
+        ]),
+        Line::from(Span::styled("─────────────────────────", Style::default().fg(app.theme.border))),
+        Line::from(Span::styled("| (P) pour épingler/dés-épingler", Style::default().fg(app.theme.subtext0))),
+    ];
+
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+}

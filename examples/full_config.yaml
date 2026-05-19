@@ -91,6 +91,14 @@ defaults:
     auto_select: true
     fail_if_menu_match_error: true
     selection_timeout_secs: 8
+    # Set to true when the target server always connects directly through Wallix
+    # without presenting a selection menu. Skips the menu probe and connects
+    # instantly — eliminates the ~5 s delay for direct-checkout targets.
+    # direct: true
+    # Exact Wallix authorization name (e.g. "STI-ANSCORE_ces3s-admins").
+    # When set, takes priority over `group` and is passed verbatim in the login
+    # string. Use with direct: true for instant zero-delay connections.
+    # authorization: "PREFIX_group-name"
   # Single jump host
   jump:
     - host: "jump.example.com"
@@ -208,6 +216,14 @@ groups:
         host: "standard-ops.internal.example"
         mode: "wallix"
         # Inherits wallix.group = "ops-admins" from parent group.
+      - name: "anscore02"
+        host: "anscore02.internal.example"
+        mode: "wallix"
+        wallix:
+          # Exact authorization name pins the right entry when multiple groups exist.
+          # Combined with direct: true → instant connection, no menu probe.
+          authorization: "STI-ANSCORE_ces3s-admins"
+          direct: true
 
   - name: "Infrastructure"
     servers:

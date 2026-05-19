@@ -140,9 +140,10 @@ pub fn build_expected_targets(server: &ResolvedServer) -> Vec<String> {
 ///
 /// This function extracts the ID, target (Cible), and group (Autorisation) columns.
 pub fn parse_wallix_menu(output: &str) -> Result<Vec<WallixMenuEntry>> {
+    let cleaned = strip_ansi(output);
     let mut entries = Vec::new();
 
-    for line in output.lines() {
+    for line in cleaned.lines() {
         let trimmed = line.trim();
 
         // Ignore headers, separators and empty lines.
@@ -152,13 +153,13 @@ pub fn parse_wallix_menu(output: &str) -> Result<Vec<WallixMenuEntry>> {
             || trimmed.contains("Autorisation")
             || trimmed
                 .chars()
-                .all(|c| matches!(c, '─' | '┼' | '│' | '-' | '+'))
+                .all(|c| matches!(c, '\u{2500}' | '\u{253C}' | '\u{2502}' | '-' | '+'))
         {
             continue;
         }
 
-        let separator = if trimmed.contains('│') {
-            '│'
+        let separator = if trimmed.contains('\u{2502}') {
+            '\u{2502}'
         } else if trimmed.contains('|') {
             '|'
         } else {
@@ -197,6 +198,37 @@ pub fn parse_wallix_menu(output: &str) -> Result<Vec<WallixMenuEntry>> {
     }
 
     Ok(entries)
+}
+
+/// Strip ANSI/VT100 escape sequences from a string.
+pub(crate) fn strip_ansi(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            match chars.peek() {
+                Some('[') => {
+                    chars.next();
+                    // consume until a letter (the final byte of a CSI sequence)
+                    for c in chars.by_ref() {
+                        if c.is_ascii_alphabetic() {
+                            break;
+                        }
+                    }
+                }
+                Some('(') | Some(')') | Some('*') | Some('+') => {
+                    chars.next();
+                    chars.next(); // consume one more designator byte
+                }
+                _ => {
+                    chars.next(); // consume whatever follows ESC
+                }
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// Select a menu entry ID based on target and group matching.
@@ -272,12 +304,15 @@ fn normalize_authorization_segment(value: &str) -> String {
 }
 
 pub fn build_expected_groups(server: &ResolvedServer) -> Result<Vec<String>> {
-    let configured_group = server.wallix_group.as_deref().ok_or_else(|| {
-        anyhow!(
-            "wallix.group is not configured for server '{}'",
-            server.name
-        )
-    })?;
+    let configured_group = match server
+        .wallix_group
+        .as_deref()
+        .map(str::trim)
+        .filter(|g| !g.is_empty())
+    {
+        Some(g) => g,
+        None => return Ok(vec![]),
+    };
 
     let mut candidates = vec![configured_group.to_string()];
 
@@ -318,12 +353,11 @@ pub fn select_id_for_server(
 ) -> Result<String> {
     let targets = build_expected_targets(server);
     let groups = build_expected_groups(server)?;
-    let configured_group = server.wallix_group.as_deref().ok_or_else(|| {
-        anyhow!(
-            "wallix.group is not configured for server '{}'",
-            server.name
-        )
-    })?;
+    let configured_group = server
+        .wallix_group
+        .as_deref()
+        .map(str::trim)
+        .filter(|g| !g.is_empty());
 
     let mut had_target_match = false;
     let mut available_groups_for_matching_targets: Vec<String> = Vec::new();
@@ -342,6 +376,20 @@ pub fn select_id_for_server(
         for entry in &target_entries {
             if !available_groups_for_matching_targets.contains(&entry.group) {
                 available_groups_for_matching_targets.push(entry.group.clone());
+            }
+        }
+
+        // No group configured: auto-select only if exactly one entry matches the target.
+        if configured_group.is_none() {
+            match target_entries.len() {
+                1 => return Ok(target_entries[0].id.clone()),
+                _ => {
+                    return Err(anyhow!(
+                        "Multiple menu entries found for target '{}'. Configure wallix.group to auto-select. Available groups: {}",
+                        target,
+                        available_groups_for_matching_targets.join(", ")
+                    ));
+                }
             }
         }
 
@@ -364,9 +412,10 @@ pub fn select_id_for_server(
             }
         }
 
+        let cg = configured_group.unwrap_or_default();
         let suffix_matches: Vec<_> = target_entries
             .iter()
-            .filter(|entry| group_suffix_matches(&entry.group, configured_group))
+            .filter(|entry| group_suffix_matches(&entry.group, cg))
             .collect();
         match suffix_matches.len() {
             1 => return Ok(suffix_matches[0].id.clone()),
@@ -375,7 +424,7 @@ pub fn select_id_for_server(
                     "Multiple menu entries ({}) found for target '{}' matching group suffix '{}'. Cannot auto-select.",
                     n,
                     target,
-                    configured_group
+                    cg
                 ));
             }
             _ => {}
@@ -385,7 +434,7 @@ pub fn select_id_for_server(
     if had_target_match {
         return Err(anyhow!(
             "No menu entry found for matching targets with group '{}'. Available groups for these targets: {}",
-            configured_group,
+            configured_group.unwrap_or("(none)"),
             available_groups_for_matching_targets.join(", ")
         ));
     }
@@ -407,6 +456,38 @@ pub fn select_id_for_server(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_strip_ansi_removes_csi_sequences() {
+        // CSI clear screen + cursor home
+        assert_eq!(
+            strip_ansi("\x1b[2J\x1b[H| 0 | target | group |"),
+            "| 0 | target | group |"
+        );
+    }
+
+    #[test]
+    fn test_strip_ansi_removes_color_codes() {
+        assert_eq!(strip_ansi("\x1b[1;32mhello\x1b[0m"), "hello");
+    }
+
+    #[test]
+    fn test_strip_ansi_passthrough_plain_text() {
+        let s = "| 42 | pcollin@default@HOST:SSH | GROUP_ces3s-admins |";
+        assert_eq!(strip_ansi(s), s);
+    }
+
+    #[test]
+    fn test_parse_wallix_menu_with_ansi_codes() {
+        let output = "\x1b[2J\x1b[H| ID | Cible (page 1/1)   | Autorisation\n\
+                      |----|--------------------|-----------\n\
+                      |  0 | demo@default@HOST:SSH | STI-GROUP_ces3s-admins |\n\
+                      \x1b[1m > \x1b[0m";
+        let entries = parse_wallix_menu(output).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "0");
+        assert_eq!(entries[0].group, "STI-GROUP_ces3s-admins");
+    }
 
     #[test]
     fn test_group_suffix_matches_short_group() {
@@ -595,6 +676,8 @@ mod tests {
             wallix_auto_select: true,
             wallix_fail_if_menu_match_error: true,
             wallix_selection_timeout_secs: 8,
+            wallix_direct: false,
+            wallix_authorization: None,
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -643,6 +726,8 @@ mod tests {
             wallix_auto_select: true,
             wallix_fail_if_menu_match_error: true,
             wallix_selection_timeout_secs: 8,
+            wallix_direct: false,
+            wallix_authorization: None,
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -660,7 +745,7 @@ mod tests {
     }
 
     #[test]
-    fn test_select_id_for_server_requires_group() {
+    fn test_select_id_for_server_single_entry_no_group() {
         let entries = vec![WallixMenuEntry {
             id: "0".to_string(),
             target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
@@ -688,6 +773,8 @@ mod tests {
             wallix_auto_select: true,
             wallix_fail_if_menu_match_error: true,
             wallix_selection_timeout_secs: 8,
+            wallix_direct: false,
+            wallix_authorization: None,
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -701,8 +788,66 @@ mod tests {
             hook_timeout_secs: 5,
         };
 
+        // Single entry matching the target → auto-selected even without wallix_group.
+        let id = select_id_for_server(&entries, &server).unwrap();
+        assert_eq!(id, "0");
+    }
+
+    #[test]
+    fn test_select_id_for_server_multi_entry_no_group_returns_error() {
+        let entries = vec![
+            WallixMenuEntry {
+                id: "0".to_string(),
+                target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+                group: "APP-ALPHA_ops-admins".to_string(),
+            },
+            WallixMenuEntry {
+                id: "1".to_string(),
+                target: "demo_user@default@APP-ALPHA-BD:SSH".to_string(),
+                group: "APP-ALPHA_dev-admins".to_string(),
+            },
+        ];
+
+        let server = ResolvedServer {
+            namespace: String::new(),
+            group_name: String::new(),
+            env_name: String::new(),
+            name: "app-alpha-ambiguous".to_string(),
+            host: "APP-ALPHA-BD".to_string(),
+            user: "demo_user".to_string(),
+            port: 22,
+            ssh_key: String::new(),
+            ssh_options: vec![],
+            default_mode: crate::config::ConnectionMode::Wallix,
+            jump_host: None,
+            bastion_host: Some("bastion.example.test".to_string()),
+            bastion_user: Some("demo_user".to_string()),
+            bastion_template: "{target_user}@%n:SSH:{bastion_user}".to_string(),
+            wallix_group: None,
+            wallix_account: "default".to_string(),
+            wallix_protocol: "SSH".to_string(),
+            wallix_auto_select: true,
+            wallix_fail_if_menu_match_error: true,
+            wallix_selection_timeout_secs: 8,
+            wallix_direct: false,
+            wallix_authorization: None,
+            use_system_ssh_config: false,
+            probe_filesystems: vec![],
+            tunnels: vec![],
+            tags: vec![],
+            control_master: false,
+            agent_forwarding: false,
+            control_path: String::new(),
+            control_persist: "10m".to_string(),
+            pre_connect_hook: None,
+            post_disconnect_hook: None,
+            hook_timeout_secs: 5,
+        };
+
+        // Multiple entries with no group configured → error prompting user to set wallix.group.
         let error = select_id_for_server(&entries, &server).unwrap_err();
-        assert!(error.to_string().contains("wallix.group is not configured"));
+        assert!(error.to_string().contains("Multiple menu entries"));
+        assert!(error.to_string().contains("wallix.group"));
     }
 
     #[test]
@@ -728,6 +873,8 @@ mod tests {
             wallix_auto_select: true,
             wallix_fail_if_menu_match_error: true,
             wallix_selection_timeout_secs: 8,
+            wallix_direct: false,
+            wallix_authorization: None,
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -771,6 +918,8 @@ mod tests {
             wallix_auto_select: true,
             wallix_fail_if_menu_match_error: true,
             wallix_selection_timeout_secs: 8,
+            wallix_direct: false,
+            wallix_authorization: None,
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -819,6 +968,8 @@ mod tests {
             wallix_auto_select: true,
             wallix_fail_if_menu_match_error: true,
             wallix_selection_timeout_secs: 8,
+            wallix_direct: false,
+            wallix_authorization: None,
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -864,6 +1015,8 @@ mod tests {
             wallix_auto_select: true,
             wallix_fail_if_menu_match_error: true,
             wallix_selection_timeout_secs: 8,
+            wallix_direct: false,
+            wallix_authorization: None,
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -909,6 +1062,8 @@ mod tests {
             wallix_auto_select: true,
             wallix_fail_if_menu_match_error: true,
             wallix_selection_timeout_secs: 8,
+            wallix_direct: false,
+            wallix_authorization: None,
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],

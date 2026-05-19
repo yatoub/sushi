@@ -229,6 +229,11 @@ pub struct BastionConfig {
     pub fail_if_menu_match_error: Option<bool>,
     /// Timeout avant abandon du parsing menu (secondes). Défaut : 8.
     pub selection_timeout_secs: Option<u64>,
+    /// Connexion directe sans menu interactif (login filtré bastion_user@host:proto:bastion_user).
+    pub direct: Option<bool>,
+    /// Nom exact de l'autorisation Wallix (ex: "STI-ANSCORE_ces3s-admins").
+    /// Quand défini, inclus dans le login filtré pour forcer la sélection côté Wallix.
+    pub authorization: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -338,6 +343,10 @@ pub struct ResolvedServer {
     pub wallix_fail_if_menu_match_error: bool,
     /// Timeout avant abandon du parsing menu (secondes).
     pub wallix_selection_timeout_secs: u64,
+    /// Connexion directe sans menu (bypass du probe PTY).
+    pub wallix_direct: bool,
+    /// Nom exact de l'autorisation Wallix — inclus dans le login filtré quand défini.
+    pub wallix_authorization: Option<String>,
     /// Respecte `~/.ssh/config` si `true` (ne passe pas `-F /dev/null`).
     pub use_system_ssh_config: bool,
     /// Points de montage à interroger lors d'un probe (hérités en cascade).
@@ -753,6 +762,8 @@ fn merge_bastion(
             auto_select: c.auto_select.or(p.auto_select),
             fail_if_menu_match_error: c.fail_if_menu_match_error.or(p.fail_if_menu_match_error),
             selection_timeout_secs: c.selection_timeout_secs.or(p.selection_timeout_secs),
+            direct: c.direct.or(p.direct),
+            authorization: c.authorization.clone().or(p.authorization.clone()),
         }),
     }
 }
@@ -1270,6 +1281,11 @@ fn resolve_server(
             .as_ref()
             .and_then(|b| b.selection_timeout_secs)
             .unwrap_or(8),
+        wallix_direct: final_bastion
+            .as_ref()
+            .and_then(|b| b.direct)
+            .unwrap_or(false),
+        wallix_authorization: final_bastion.as_ref().and_then(|b| b.authorization.clone()),
     })
 }
 
@@ -1374,6 +1390,8 @@ mod tests {
             auto_select: None,
             fail_if_menu_match_error: None,
             selection_timeout_secs: None,
+            direct: None,
+            authorization: None,
         });
         let child = BastionConfig {
             host: None,
@@ -1385,6 +1403,8 @@ mod tests {
             auto_select: None,
             fail_if_menu_match_error: None,
             selection_timeout_secs: None,
+            direct: None,
+            authorization: None,
         };
 
         let merged = merge_bastion(&parent, &Some(child)).unwrap();
@@ -1413,6 +1433,8 @@ mod tests {
                     auto_select: None,
                     fail_if_menu_match_error: None,
                     selection_timeout_secs: None,
+                    direct: None,
+                    authorization: None,
                 }),
                 ..Default::default()
             }),

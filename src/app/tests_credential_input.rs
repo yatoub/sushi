@@ -34,6 +34,8 @@ fn direct_server() -> ResolvedServer {
         wallix_auto_select: true,
         wallix_fail_if_menu_match_error: true,
         wallix_selection_timeout_secs: 8,
+        wallix_direct: false,
+        wallix_authorization: None,
     }
 }
 

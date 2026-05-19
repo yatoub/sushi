@@ -814,7 +814,12 @@ pub(crate) fn draw_help_overlay(f: &mut Frame, area: Rect, theme: &Theme) {
         .iter()
         .map(|(key, desc)| {
             Line::from(vec![
-                Span::styled(format!("{key:>15}"), Style::default().fg(theme.sapphire).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    format!("{key:>15}"),
+                    Style::default()
+                        .fg(theme.sapphire)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 Span::styled("  ", Style::default()),
                 Span::styled(*desc, Style::default().fg(theme.fg)),
             ])
@@ -830,14 +835,25 @@ pub(crate) fn draw_overview_overlay(f: &mut Frame, app: &App, area: Rect) {
 
     let Some(ov) = &app.overview else { return };
 
-    let popup_w: u16 = 80;
-    let popup_h: u16 = (ov.entries.len() as u16 + 5).min(area.height.saturating_sub(4));
+    // Largeur : aussi large que possible (terminal - 4), avec un minimum lisible de 90.
+    let popup_w: u16 = area.width.saturating_sub(4).max(90).min(area.width);
+    let popup_h: u16 = (ov.entries.len() as u16 + 3).min(area.height.saturating_sub(2));
     let popup_area = centered_rect(popup_w, popup_h, area);
+
+    // Colonnes proportionnelles à la largeur intérieure (popup_w - 2 bordures).
+    let inner_w = popup_w.saturating_sub(2) as usize;
+    let name_w = (inner_w / 4).clamp(16, 30);
+    let host_w = (inner_w / 5).clamp(14, 25);
+    // Le reste va au détail (load/RAM/disk ou message d'erreur).
+    let detail_w = inner_w.saturating_sub(2 + name_w + 1 + host_w + 2);
 
     f.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title(format!(" Overview : {}  (Esc pour fermer) ", ov.group_name))
+        .title(format!(
+            " Overview : {}  (j/k défiler · Esc fermer) ",
+            ov.group_name
+        ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(app.theme.sapphire))
@@ -857,20 +873,38 @@ pub(crate) fn draw_overview_overlay(f: &mut Frame, app: &App, area: Rect) {
         .map(|entry| {
             let (icon, color, detail) = match &entry.status {
                 OverviewStatus::Pending => ("…", app.theme.subtext0, String::new()),
-                OverviewStatus::Ok { load, ram_pct, disk_pct } => (
+                OverviewStatus::Ok {
+                    load,
+                    ram_pct,
+                    disk_pct,
+                } => (
                     "✓",
                     app.theme.green,
-                    format!("load:{load}  RAM:{ram_pct}%  Disk:{disk_pct}%"),
+                    format!("load: {load}  RAM: {ram_pct}%  Disk: {disk_pct}%"),
                 ),
                 OverviewStatus::Error(e) => {
-                    let short: String = e.lines().next().unwrap_or(e).chars().take(35).collect();
+                    let short: String = e
+                        .lines()
+                        .next()
+                        .unwrap_or(e)
+                        .chars()
+                        .take(detail_w)
+                        .collect();
                     ("✗", app.theme.red, short)
                 }
             };
             Line::from(vec![
                 Span::styled(format!("{icon} "), Style::default().fg(color)),
-                Span::styled(format!("{:<20}", entry.server_name), Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD)),
-                Span::styled(format!(" {:15} ", entry.host), Style::default().fg(app.theme.subtext0)),
+                Span::styled(
+                    format!("{:<name_w$}", entry.server_name),
+                    Style::default()
+                        .fg(app.theme.fg)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!(" {:<host_w$} ", entry.host),
+                    Style::default().fg(app.theme.subtext0),
+                ),
                 Span::styled(detail, Style::default().fg(color)),
             ])
         })

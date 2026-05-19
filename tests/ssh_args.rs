@@ -30,7 +30,7 @@ fn base_server() -> ResolvedServer {
         tunnels: vec![],
         tags: vec![],
         control_master: false,
-            agent_forwarding: false,
+        agent_forwarding: false,
         control_path: String::new(),
         control_persist: "10m".to_string(),
         pre_connect_hook: None,
@@ -272,12 +272,18 @@ fn agent_forwarding_adds_flag() {
     let mut s = base_server();
     s.agent_forwarding = true;
     let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
-    assert!(args.contains(&"-A".to_string()), "agent_forwarding doit ajouter -A");
+    assert!(
+        args.contains(&"-A".to_string()),
+        "agent_forwarding doit ajouter -A"
+    );
 }
 
 #[test]
 fn no_agent_forwarding_by_default() {
     let s = base_server();
     let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
-    assert!(!args.contains(&"-A".to_string()), "-A ne doit pas être présent par défaut");
+    assert!(
+        !args.contains(&"-A".to_string()),
+        "-A ne doit pas être présent par défaut"
+    );
 }

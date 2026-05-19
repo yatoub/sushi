@@ -331,9 +331,6 @@ pub struct OverviewEntry {
 pub struct OverviewState {
     pub group_name: String,
     pub entries: Vec<OverviewEntry>,
-    /// Canal pour recevoir les résultats de probe depuis les threads.
-    /// Stocké ici pour éviter de le perdre entre les frames.
-    #[allow(dead_code)]
     pub scroll: usize,
 }
 
@@ -497,3 +494,7 @@ mod tests_reload;
 #[cfg(test)]
 #[path = "app/tests_tunnel_form.rs"]
 mod tests_tunnel_form;
+
+#[cfg(test)]
+#[path = "app/tests_state_mutations.rs"]
+mod tests_state_mutations;

@@ -657,9 +657,11 @@ fn main() -> io::Result<()> {
 
     if let Some((mode, target)) = cli_mode_target {
         let server = build_adhoc_server(&target, mode, &cli, &config);
-        if let Err(e) =
-            susshi::hooks::run_hook(server.pre_connect_hook.as_deref().unwrap_or(""), &server)
-        {
+        if let Err(e) = susshi::hooks::run_hook(
+            server.pre_connect_hook.as_deref().unwrap_or(""),
+            "pre_connect",
+            &server,
+        ) {
             eprintln!("Hook pre_connect a annulé la connexion : {e}");
             return Err(io::Error::other(e.to_string()));
         }
@@ -708,6 +710,7 @@ fn main() -> io::Result<()> {
                     // Connexion bloquante avec reconnexion automatique et backoff.
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
+                        "pre_connect",
                         &server,
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
@@ -718,6 +721,7 @@ fn main() -> io::Result<()> {
                         );
                         let _ = susshi::hooks::run_hook(
                             server.post_disconnect_hook.as_deref().unwrap_or(""),
+                            "post_disconnect",
                             &server,
                         );
                     }
@@ -726,6 +730,7 @@ fn main() -> io::Result<()> {
                     // Comportement historique : exec() remplace le processus.
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
+                        "pre_connect",
                         &server,
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
@@ -743,6 +748,7 @@ fn main() -> io::Result<()> {
                 if app.keep_open {
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
+                        "pre_connect",
                         &server,
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
@@ -760,12 +766,14 @@ fn main() -> io::Result<()> {
                         );
                         let _ = susshi::hooks::run_hook(
                             server.post_disconnect_hook.as_deref().unwrap_or(""),
+                            "post_disconnect",
                             &server,
                         );
                     }
                 } else {
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
+                        "pre_connect",
                         &server,
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
@@ -785,6 +793,7 @@ fn main() -> io::Result<()> {
                 if app.keep_open {
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
+                        "pre_connect",
                         &server,
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
@@ -802,12 +811,14 @@ fn main() -> io::Result<()> {
                         );
                         let _ = susshi::hooks::run_hook(
                             server.post_disconnect_hook.as_deref().unwrap_or(""),
+                            "post_disconnect",
                             &server,
                         );
                     }
                 } else {
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
+                        "pre_connect",
                         &server,
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");

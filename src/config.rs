@@ -702,92 +702,89 @@ fn resolve_entries(
                         let e_jump = merge_jump(&g_jump, &env.jump);
                         let e_tunnels = replace_tunnels(&g_tunnels, &env.tunnels);
 
+                        let env_def = ServerDefaults {
+                            user: e_user,
+                            key: e_key,
+                            mode: e_mode,
+                            port: e_port,
+                            opts: e_opts.as_ref(),
+                            bastion: &e_bastion,
+                            jump: &e_jump,
+                            use_system_ssh_config: use_sys_cfg,
+                            fs: e_fs.clone(),
+                            tunnels: e_tunnels.as_ref(),
+                            namespace,
+                            vars,
+                            control_master: d.control_master.unwrap_or(false),
+                            agent_forwarding: d.agent_forwarding.unwrap_or(false),
+                            control_path: d
+                                .control_path
+                                .as_deref()
+                                .unwrap_or("~/.ssh/ctl/%h_%p_%r"),
+                            control_persist: d.control_persist.as_deref().unwrap_or("10m"),
+                            pre_connect_hook: d.pre_connect_hook.as_deref(),
+                            post_disconnect_hook: d.post_disconnect_hook.as_deref(),
+                            hook_timeout_secs: d.hook_timeout_secs.unwrap_or(5),
+                        };
                         for server in &env.servers {
-                            let r = resolve_server(
-                                server,
-                                &group.name,
-                                &env.name,
-                                e_user,
-                                e_key,
-                                e_mode,
-                                e_port,
-                                e_opts.as_ref(),
-                                &e_bastion,
-                                &e_jump,
-                                use_sys_cfg,
-                                e_fs.clone(),
-                                e_tunnels.as_ref(),
-                                namespace,
-                                vars,
-                                d.control_master.unwrap_or(false),
-                                d.agent_forwarding.unwrap_or(false),
-                                d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
-                                d.control_persist.as_deref().unwrap_or("10m"),
-                                d.pre_connect_hook.as_deref(),
-                                d.post_disconnect_hook.as_deref(),
-                                d.hook_timeout_secs.unwrap_or(5),
-                            )?;
+                            let r = resolve_server(server, &group.name, &env.name, &env_def)?;
                             resolved.push(r);
                         }
                     }
                 }
 
                 if let Some(servers) = &group.servers {
+                    let grp_def = ServerDefaults {
+                        user: g_user,
+                        key: g_key,
+                        mode: g_mode,
+                        port: g_port,
+                        opts: g_opts.as_ref(),
+                        bastion: &g_bastion,
+                        jump: &g_jump,
+                        use_system_ssh_config: use_sys_cfg,
+                        fs: g_fs.clone(),
+                        tunnels: g_tunnels.as_ref(),
+                        namespace,
+                        vars,
+                        control_master: d.control_master.unwrap_or(false),
+                        agent_forwarding: d.agent_forwarding.unwrap_or(false),
+                        control_path: d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
+                        control_persist: d.control_persist.as_deref().unwrap_or("10m"),
+                        pre_connect_hook: d.pre_connect_hook.as_deref(),
+                        post_disconnect_hook: d.post_disconnect_hook.as_deref(),
+                        hook_timeout_secs: d.hook_timeout_secs.unwrap_or(5),
+                    };
                     for server in servers {
-                        let r = resolve_server(
-                            server,
-                            &group.name,
-                            "",
-                            g_user,
-                            g_key,
-                            g_mode,
-                            g_port,
-                            g_opts.as_ref(),
-                            &g_bastion,
-                            &g_jump,
-                            use_sys_cfg,
-                            g_fs.clone(),
-                            g_tunnels.as_ref(),
-                            namespace,
-                            vars,
-                            d.control_master.unwrap_or(false),
-                            d.agent_forwarding.unwrap_or(false),
-                            d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
-                            d.control_persist.as_deref().unwrap_or("10m"),
-                            d.pre_connect_hook.as_deref(),
-                            d.post_disconnect_hook.as_deref(),
-                            d.hook_timeout_secs.unwrap_or(5),
-                        )?;
+                        let r = resolve_server(server, &group.name, "", &grp_def)?;
                         resolved.push(r);
                     }
                 }
             }
             ConfigEntry::Server(server) => {
                 // Top-level server (root ou dans un namespace)
-                let r = resolve_server(
-                    server,
-                    "",
-                    "",
-                    d.user.as_deref(),
-                    d.ssh_key.as_deref(),
-                    d.mode,
-                    d.ssh_port,
-                    d.ssh_options.as_ref(),
-                    &d.wallix,
-                    &d.jump,
-                    use_sys_cfg,
-                    d.probe_filesystems.clone(),
-                    d.tunnels.as_ref(),
+                let top_def = ServerDefaults {
+                    user: d.user.as_deref(),
+                    key: d.ssh_key.as_deref(),
+                    mode: d.mode,
+                    port: d.ssh_port,
+                    opts: d.ssh_options.as_ref(),
+                    bastion: &d.wallix,
+                    jump: &d.jump,
+                    use_system_ssh_config: use_sys_cfg,
+                    fs: d.probe_filesystems.clone(),
+                    tunnels: d.tunnels.as_ref(),
                     namespace,
                     vars,
-                    d.control_master.unwrap_or(false),
-                    d.agent_forwarding.unwrap_or(false),
-                    d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
-                    d.control_persist.as_deref().unwrap_or("10m"),
-                    d.pre_connect_hook.as_deref(),
-                    d.post_disconnect_hook.as_deref(),
-                    d.hook_timeout_secs.unwrap_or(5),
-                )?;
+                    control_master: d.control_master.unwrap_or(false),
+                    agent_forwarding: d.agent_forwarding.unwrap_or(false),
+                    control_path: d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
+                    control_persist: d.control_persist.as_deref().unwrap_or("10m"),
+                    pre_connect_hook: d.pre_connect_hook.as_deref(),
+                    post_disconnect_hook: d.post_disconnect_hook.as_deref(),
+                    hook_timeout_secs: d.hook_timeout_secs.unwrap_or(5),
+                };
+                let r = resolve_server(server, "", "", &top_def)?;
                 resolved.push(r);
             }
             // Les namespaces imbriqués dans ns.entries ne sont jamais générés
@@ -873,12 +870,15 @@ pub fn undefined_vars(s: &str, vars: &HashMap<String, String>) -> Vec<String> {
 }
 
 fn extend_tags(parent: Option<&Vec<String>>, child: Option<&Vec<String>>) -> Vec<String> {
-    let mut merged: Vec<String> = parent.cloned().unwrap_or_default();
-    if let Some(c) = child {
-        for tag in c {
-            if !merged.contains(tag) {
-                merged.push(tag.clone());
-            }
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut merged: Vec<String> = Vec::new();
+    for tag in parent
+        .into_iter()
+        .flatten()
+        .chain(child.into_iter().flatten())
+    {
+        if seen.insert(tag.as_str()) {
+            merged.push(tag.clone());
         }
     }
     merged
@@ -892,20 +892,21 @@ fn extend_filesystems(
     parent: Option<&Vec<String>>,
     child: Option<&Vec<String>>,
 ) -> Option<Vec<String>> {
-    match (parent, child) {
-        (None, None) => None,
-        (Some(p), None) => Some(p.clone()),
-        (None, Some(c)) => Some(c.clone()),
-        (Some(p), Some(c)) => {
-            let mut merged = p.clone();
-            for item in c {
-                if !merged.contains(item) {
-                    merged.push(item.clone());
-                }
-            }
-            Some(merged)
+    if parent.is_none() && child.is_none() {
+        return None;
+    }
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut merged: Vec<String> = Vec::new();
+    for item in parent
+        .into_iter()
+        .flatten()
+        .chain(child.into_iter().flatten())
+    {
+        if seen.insert(item.as_str()) {
+            merged.push(item.clone());
         }
     }
+    Some(merged)
 }
 
 /// Fusionne deux `Defaults` : `overrides` prime sur `base` pour chaque champ `Option`.
@@ -939,15 +940,7 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
         tags: match (&base.tags, &overrides.tags) {
             (None, r) => r.clone(),
             (l, None) => l.clone(),
-            (Some(b), Some(o)) => {
-                let mut merged = b.clone();
-                for t in o {
-                    if !merged.contains(t) {
-                        merged.push(t.clone());
-                    }
-                }
-                Some(merged)
-            }
+            (Some(b), Some(o)) => Some(extend_tags(Some(b), Some(o))),
         },
         control_master: overrides.control_master.or(base.control_master),
         agent_forwarding: overrides.agent_forwarding.or(base.agent_forwarding),
@@ -1202,31 +1195,53 @@ fn sort_group(group: &mut Group) {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Defaults effectifs à passer à `resolve_server`, après cascade group→env.
+struct ServerDefaults<'a> {
+    user: Option<&'a str>,
+    key: Option<&'a str>,
+    mode: Option<ConnectionMode>,
+    port: Option<u16>,
+    opts: Option<&'a Vec<String>>,
+    bastion: &'a Option<BastionConfig>,
+    jump: &'a Option<Vec<JumpConfig>>,
+    use_system_ssh_config: bool,
+    fs: Option<Vec<String>>,
+    tunnels: Option<&'a Vec<TunnelConfig>>,
+    namespace: &'a str,
+    vars: &'a HashMap<String, String>,
+    control_master: bool,
+    agent_forwarding: bool,
+    control_path: &'a str,
+    control_persist: &'a str,
+    pre_connect_hook: Option<&'a str>,
+    post_disconnect_hook: Option<&'a str>,
+    hook_timeout_secs: u64,
+}
+
 fn resolve_server(
     s: &Server,
     group: &str,
     env: &str,
-    def_user: Option<&str>,
-    def_key: Option<&str>,
-    def_mode: Option<ConnectionMode>,
-    def_port: Option<u16>,
-    def_opts: Option<&Vec<String>>,
-    def_bastion: &Option<BastionConfig>,
-    def_jump: &Option<Vec<JumpConfig>>,
-    use_system_ssh_config: bool,
-    def_fs: Option<Vec<String>>,
-    def_tunnels: Option<&Vec<TunnelConfig>>,
-    namespace: &str,
-    vars: &HashMap<String, String>,
-    def_control_master: bool,
-    def_agent_forwarding: bool,
-    def_control_path: &str,
-    def_control_persist: &str,
-    def_pre_connect_hook: Option<&str>,
-    def_post_disconnect_hook: Option<&str>,
-    def_hook_timeout_secs: u64,
+    def: &ServerDefaults<'_>,
 ) -> Result<ResolvedServer, ConfigError> {
+    let def_user = def.user;
+    let def_key = def.key;
+    let def_mode = def.mode;
+    let def_port = def.port;
+    let def_opts = def.opts;
+    let def_bastion = def.bastion;
+    let def_jump = def.jump;
+    let use_system_ssh_config = def.use_system_ssh_config;
+    let def_tunnels = def.tunnels;
+    let namespace = def.namespace;
+    let vars = def.vars;
+    let def_control_master = def.control_master;
+    let def_agent_forwarding = def.agent_forwarding;
+    let def_control_path = def.control_path;
+    let def_control_persist = def.control_persist;
+    let def_pre_connect_hook = def.pre_connect_hook;
+    let def_post_disconnect_hook = def.post_disconnect_hook;
+    let def_hook_timeout_secs = def.hook_timeout_secs;
     let user = interpolate(s.user.as_deref().or(def_user).unwrap_or("root"), vars);
     let port = s.ssh_port.or(def_port).unwrap_or(22);
     let key = interpolate(
@@ -1241,7 +1256,7 @@ fn resolve_server(
     };
 
     let probe_filesystems =
-        extend_filesystems(def_fs.as_ref(), s.probe_filesystems.as_ref()).unwrap_or_default();
+        extend_filesystems(def.fs.as_ref(), s.probe_filesystems.as_ref()).unwrap_or_default();
 
     let tunnels = s
         .tunnels

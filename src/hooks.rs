@@ -21,8 +21,9 @@ use std::time::{Duration, Instant};
 ///
 /// - `path` vide → `Ok(())` sans rien faire.
 /// - Tilde dans `path` est expandé.
+/// - `label` précise le contexte dans les messages d'erreur (ex. `"pre_connect"`, `"post_disconnect"`).
 /// - Un code de retour non-zéro ou un timeout retourne `Err`.
-pub fn run_hook(path: &str, server: &ResolvedServer) -> Result<()> {
+pub fn run_hook(path: &str, label: &str, server: &ResolvedServer) -> Result<()> {
     if path.is_empty() {
         return Ok(());
     }
@@ -37,24 +38,27 @@ pub fn run_hook(path: &str, server: &ResolvedServer) -> Result<()> {
         .env("SUSSHI_PORT", server.port.to_string())
         .env("SUSSHI_MODE", &mode)
         .spawn()
-        .map_err(|e| anyhow!("hook {expanded}: impossible de lancer : {e}"))?;
+        .map_err(|e| anyhow!("hook {label} ({expanded}): impossible de lancer : {e}"))?;
 
     let timeout = Duration::from_secs(server.hook_timeout_secs);
     let start = Instant::now();
 
     loop {
-        match child.try_wait()? {
+        match child
+            .try_wait()
+            .map_err(|e| anyhow!("hook {label} ({expanded}): erreur d'attente : {e}"))?
+        {
             Some(status) if status.success() => return Ok(()),
             Some(status) => {
                 return Err(anyhow!(
-                    "hook {expanded}: exit code {:?}",
+                    "hook {label} ({expanded}): exit code {:?}",
                     status.code().unwrap_or(-1)
                 ));
             }
             None if start.elapsed() >= timeout => {
                 let _ = child.kill();
                 return Err(anyhow!(
-                    "hook {expanded}: timeout ({}s)",
+                    "hook {label} ({expanded}): timeout ({}s)",
                     server.hook_timeout_secs
                 ));
             }
@@ -109,13 +113,13 @@ mod tests {
     #[test]
     fn empty_path_is_noop() {
         let s = base_server();
-        assert!(run_hook("", &s).is_ok());
+        assert!(run_hook("", "pre_connect", &s).is_ok());
     }
 
     #[test]
     fn nonexistent_script_returns_err() {
         let s = base_server();
-        let result = run_hook("/tmp/__susshi_nonexistent_hook_xyz.sh", &s);
+        let result = run_hook("/tmp/__susshi_nonexistent_hook_xyz.sh", "pre_connect", &s);
         assert!(result.is_err());
     }
 
@@ -123,13 +127,13 @@ mod tests {
     fn script_exit_zero_is_ok() {
         let s = base_server();
         // `true` est disponible sur tous les systèmes POSIX
-        assert!(run_hook("/usr/bin/true", &s).is_ok());
+        assert!(run_hook("/usr/bin/true", "pre_connect", &s).is_ok());
     }
 
     #[test]
     fn script_exit_nonzero_is_err() {
         let s = base_server();
-        assert!(run_hook("/usr/bin/false", &s).is_err());
+        assert!(run_hook("/usr/bin/false", "pre_connect", &s).is_err());
     }
 
     #[test]
@@ -137,7 +141,7 @@ mod tests {
         let mut s = base_server();
         s.hook_timeout_secs = 1;
         // `sleep 5` dépasse le timeout de 1s
-        let result = run_hook("/usr/bin/sleep", &s);
+        let result = run_hook("/usr/bin/sleep", "pre_connect", &s);
         // La commande sleep sans argument retourne une erreur de lancement (pas de timeout)
         // mais le test vérifie surtout que run_hook ne bloque pas indéfiniment.
         // On accepte soit Err (pas d'arg) soit Ok (si sleep accepte "" et bloque).

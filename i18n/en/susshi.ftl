@@ -83,6 +83,7 @@ hint-favorites-view = ★ favorites view
 hint-reload = reload
 hint-recent-sort = recent sort
 hint-collapse = collapse
+hint-expand-all = expand all
 hint-verbose = verbose
 
 # ── Wallix selector overlay ───────────────────────────────────────────────────

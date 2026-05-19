@@ -779,6 +779,7 @@ pub(crate) fn draw_help_overlay(f: &mut Frame, area: Rect, theme: &Theme) {
         ("F", "Afficher uniquement les favoris"),
         ("H", "Trier par dernière connexion"),
         ("C", "Réduire tous les groupes"),
+        ("E", "Déplier tous les groupes"),
         ("r", "Recharger la configuration"),
         ("v", "Mode verbeux SSH"),
         ("y", "Copier la commande SSH"),

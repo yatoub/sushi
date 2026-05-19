@@ -29,10 +29,28 @@ includes:
 Fields:
 
 - `label`: displayed as a namespace header in the TUI.
-- `path`: absolute path or `~`-expanded path.
+- `path`: absolute path, `~`-expanded path, or a `https://` / `http://` URL.
 - `merge_defaults` (optional, default: `false`): merge main-file defaults as base values for the included file.
 
+### HTTPS includes
+
+`path` can be a full HTTPS URL. susshi will fetch the file over TLS at startup and parse it like any local include:
+
+```yaml
+includes:
+  - label: "SHARED"
+    path: "https://inventory.example.com/team-servers.yml"
+    merge_defaults: true
+```
+
 Behavior:
+
+- The URL is fetched synchronously at startup (same point as file includes).
+- HTTP errors and network failures are non-fatal — emitted as `LoadError` warnings.
+- The downloaded content is validated with the same unknown-field checks as local files.
+- Recursive includes inside a URL-fetched file use normal local-path resolution from the process working directory.
+
+Behavior (all includes):
 
 - Includes are resolved recursively.
 - Circular includes are reported as non-blocking warnings.

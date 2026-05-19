@@ -110,10 +110,19 @@ impl App {
                 .iter()
                 .map(|w| match w {
                     crate::config::IncludeWarning::LoadError { label, path, error } => {
-                        fl!("include-warn-load", label = label.as_str(), path = path.as_str(), error = error.as_str())
+                        fl!(
+                            "include-warn-load",
+                            label = label.as_str(),
+                            path = path.as_str(),
+                            error = error.as_str()
+                        )
                     }
                     crate::config::IncludeWarning::Circular { label, path } => {
-                        fl!("include-warn-circular", label = label.as_str(), path = path.as_str())
+                        fl!(
+                            "include-warn-circular",
+                            label = label.as_str(),
+                            path = path.as_str()
+                        )
                     }
                 })
                 .collect();

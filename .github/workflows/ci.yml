@@ -2,9 +2,9 @@ name: "CI"
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -33,6 +33,23 @@ jobs:
 
       - name: Run tests
         run: cargo test --verbose
+
+  megalinter:
+    name: MegaLinter
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run MegaLinter
+        uses: oxsecurity/megalinter/flavors/rust@v8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   target-matrix:
     name: Target Matrix Smoke (${{ matrix.target }})
@@ -78,24 +95,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y musl-tools pkg-config libssl-dev
 
-      - name: Install OpenSSL (Windows)
-        if: matrix.target == 'x86_64-pc-windows-msvc'
+      - name: Set OpenSSL paths (Windows — use Strawberry Perl's OpenSSL)
+        if: matrix.os == 'windows-latest'
         shell: pwsh
         run: |
-          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
-          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
-            $vcpkgRoot = "C:\\vcpkg"
-          }
-          $vcpkg = "$vcpkgRoot\\vcpkg.exe"
-          if (-not (Test-Path $vcpkg)) {
-            Write-Error "vcpkg not found at $vcpkg"
-          }
-          & $vcpkg install openssl:x64-windows-static-md
-          "OPENSSL_NO_VENDOR=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OPENSSL_DIR=C:\Strawberry\c" | Out-File -FilePath $env:GITHUB_ENV -Append
           "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VCPKGRS_DYNAMIC=0" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VCPKGRS_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Build (system OpenSSL)
         if: matrix.openssl_mode == 'system'

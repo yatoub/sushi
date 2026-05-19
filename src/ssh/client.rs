@@ -582,9 +582,7 @@ fn connect_wallix_via_pty_with_selection(
                 revents: 0,
             },
             libc::pollfd {
-                fd: if stdin_closed
-                    || !(selection_completed || auth_prompted && auth.is_none())
-                {
+                fd: if stdin_closed || !(selection_completed || auth_prompted && auth.is_none()) {
                     -1
                 } else {
                     stdin_fd

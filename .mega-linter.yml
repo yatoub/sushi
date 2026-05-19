@@ -1,0 +1,33 @@
+# MegaLinter configuration — rust flavour
+# https://megalinter.io/latest/configuration/
+
+FLAVOR: rust
+
+ENABLE_LINTERS:
+  - YAML_PRETTIER
+  - YAML_YAMLLINT
+  - MARKDOWN_MARKDOWNLINT
+  - REPOSITORY_SECRETLINT
+  - REPOSITORY_TRIVY
+
+# RUST_CLIPPY: runs in a musl container without system OpenSSL — fails to
+#   compile the crate. Clippy is already enforced in the Test Suite job.
+# RUST_RUSTFMT: already enforced in the Test Suite job.
+DISABLE_LINTERS:
+  - RUST_CLIPPY
+  - RUST_RUSTFMT
+
+# Trivy is informational only
+DISABLE_ERRORS_LINTERS:
+  - REPOSITORY_TRIVY
+
+FILTER_REGEX_EXCLUDE: "(target/|Cargo\\.lock)"
+
+# Use our custom yamllint config tuned for GitHub Actions line lengths
+YAML_YAMLLINT_CONFIG_FILE: .yamllint.yml
+
+PRINT_ALL_FILES: false
+SHOW_ELAPSED_TIME: true
+
+GITHUB_STATUS_REPORTER: true
+GITHUB_COMMENT_REPORTER: false

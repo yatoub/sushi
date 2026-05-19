@@ -1,9 +1,9 @@
 name: Publish to AUR
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       tag:
@@ -14,20 +14,41 @@ jobs:
   aur-publish:
     name: Publish to AUR
     runs-on: ubuntu-latest
+    # For workflow_run: only proceed if the Release workflow succeeded.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
     env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      TAG: ${{ github.event.inputs.tag || github.event.workflow_run.head_branch }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Resolve tag from release workflow
+        id: resolve
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            # workflow_run carries the tag ref in head_branch when triggered by a tag push
+            TAG="${{ github.event.workflow_run.head_branch }}"
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Extract version from tag
         id: ver
-        run: echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+        run: |
+          TAG="${{ steps.resolve.outputs.tag }}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Compute b2sum of release archive
         id: b2sum
         run: |
+          TAG="${{ steps.ver.outputs.tag }}"
           curl -fsSL "https://github.com/yatoub/susshi/archive/refs/tags/${TAG}.tar.gz" -o archive.tar.gz
           echo "sum=$(b2sum archive.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
 
@@ -45,39 +66,36 @@ jobs:
           commit_username: ${{ secrets.AUR_USERNAME }}
           commit_email: ${{ secrets.AUR_EMAIL }}
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "chore: update to ${{ github.event.inputs.tag || github.ref_name }}"
+          commit_message: "chore: update to ${{ steps.ver.outputs.tag }}"
           ssh_keyscan_types: rsa,ecdsa,ed25519
           allow_empty_commits: false
 
   aur-publish-bin:
     name: Publish susshi-bin to AUR
     runs-on: ubuntu-latest
-    # Tourne en parallèle de aur-publish ; le step de polling attend
-    env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Extract version from tag
+      - name: Resolve tag from release workflow
         id: ver
-        run: echo "version=${TAG#v}" >> $GITHUB_OUTPUT
-
-      - name: Wait for Linux binary to appear in the release
         run: |
-          for i in $(seq 1 20); do
-            code=$(curl -sL -o /dev/null -w "%{http_code}" \
-              "https://github.com/yatoub/susshi/releases/download/${TAG}/susshi-linux-amd64")
-            if [ "$code" = "200" ]; then echo "Binary available"; exit 0; fi
-            echo "Attempt $i: HTTP $code, retrying in 30s…"
-            sleep 30
-          done
-          echo "Binary not available after 10 min" && exit 1
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${{ github.event.workflow_run.head_branch }}"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Compute b2sums for susshi-bin
         id: b2sums
         run: |
+          TAG="${{ steps.ver.outputs.tag }}"
           curl -fsSL "https://github.com/yatoub/susshi/archive/refs/tags/${TAG}.tar.gz" -o archive.tar.gz
           curl -fsSL "https://github.com/yatoub/susshi/releases/download/${TAG}/susshi-linux-amd64" -o susshi-linux-amd64
           echo "src=$(b2sum archive.tar.gz | cut -d' ' -f1)" >> $GITHUB_OUTPUT
@@ -85,6 +103,7 @@ jobs:
 
       - name: Update PKGBUILD.bin
         run: |
+          TAG="${{ steps.ver.outputs.tag }}"
           cp PKGBUILD.bin PKGBUILD
           sed -i "s/^pkgver=.*/pkgver=${{ steps.ver.outputs.version }}/" PKGBUILD
           sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
@@ -99,6 +118,6 @@ jobs:
           commit_username: ${{ secrets.AUR_USERNAME }}
           commit_email: ${{ secrets.AUR_EMAIL }}
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "chore: update to ${{ github.event.inputs.tag || github.ref_name }}"
+          commit_message: "chore: update to ${{ steps.ver.outputs.tag }}"
           ssh_keyscan_types: rsa,ecdsa,ed25519
           allow_empty_commits: false

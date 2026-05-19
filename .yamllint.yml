@@ -1,0 +1,19 @@
+---
+extends: default
+
+rules:
+  # GitHub Actions workflows use long lines for expressions — not worth breaking
+  line-length:
+    max: 150
+    level: warning
+  # "on:" is valid GitHub Actions syntax; truthy check is noise here
+  truthy:
+    allowed-values: ["true", "false", "on"]
+  # "---" document start is optional in workflow files
+  document-start: disable
+  # Multi-line blocks in run: steps commonly have trailing spaces
+  trailing-spaces: enable
+  # Brackets spacing: GitHub Actions templating uses {{ }} — allow extra spaces
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1

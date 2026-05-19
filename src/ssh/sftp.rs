@@ -536,11 +536,7 @@ fn copy_with_progress(
         dst.write_all(&buf[..n])?;
         transferred += n as u64;
 
-        let pct = if total > 0 {
-            ((transferred * 100) / total).min(100) as u8
-        } else {
-            0
-        };
+        let pct = (transferred * 100).checked_div(total).unwrap_or(0).min(100) as u8;
 
         if pct != last_pct {
             // Arrête si le receiver est droppé (transfert annulé côté TUI).

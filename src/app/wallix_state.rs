@@ -110,12 +110,9 @@ impl App {
         self.wallix_selector_rx = Some(rx);
 
         std::thread::spawn(move || {
-            let result = crate::ssh::client::fetch_wallix_menu_entries(
-                &server,
-                verbose,
-                auth.as_deref(),
-            )
-            .map_err(|e| e.to_string());
+            let result =
+                crate::ssh::client::fetch_wallix_menu_entries(&server, verbose, auth.as_deref())
+                    .map_err(|e| e.to_string());
             let _ = tx.send((server, result));
         });
     }

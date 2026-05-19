@@ -3,6 +3,10 @@
 git_release_enable = true
 # Use the [Unreleased] section content as release notes
 git_release_body = "{{ changelog }}"
+# Publish to crates.io directly from release-plz (avoids duplicate job in release.yml)
+publish = true
+# semver-checks flags internal pub types as breaking changes — disabled to reduce noise
+semver_check = false
 
 [changelog]
 # Keep a Changelog-compatible format

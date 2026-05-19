@@ -14,8 +14,8 @@ use ratatui::{Terminal, backend::CrosstermBackend, layout::Rect};
 use susshi::app::{
     App, AppMode, CmdState, ConfigItem, ScpState, TunnelOverlayState, WallixSelectorState,
 };
-use susshi::fl;
 use susshi::config::{Config, ConnectionMode, IncludeWarning, ResolvedServer, undefined_vars};
+use susshi::fl;
 use susshi::handlers::{get_layout, handle_mouse_event, is_in_rect};
 use susshi::import;
 use susshi::probe::ProbeState;
@@ -615,12 +615,9 @@ fn main() -> io::Result<()> {
                         &server,
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
-                    } else if let Err(e) = susshi::ssh::client::connect(
-                        &server,
-                        mode,
-                        verbose,
-                        Some(cred.as_str()),
-                    ) {
+                    } else if let Err(e) =
+                        susshi::ssh::client::connect(&server, mode, verbose, Some(cred.as_str()))
+                    {
                         eprintln!("SSH Connection Error: {}", e);
                     }
                     break;
@@ -641,9 +638,19 @@ fn main() -> io::Result<()> {
 pub enum AppResult {
     Exit,
     Connect(Box<susshi::config::ResolvedServer>, ConnectionMode, bool),
-    ConnectWallixSelected(Box<susshi::config::ResolvedServer>, bool, String, Option<String>),
+    ConnectWallixSelected(
+        Box<susshi::config::ResolvedServer>,
+        bool,
+        String,
+        Option<String>,
+    ),
     /// Connexion avec un credential (passphrase ou mot de passe) saisi dans la TUI.
-    ConnectWithAuth(Box<susshi::config::ResolvedServer>, ConnectionMode, bool, String),
+    ConnectWithAuth(
+        Box<susshi::config::ResolvedServer>,
+        ConnectionMode,
+        bool,
+        String,
+    ),
 }
 
 fn run_app(
@@ -920,9 +927,10 @@ fn run_app(
                                             let cmd = format!("ssh {}", args.join(" "));
                                             match app.clipboard.as_mut().map(|cb| cb.set_text(&cmd))
                                             {
-                                                Some(Ok(_)) => app.set_status_message(
-                                                    fl!("copied", cmd = cmd.as_str()),
-                                                ),
+                                                Some(Ok(_)) => app.set_status_message(fl!(
+                                                    "copied",
+                                                    cmd = cmd.as_str()
+                                                )),
                                                 Some(Err(e)) => {
                                                     let err = e.to_string();
                                                     app.set_status_message(fl!(
@@ -930,9 +938,9 @@ fn run_app(
                                                         error = err.as_str()
                                                     ));
                                                 }
-                                                None => app.set_status_message(
-                                                    fl!("clipboard-unavailable"),
-                                                ),
+                                                None => app.set_status_message(fl!(
+                                                    "clipboard-unavailable"
+                                                )),
                                             }
                                         }
                                         Err(e) => {

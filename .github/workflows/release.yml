@@ -14,24 +14,6 @@ permissions:
   contents: write
 
 jobs:
-  publish-crates-io:
-    name: Publish to crates.io
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Publish to crates.io
-        run: cargo publish --no-verify --allow-dirty
-        continue-on-error: true
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
   build:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
@@ -62,7 +44,7 @@ jobs:
             binary_name: susshi
             asset_name: susshi-macos-amd64
             build_tool: cargo
-            openssl_mode: system
+            openssl_mode: vendored
           - os: macos-14
             target: aarch64-apple-darwin
             binary_name: susshi
@@ -75,7 +57,7 @@ jobs:
             binary_name: susshi.exe
             asset_name: susshi-windows-amd64.exe
             build_tool: cargo
-            openssl_mode: system
+            openssl_mode: vendored
 
     steps:
       - name: Checkout repository
@@ -100,7 +82,7 @@ jobs:
 
       - name: Setup Zig
         if: matrix.build_tool == 'zigbuild'
-        uses: goto-bus-stop/setup-zig@v2
+        uses: goto-bus-stop/setup-zig@v3
         with:
           version: 0.14.0
 
@@ -108,39 +90,6 @@ jobs:
         if: matrix.build_tool == 'zigbuild'
         shell: bash
         run: cargo install cargo-zigbuild
-
-      - name: Install OpenSSL (Windows)
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        shell: pwsh
-        run: |
-          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
-          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
-            $vcpkgRoot = "C:\\vcpkg"
-          }
-          $vcpkg = "$vcpkgRoot\\vcpkg.exe"
-          if (-not (Test-Path $vcpkg)) {
-            Write-Error "vcpkg not found at $vcpkg"
-          }
-          & $vcpkg install openssl:x64-windows-static-md
-          "OPENSSL_NO_VENDOR=1" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VCPKGRS_DYNAMIC=0" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "VCPKGRS_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Install OpenSSL (macOS x86_64)
-        if: matrix.target == 'x86_64-apple-darwin'
-        run: |
-          rustup target add x86_64-apple-darwin
-          # On macos-latest (ARM/M-series), Homebrew lives in /opt/homebrew and only
-          # provides ARM binaries. For x86_64 cross-compilation we need a separate
-          # x86_64 Homebrew in /usr/local (Rosetta path).
-          arch -x86_64 /bin/bash -c \
-            "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
-            < /dev/null
-          arch -x86_64 /usr/local/bin/brew install openssl@3
-          echo "OPENSSL_DIR=/usr/local/opt/openssl@3" >> $GITHUB_ENV
-          echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
 
       - name: Build release (system OpenSSL)
         if: matrix.openssl_mode == 'system'
@@ -173,8 +122,10 @@ jobs:
             | sort -V \
             | tail -1)
           echo "Max GLIBC required: ${max_glibc}"
-          if [ "${max_glibc}" != "GLIBC_2.17" ]; then
-            echo "Unexpected GLIBC requirement for legacy build"
+          if printf '%s\n' "GLIBC_2.17" "${max_glibc}" | sort -VC; then
+            echo "GLIBC requirement is within bounds (<= 2.17)"
+          else
+            echo "ERROR: binary requires ${max_glibc} which exceeds GLIBC_2.17"
             exit 1
           fi
 

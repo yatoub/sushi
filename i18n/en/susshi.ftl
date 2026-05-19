@@ -207,3 +207,6 @@ credential-input-title-password = SSH Password — { $server }
 credential-input-prompt-passphrase =   Passphrase :
 credential-input-prompt-password =   Password   :
 credential-input-hint =   Enter confirm   Esc cancel
+probe-cm-label = ControlMaster  
+probe-cm-active = active
+probe-cm-inactive = inactive

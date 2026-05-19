@@ -663,7 +663,10 @@ fn resolve_entries(
                             vars,
                             control_master: d.control_master.unwrap_or(false),
                             agent_forwarding: d.agent_forwarding.unwrap_or(false),
-                            control_path: d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
+                            control_path: d
+                                .control_path
+                                .as_deref()
+                                .unwrap_or("~/.ssh/ctl/%h_%p_%r"),
                             control_persist: d.control_persist.as_deref().unwrap_or("10m"),
                             pre_connect_hook: d.pre_connect_hook.as_deref(),
                             post_disconnect_hook: d.post_disconnect_hook.as_deref(),
@@ -815,7 +818,11 @@ pub fn undefined_vars(s: &str, vars: &HashMap<String, String>) -> Vec<String> {
 fn extend_tags(parent: Option<&Vec<String>>, child: Option<&Vec<String>>) -> Vec<String> {
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut merged: Vec<String> = Vec::new();
-    for tag in parent.into_iter().flatten().chain(child.into_iter().flatten()) {
+    for tag in parent
+        .into_iter()
+        .flatten()
+        .chain(child.into_iter().flatten())
+    {
         if seen.insert(tag.as_str()) {
             merged.push(tag.clone());
         }
@@ -836,7 +843,11 @@ fn extend_filesystems(
     }
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut merged: Vec<String> = Vec::new();
-    for item in parent.into_iter().flatten().chain(child.into_iter().flatten()) {
+    for item in parent
+        .into_iter()
+        .flatten()
+        .chain(child.into_iter().flatten())
+    {
         if seen.insert(item.as_str()) {
             merged.push(item.clone());
         }

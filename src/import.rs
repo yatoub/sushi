@@ -240,11 +240,11 @@ pub fn import_to_yaml(entries: &[SshConfigEntry]) -> String {
     let mut by_jump: std::collections::BTreeMap<String, Vec<&SshConfigEntry>> =
         std::collections::BTreeMap::new();
 
-    for e in entries.iter().filter_map(|e| e.proxy_jump.as_deref().map(|j| (j, e))) {
-        by_jump
-            .entry(e.0.to_owned())
-            .or_default()
-            .push(e.1);
+    for e in entries
+        .iter()
+        .filter_map(|e| e.proxy_jump.as_deref().map(|j| (j, e)))
+    {
+        by_jump.entry(e.0.to_owned()).or_default().push(e.1);
     }
 
     // Groupe "Direct"

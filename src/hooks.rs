@@ -44,7 +44,10 @@ pub fn run_hook(path: &str, label: &str, server: &ResolvedServer) -> Result<()> 
     let start = Instant::now();
 
     loop {
-        match child.try_wait().map_err(|e| anyhow!("hook {label} ({expanded}): erreur d'attente : {e}"))? {
+        match child
+            .try_wait()
+            .map_err(|e| anyhow!("hook {label} ({expanded}): erreur d'attente : {e}"))?
+        {
             Some(status) if status.success() => return Ok(()),
             Some(status) => {
                 return Err(anyhow!(

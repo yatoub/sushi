@@ -476,9 +476,11 @@ fn main() -> io::Result<()> {
 
     if let Some((mode, target)) = cli_mode_target {
         let server = build_adhoc_server(&target, mode, &cli, &config);
-        if let Err(e) =
-            susshi::hooks::run_hook(server.pre_connect_hook.as_deref().unwrap_or(""), "pre_connect", &server)
-        {
+        if let Err(e) = susshi::hooks::run_hook(
+            server.pre_connect_hook.as_deref().unwrap_or(""),
+            "pre_connect",
+            &server,
+        ) {
             eprintln!("Hook pre_connect a annulé la connexion : {e}");
             return Err(io::Error::other(e.to_string()));
         }

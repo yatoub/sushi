@@ -34,6 +34,23 @@ jobs:
       - name: Run tests
         run: cargo test --verbose
 
+  megalinter:
+    name: MegaLinter
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Run MegaLinter
+        uses: oxsecurity/megalinter/flavors/rust@v8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   target-matrix:
     name: Target Matrix Smoke (${{ matrix.target }})
     runs-on: ${{ matrix.os }}

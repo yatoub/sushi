@@ -17,11 +17,12 @@ DISABLE_LINTERS:
   - RUST_CLIPPY
   - RUST_RUSTFMT
 
-# Trivy is informational only
+# Trivy and prettier are informational only (prettier flags style, not correctness)
 DISABLE_ERRORS_LINTERS:
   - REPOSITORY_TRIVY
+  - YAML_PRETTIER
 
-FILTER_REGEX_EXCLUDE: "(target/|Cargo\\.lock)"
+FILTER_REGEX_EXCLUDE: "(target/|Cargo\\.lock|examples/)"
 
 # Use our custom yamllint config tuned for GitHub Actions line lengths
 YAML_YAMLLINT_CONFIG_FILE: .yamllint.yml

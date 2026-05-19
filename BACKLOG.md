@@ -33,15 +33,16 @@ Stack : Rust, Ratatui, YAML, SSH2, Catppuccin
 
 ## 🟢 Long terme / nouvelles fonctionnalités
 
-### TUI
-- Ajouter une aide interactive `(h)` pour le détail des options
-- Dashboard "overview" : état santé de tous les serveurs d'un groupe en parallèle
-- Historique des commandes ad-hoc (flèche haut/bas)
-- Mode split pane pour surveiller deux serveurs côte à côte
-
 ### Connectivité
 - Reconnexion automatique avec backoff en mode `keep_open`
 - Multiplexage ControlMaster avec affichage des sessions actives
+- Gestion des password
+  si vous n'avez pas de clé ssh enregistré sur le bastion phm la connexion est impossible
+  pour l'instant je gère mal (quand c'est le cas) le fallback password
+  je n'ai pas test non plus une clé ssh avec password
+  et les messages de clé (known_host) cassent la TUI
+  il faut implémenter un prompt password en cas de besoin de la connexion ssh
+
 
 ### Inventaire & intégration
 - Exécution en masse sur un groupe (`susshi exec --group prod "uptime"`)
@@ -52,4 +53,6 @@ Stack : Rust, Ratatui, YAML, SSH2, Catppuccin
 ### Sécurité
 - Intégration SSH agent (détection automatique des identités)
 - Audit log local des connexions (timestamp, durée, code de sortie)
-- Chiffrement des secrets via keyring OS (`secret-service`)
+
+### Packaging
+- Ajouter dans les paquets linux une manpage et un exemple de la configuration dans `/usr/share/doc/susshi`

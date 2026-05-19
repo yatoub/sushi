@@ -123,6 +123,9 @@ pub struct AppState {
     /// Fusionnés par-dessus les tunnels de la config YAML au chargement.
     #[serde(default)]
     pub tunnel_overrides: Vec<TunnelOverride>,
+    /// Historique des commandes ad-hoc (`x`), limité aux 100 dernières entrées.
+    #[serde(default)]
+    pub command_history: Vec<String>,
 }
 
 fn state_path() -> PathBuf {

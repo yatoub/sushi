@@ -102,6 +102,7 @@ impl App {
         app.favorites = saved.favorites;
         app.sort_by_recent = saved.sort_by_recent;
         app.tunnel_overrides = saved.tunnel_overrides;
+        app.cmd_history = saved.command_history;
         app.items_dirty = true;
 
         if app.search_query.is_empty() && !default_filter.is_empty() {

@@ -3,12 +3,15 @@ use super::*;
 impl App {
     /// Retourne l'etat persistable de l'application (pour la sauvegarde).
     pub fn to_app_state(&self) -> crate::state::AppState {
+        let mut history = self.cmd_history.clone();
+        history.truncate(100);
         crate::state::AppState {
             expanded_items: self.expanded_items.clone(),
             last_seen: self.last_seen.clone(),
             favorites: self.favorites.clone(),
             sort_by_recent: self.sort_by_recent,
             tunnel_overrides: self.tunnel_overrides.clone(),
+            command_history: history,
         }
     }
 

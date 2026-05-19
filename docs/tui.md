@@ -77,7 +77,7 @@ Ad-hoc command output is displayed in the detail pane (up to 20 lines) with colo
 
 ### Command history
 
-When the ad-hoc command prompt (`x`) is open, use `↑` and `↓` to navigate previously run commands. The history is deduplicated (identical consecutive commands are not duplicated) and persists for the duration of the session.
+When the ad-hoc command prompt (`x`) is open, use `↑` and `↓` to navigate previously run commands. The history is deduplicated (identical consecutive commands are not duplicated) and **persists across sessions** (saved in `~/.susshi_state.json`, capped at 100 entries).
 
 ## Group Overview Dashboard
 

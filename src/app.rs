@@ -494,3 +494,7 @@ mod tests_reload;
 #[cfg(test)]
 #[path = "app/tests_tunnel_form.rs"]
 mod tests_tunnel_form;
+
+#[cfg(test)]
+#[path = "app/tests_state_mutations.rs"]
+mod tests_state_mutations;

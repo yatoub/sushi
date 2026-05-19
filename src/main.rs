@@ -82,8 +82,8 @@ struct Cli {
     #[arg(long, requires = "import_ssh_config")]
     dry_run: bool,
 
-    /// Exporter la configuration vers un format externe : "ansible".
-    #[arg(long, value_name = "FORMAT", conflicts_with_all = ["validate", "direct", "jump", "wallix", "import_ssh_config"])]
+    /// Exporter la configuration vers un format externe : "ansible", "terraform", "nmap".
+    #[arg(long, value_name = "FORMAT", conflicts_with_all = ["validate", "direct", "jump", "wallix", "import_ssh_config", "list"])]
     export: Option<String>,
 
     /// Fichier de sortie pour --export (défaut : stdout).
@@ -93,6 +93,31 @@ struct Cli {
     /// Filtre pour --export : texte et/ou #tag (même syntaxe que la recherche TUI).
     #[arg(long = "export-filter", value_name = "QUERY", requires = "export")]
     export_filter: Option<String>,
+
+    /// Lister tous les serveurs en JSON (compatible jq / fzf).
+    #[arg(long, conflicts_with_all = ["validate", "direct", "jump", "wallix", "import_ssh_config", "export"])]
+    list: bool,
+
+    /// Filtre pour --list : texte et/ou #tag.
+    #[arg(long = "list-filter", value_name = "QUERY", requires = "list")]
+    list_filter: Option<String>,
+
+    /// Exécuter une commande sur tous les serveurs d'un groupe en parallèle.
+    #[arg(long, value_name = "GROUP", conflicts_with_all = ["validate", "direct", "jump", "wallix", "import_ssh_config", "export", "list"])]
+    exec_group: Option<String>,
+
+    /// Commande à exécuter avec --exec-group.
+    #[arg(long = "exec-cmd", value_name = "CMD", requires = "exec_group")]
+    exec_cmd: Option<String>,
+
+    /// Timeout par hôte en secondes pour --exec-group (défaut : 30).
+    #[arg(
+        long = "exec-timeout",
+        value_name = "SECS",
+        requires = "exec_group",
+        default_value = "30"
+    )]
+    exec_timeout: u64,
 }
 
 // ─── Config par défaut ───────────────────────────────────────────────────────
@@ -248,15 +273,106 @@ fn run_import_ssh_config(cli: &Cli) {
 
 /// Exporte la configuration susshi vers un inventaire au format `format`.
 ///
-/// Actuellement, seul `"ansible"` est supporté.
+/// Formats supportés : `ansible`, `terraform`, `nmap`.
 fn run_export(cli: &Cli, config: &Config) {
-    use susshi::export::ansible;
+    use susshi::export::{ansible, nmap, terraform};
 
     let format = cli.export.as_deref().unwrap_or("");
-    if format != "ansible" {
-        eprintln!("Format d'export inconnu : {format}. Formats supportés : ansible");
+    let servers = match config.resolve() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Erreur lors de la résolution de la configuration : {e}");
+            process::exit(1);
+        }
+    };
+    let filter = cli.export_filter.as_deref().unwrap_or("");
+    let filtered = ansible::filter_servers(&servers, filter);
+
+    if filtered.is_empty() {
+        eprintln!("Aucun serveur ne correspond au filtre {:?}.", filter);
         process::exit(1);
     }
+
+    let output = match format {
+        "ansible" => ansible::to_ansible_yaml(&filtered),
+        "terraform" => terraform::to_terraform_json(&filtered),
+        "nmap" => nmap::to_nmap_targets(&filtered),
+        _ => {
+            eprintln!(
+                "Format d'export inconnu : {format}. Formats supportés : ansible, terraform, nmap"
+            );
+            process::exit(1);
+        }
+    };
+
+    match &cli.export_output {
+        Some(path) => {
+            if let Err(e) = std::fs::write(path, &output) {
+                eprintln!("Erreur écriture {path} : {e}");
+                process::exit(1);
+            }
+            eprintln!("{} serveur(s) exporté(s) → {path}", filtered.len());
+        }
+        None => {
+            print!("{output}");
+            eprintln!("{} serveur(s) exporté(s).", filtered.len());
+        }
+    }
+    process::exit(0);
+}
+
+/// Liste les serveurs en JSON sur stdout.
+fn run_list(cli: &Cli, config: &Config) {
+    use susshi::export::ansible;
+
+    let servers = match config.resolve() {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Erreur lors de la résolution de la configuration : {e}");
+            process::exit(1);
+        }
+    };
+    let filter = cli.list_filter.as_deref().unwrap_or("");
+    let filtered = ansible::filter_servers(&servers, filter);
+
+    let json_servers: Vec<serde_json::Value> = filtered
+        .iter()
+        .map(|s| {
+            serde_json::json!({
+                "name": s.name,
+                "host": s.host,
+                "user": s.user,
+                "port": s.port,
+                "group": s.group_name,
+                "env": s.env_name,
+                "namespace": s.namespace,
+                "tags": s.tags,
+                "mode": format!("{:?}", s.default_mode).to_lowercase(),
+            })
+        })
+        .collect();
+
+    match serde_json::to_string_pretty(&json_servers) {
+        Ok(json) => println!("{json}"),
+        Err(e) => {
+            eprintln!("Erreur sérialisation JSON : {e}");
+            process::exit(1);
+        }
+    }
+    process::exit(0);
+}
+
+/// Exécute une commande SSH sur tous les serveurs du groupe en parallèle.
+fn run_exec_group(cli: &Cli, config: &Config) {
+    let group = cli.exec_group.as_deref().unwrap_or("");
+    let cmd = match cli.exec_cmd.as_deref() {
+        Some(c) if !c.trim().is_empty() => c,
+        _ => {
+            eprintln!("--exec-cmd est requis avec --exec-group");
+            process::exit(1);
+        }
+    };
+    let timeout_secs = cli.exec_timeout;
 
     let servers = match config.resolve() {
         Ok(s) => s,
@@ -266,30 +382,87 @@ fn run_export(cli: &Cli, config: &Config) {
         }
     };
 
-    let filter = cli.export_filter.as_deref().unwrap_or("");
-    let filtered = ansible::filter_servers(&servers, filter);
+    let targets: Vec<_> = servers
+        .iter()
+        .filter(|s| s.group_name.eq_ignore_ascii_case(group))
+        .collect();
 
-    if filtered.is_empty() {
-        eprintln!("Aucun serveur ne correspond au filtre {:?}.", filter);
+    if targets.is_empty() {
+        eprintln!("Aucun serveur trouvé dans le groupe {:?}.", group);
         process::exit(1);
     }
 
-    let yaml = ansible::to_ansible_yaml(&filtered);
+    eprintln!(
+        "Exécution de {:?} sur {} serveur(s) du groupe {:?}…",
+        cmd,
+        targets.len(),
+        group
+    );
 
-    match &cli.export_output {
-        Some(path) => {
-            if let Err(e) = std::fs::write(path, &yaml) {
-                eprintln!("Erreur écriture {path} : {e}");
-                process::exit(1);
+    let cmd = cmd.to_string();
+    let handles: Vec<_> = targets
+        .iter()
+        .map(|srv| {
+            let srv = (*srv).clone();
+            let cmd = cmd.clone();
+            std::thread::spawn(move || {
+                let mut args =
+                    match susshi::ssh::client::build_ssh_args(&srv, srv.default_mode, false) {
+                        Ok(a) => a,
+                        Err(e) => return (srv.name.clone(), Err(e.to_string())),
+                    };
+                // Ajouter la commande distante avant la destination
+                // L'invariant build_ssh_args garantit que la destination est en dernier.
+                let dest = args.pop().unwrap_or_default();
+                args.push("-o".into());
+                args.push(format!("ConnectTimeout={timeout_secs}"));
+                args.push("-o".into());
+                args.push("BatchMode=yes".into());
+                args.push(dest);
+                args.push(cmd.clone());
+
+                let output = std::process::Command::new("ssh").args(&args).output();
+
+                match output {
+                    Ok(out) => {
+                        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+                        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+                        let code = out.status.code().unwrap_or(-1);
+                        (srv.name.clone(), Ok((stdout, stderr, code)))
+                    }
+                    Err(e) => (srv.name.clone(), Err(e.to_string())),
+                }
+            })
+        })
+        .collect();
+
+    let mut exit_code = 0i32;
+    for handle in handles {
+        match handle.join() {
+            Ok((name, Ok((stdout, stderr, code)))) => {
+                println!("=== {name} (exit {code}) ===");
+                if !stdout.is_empty() {
+                    print!("{stdout}");
+                }
+                if !stderr.is_empty() {
+                    eprint!("{stderr}");
+                }
+                if code != 0 {
+                    exit_code = 1;
+                }
             }
-            eprintln!("{} serveur(s) exporté(s) → {path}", filtered.len());
-        }
-        None => {
-            print!("{yaml}");
-            eprintln!("{} serveur(s) exporté(s).", filtered.len());
+            Ok((name, Err(e))) => {
+                eprintln!("=== {name} (erreur) ===");
+                eprintln!("{e}");
+                exit_code = 1;
+            }
+            Err(_) => {
+                eprintln!("Thread SSH a paniqué");
+                exit_code = 1;
+            }
         }
     }
-    process::exit(0);
+    process::exit(exit_code);
 }
 
 /// Décompose `[user@]host[:port]` en ses parties.
@@ -453,10 +626,18 @@ fn main() -> io::Result<()> {
             }
         };
 
-    // ── Connexion directe sans TUI ──────────────────────────────────────────
+    // ── Modes non-TUI ──────────────────────────────────────────────────────
     if cli.export.is_some() {
         run_export(&cli, &config);
         // run_export appelle process::exit()
+    }
+    if cli.list {
+        run_list(&cli, &config);
+        // run_list appelle process::exit()
+    }
+    if cli.exec_group.is_some() {
+        run_exec_group(&cli, &config);
+        // run_exec_group appelle process::exit()
     }
 
     let cli_mode_target: Option<(ConnectionMode, String)> = cli
@@ -496,6 +677,11 @@ fn main() -> io::Result<()> {
     let mut app = App::new(config, warnings, config_path.to_path_buf(), val_warnings)
         .map_err(io::Error::other)?;
 
+    // Délai courant de backoff pour la reconnexion automatique (mode keep_open).
+    // Initialisé à 0, puis remis à 0 à chaque nouvelle connexion volontaire.
+    #[allow(unused_assignments)]
+    let mut backoff_secs: u32 = 0;
+
     loop {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -519,9 +705,9 @@ fn main() -> io::Result<()> {
         match res {
             Ok(AppResult::Exit) => break,
             Ok(AppResult::Connect(server, mode, verbose)) => {
+                backoff_secs = 0;
                 if app.keep_open {
-                    // Connexion bloquante : SSH tourne comme sous-processus,
-                    // la TUI redémarre automatiquement après la déconnexion.
+                    // Connexion bloquante avec reconnexion automatique et backoff.
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
                         "pre_connect",
@@ -529,11 +715,10 @@ fn main() -> io::Result<()> {
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
                     } else {
-                        if let Err(e) =
-                            susshi::ssh::client::connect_blocking(&server, mode, verbose, None)
-                        {
-                            eprintln!("SSH Connection Error: {}", e);
-                        }
+                        run_blocking_with_backoff(
+                            || susshi::ssh::client::connect_blocking(&server, mode, verbose, None),
+                            &mut backoff_secs,
+                        );
                         let _ = susshi::hooks::run_hook(
                             server.post_disconnect_hook.as_deref().unwrap_or(""),
                             "post_disconnect",
@@ -559,6 +744,7 @@ fn main() -> io::Result<()> {
                 }
             }
             Ok(AppResult::ConnectWallixSelected(server, verbose, selected_id, auth)) => {
+                backoff_secs = 0;
                 if app.keep_open {
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
@@ -567,14 +753,17 @@ fn main() -> io::Result<()> {
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
                     } else {
-                        if let Err(e) = susshi::ssh::client::connect_blocking_wallix_with_selection(
-                            &server,
-                            verbose,
-                            &selected_id,
-                            auth.as_deref(),
-                        ) {
-                            eprintln!("SSH Connection Error: {}", e);
-                        }
+                        run_blocking_with_backoff(
+                            || {
+                                susshi::ssh::client::connect_blocking_wallix_with_selection(
+                                    &server,
+                                    verbose,
+                                    &selected_id,
+                                    auth.as_deref(),
+                                )
+                            },
+                            &mut backoff_secs,
+                        );
                         let _ = susshi::hooks::run_hook(
                             server.post_disconnect_hook.as_deref().unwrap_or(""),
                             "post_disconnect",
@@ -600,6 +789,7 @@ fn main() -> io::Result<()> {
                 }
             }
             Ok(AppResult::ConnectWithAuth(server, mode, verbose, cred)) => {
+                backoff_secs = 0;
                 if app.keep_open {
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
@@ -608,14 +798,17 @@ fn main() -> io::Result<()> {
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
                     } else {
-                        if let Err(e) = susshi::ssh::client::connect_blocking(
-                            &server,
-                            mode,
-                            verbose,
-                            Some(cred.as_str()),
-                        ) {
-                            eprintln!("SSH Connection Error: {}", e);
-                        }
+                        run_blocking_with_backoff(
+                            || {
+                                susshi::ssh::client::connect_blocking(
+                                    &server,
+                                    mode,
+                                    verbose,
+                                    Some(cred.as_str()),
+                                )
+                            },
+                            &mut backoff_secs,
+                        );
                         let _ = susshi::hooks::run_hook(
                             server.post_disconnect_hook.as_deref().unwrap_or(""),
                             "post_disconnect",
@@ -645,6 +838,43 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+// ─── Reconnexion avec backoff ─────────────────────────────────────────────────
+
+/// Exécute `connect_fn`, puis si elle échoue et que `keep_open` est actif,
+/// attend un délai croissant (1 → 2 → 4 → 8 → 16 → 30 s, cap 30 s)
+/// avant de signaler à l'appelant de relancer la TUI.
+///
+/// Si la connexion a duré plus de `SESSION_STABLE_SECS` secondes, le backoff
+/// est remis à zéro (déconnexion réseau normale, pas un échec immédiat).
+fn run_blocking_with_backoff<F>(connect_fn: F, backoff_secs: &mut u32)
+where
+    F: FnOnce() -> anyhow::Result<()>,
+{
+    const SESSION_STABLE_SECS: u64 = 10;
+    const BACKOFF_CAP: u32 = 30;
+
+    let started = std::time::Instant::now();
+    match connect_fn() {
+        Ok(()) => {
+            // Connexion terminée normalement.
+            if started.elapsed().as_secs() >= SESSION_STABLE_SECS {
+                *backoff_secs = 0;
+            }
+        }
+        Err(e) => {
+            eprintln!("SSH Connection Error: {e}");
+            if started.elapsed().as_secs() >= SESSION_STABLE_SECS {
+                *backoff_secs = 0;
+            } else {
+                let delay = (*backoff_secs).max(1);
+                eprintln!("Reconnexion dans {delay}s… (Ctrl-C pour annuler)");
+                std::thread::sleep(std::time::Duration::from_secs(u64::from(delay)));
+                *backoff_secs = (delay * 2).min(BACKOFF_CAP);
+            }
+        }
+    }
 }
 
 // ─── TUI ─────────────────────────────────────────────────────────────────────

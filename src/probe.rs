@@ -99,6 +99,8 @@ pub struct ProbeResult {
     pub extra_fs: Vec<FsEntry>,
     /// Lignes additionnelles affichées pour les profils spéciaux.
     pub notes: Vec<String>,
+    /// `true` si un socket ControlMaster SSH actif a été détecté localement.
+    pub control_master_active: bool,
 }
 
 /// État courant d'un diagnostic lancé sur un serveur.
@@ -170,6 +172,7 @@ impl ProbeResult {
             disk_total_gb,
             extra_fs,
             notes: vec![],
+            control_master_active: false,
         })
     }
 }
@@ -226,13 +229,32 @@ pub fn probe(server: &ResolvedServer, mode: ConnectionMode) -> Result<ProbeResul
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("SSH probe échoué : {}", stderr.trim());
+        let stderr = stderr.trim();
+        // Produire des messages lisibles pour les erreurs known_host courantes.
+        if stderr.contains("REMOTE HOST IDENTIFICATION HAS CHANGED") {
+            anyhow::bail!(
+                "La clé SSH de cet hôte a changé.\n\
+                 Supprimez l'ancienne entrée avec :\n\
+                 ssh-keygen -R {}",
+                server.host
+            );
+        }
+        if stderr.contains("Host key verification failed") {
+            anyhow::bail!(
+                "Vérification de la clé SSH échouée pour {}.\n\
+                 Vérifiez ~/.ssh/known_hosts.",
+                server.host
+            );
+        }
+        anyhow::bail!("SSH probe échoué : {}", stderr);
     }
 
-    ProbeResult::parse(
+    let mut result = ProbeResult::parse(
         &String::from_utf8_lossy(&output.stdout),
         &server.probe_filesystems,
-    )
+    )?;
+    result.control_master_active = crate::ssh::client::is_control_master_active(server);
+    Ok(result)
 }
 
 fn probe_wallix(server: &ResolvedServer) -> ProbeResult {
@@ -273,6 +295,7 @@ fn probe_wallix(server: &ResolvedServer) -> ProbeResult {
         disk_total_gb: 0.0,
         extra_fs: vec![],
         notes,
+        control_master_active: false,
     }
 }
 
@@ -309,6 +332,12 @@ mod tests {
         0.42, 0.38, 0.31\n\
         67 16106127360\n\
         23 499963174912\n";
+
+    #[test]
+    fn parse_sets_control_master_active_false_by_default() {
+        let r = ProbeResult::parse(SAMPLE, &[]).unwrap();
+        assert!(!r.control_master_active);
+    }
 
     #[test]
     fn parse_valid() {

@@ -506,6 +506,60 @@ impl Config {
         let main_defaults = config.defaults.clone().unwrap_or_default();
 
         for entry in includes {
+            // ── Include URL HTTPS ────────────────────────────────────────────
+            if entry.path.starts_with("https://") || entry.path.starts_with("http://") {
+                let url = entry.path.clone();
+                let content = match fetch_url(&url) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        inc_warnings.push(IncludeWarning::LoadError {
+                            label: entry.label.clone(),
+                            path: url.clone(),
+                            error: e,
+                        });
+                        continue;
+                    }
+                };
+                let mut sub_config: Config = match serde_yaml_ng::from_str(&content) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        inc_warnings.push(IncludeWarning::LoadError {
+                            label: entry.label.clone(),
+                            path: url.clone(),
+                            error: e.to_string(),
+                        });
+                        continue;
+                    }
+                };
+                sub_config.sort();
+                let sub_val = validate_yaml(&content, &url);
+                val_warnings.extend(sub_val);
+                if entry.merge_defaults {
+                    let sub_d = sub_config.defaults.unwrap_or_default();
+                    sub_config.defaults = Some(merge_default_structs(&main_defaults, &sub_d));
+                }
+                let mut direct_entries = Vec::new();
+                let mut nested_namespaces: Vec<NamespaceEntry> = Vec::new();
+                for sub_entry in sub_config.groups {
+                    match sub_entry {
+                        ConfigEntry::Namespace(ns) => nested_namespaces.push(ns),
+                        other => direct_entries.push(other),
+                    }
+                }
+                config.groups.push(ConfigEntry::Namespace(NamespaceEntry {
+                    label: entry.label.clone(),
+                    source_path: url.clone(),
+                    defaults: sub_config.defaults,
+                    entries: direct_entries,
+                    vars: sub_config.vars,
+                }));
+                for nested in nested_namespaces {
+                    config.groups.push(ConfigEntry::Namespace(nested));
+                }
+                continue;
+            }
+
+            // ── Include fichier local ────────────────────────────────────────
             // Résolution du chemin (tilde + relatif)
             let expanded = shellexpand::tilde(&entry.path).into_owned();
             let raw = std::path::Path::new(&expanded);
@@ -911,6 +965,16 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
 }
 
 // ─── Validation YAML ─────────────────────────────────────────────────────────
+
+/// Télécharge le contenu d'une URL HTTPS (ou HTTP) et le retourne sous forme de `String`.
+fn fetch_url(url: &str) -> Result<String, String> {
+    ureq::get(url)
+        .call()
+        .map_err(|e| e.to_string())?
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| e.to_string())
+}
 
 /// Analyse `content` (YAML texte) et retourne les avertissements pour tout champ
 /// dont le nom ne figure pas dans la liste des clés connues du schéma susshi.

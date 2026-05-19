@@ -130,6 +130,13 @@ defaults:
 - `selection_timeout_secs`: menu parsing timeout budget.
 - `authorization`: exact Wallix authorization name — bypasses group matching and pins the entry.
 - `direct`: skip the menu probe and connect immediately (zero-delay).
+- `header_columns`: list of tokens used to detect and skip the menu header line. Default: `["ID", "Cible", "Autorisation"]`. Override if your bastion shows column headers in a different language:
+
+```yaml
+defaults:
+  wallix:
+    header_columns: ["Num", "Target", "Authorization"]
+```
 
 ## Troubleshooting
 

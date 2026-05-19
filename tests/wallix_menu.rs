@@ -25,6 +25,7 @@ fn wallix_server(group: Option<&str>) -> ResolvedServer {
         wallix_selection_timeout_secs: 8,
         wallix_direct: false,
         wallix_authorization: None,
+        wallix_header_columns: vec![],
         use_system_ssh_config: false,
         probe_filesystems: vec![],
         tunnels: vec![],
@@ -64,7 +65,7 @@ Tapez h pour l'aide, ctrl-D pour quitter
  >
 "#;
 
-    let entries = parse_wallix_menu(output).unwrap();
+    let entries = parse_wallix_menu(output, &[]).unwrap();
     let mut server = wallix_server(Some("dev-admins"));
     server.group_name = "ALPHA".to_string();
     server.env_name = "PP".to_string();
@@ -80,7 +81,7 @@ fn selects_single_entry_when_group_is_missing_from_server_config() {
 |  0 | demo_user@default@APP-ALPHA-BD:SSH | APP-ALPHA_ops-admins
 "#;
 
-    let entries = parse_wallix_menu(output).unwrap();
+    let entries = parse_wallix_menu(output, &[]).unwrap();
     let server = wallix_server(None);
     // Single matching entry → auto-selected even without wallix_group configured.
     let id = select_id_for_server(&entries, &server).unwrap();
@@ -96,7 +97,7 @@ fn errors_when_group_is_missing_and_multiple_entries_match() {
 |  1 | demo_user@default@APP-ALPHA-BD:SSH | APP-ALPHA_dev-admins
 "#;
 
-    let entries = parse_wallix_menu(output).unwrap();
+    let entries = parse_wallix_menu(output, &[]).unwrap();
     let server = wallix_server(None);
     let error = select_id_for_server(&entries, &server).unwrap_err();
     assert!(error.to_string().contains("Multiple menu entries"));

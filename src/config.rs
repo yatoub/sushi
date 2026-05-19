@@ -238,6 +238,9 @@ pub struct BastionConfig {
     /// Nom exact de l'autorisation Wallix (ex: "STI-ANSCORE_ces3s-admins").
     /// Quand défini, inclus dans le login filtré pour forcer la sélection côté Wallix.
     pub authorization: Option<String>,
+    /// Tokens de détection d'en-tête dans le menu Wallix (défaut : ["ID", "Cible", "Autorisation"]).
+    /// Remplacez si votre bastion affiche des colonnes dans une autre langue.
+    pub header_columns: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, Clone, Default)]
@@ -361,6 +364,8 @@ pub struct ResolvedServer {
     pub wallix_direct: bool,
     /// Nom exact de l'autorisation Wallix — inclus dans le login filtré quand défini.
     pub wallix_authorization: Option<String>,
+    /// Tokens de détection d'en-tête du menu Wallix (vide = defaults : "ID", "Cible", "Autorisation").
+    pub wallix_header_columns: Vec<String>,
     /// Respecte `~/.ssh/config` si `true` (ne passe pas `-F /dev/null`).
     pub use_system_ssh_config: bool,
     /// Points de montage à interroger lors d'un probe (hérités en cascade).
@@ -783,6 +788,7 @@ fn merge_bastion(
             selection_timeout_secs: c.selection_timeout_secs.or(p.selection_timeout_secs),
             direct: c.direct.or(p.direct),
             authorization: c.authorization.clone().or(p.authorization.clone()),
+            header_columns: c.header_columns.clone().or(p.header_columns.clone()),
         }),
     }
 }
@@ -1347,6 +1353,10 @@ fn resolve_server(
             .and_then(|b| b.direct)
             .unwrap_or(false),
         wallix_authorization: final_bastion.as_ref().and_then(|b| b.authorization.clone()),
+        wallix_header_columns: final_bastion
+            .as_ref()
+            .and_then(|b| b.header_columns.clone())
+            .unwrap_or_default(),
     })
 }
 
@@ -1453,6 +1463,7 @@ mod tests {
             selection_timeout_secs: None,
             direct: None,
             authorization: None,
+            header_columns: None,
         });
         let child = BastionConfig {
             host: None,
@@ -1466,6 +1477,7 @@ mod tests {
             selection_timeout_secs: None,
             direct: None,
             authorization: None,
+            header_columns: None,
         };
 
         let merged = merge_bastion(&parent, &Some(child)).unwrap();
@@ -1496,6 +1508,7 @@ mod tests {
                     selection_timeout_secs: None,
                     direct: None,
                     authorization: None,
+                    header_columns: None,
                 }),
                 ..Default::default()
             }),

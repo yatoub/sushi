@@ -418,6 +418,11 @@ fn build_adhoc_server(
             .unwrap_or(8),
         wallix_direct: d.wallix.as_ref().and_then(|b| b.direct).unwrap_or(false),
         wallix_authorization: d.wallix.as_ref().and_then(|b| b.authorization.clone()),
+        wallix_header_columns: d
+            .wallix
+            .as_ref()
+            .and_then(|b| b.header_columns.clone())
+            .unwrap_or_default(),
     }
 }
 

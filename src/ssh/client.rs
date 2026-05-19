@@ -361,7 +361,7 @@ pub fn fetch_wallix_menu_entries(
         let _ = std::fs::write("/tmp/susshi-wallix-debug.txt", &transcript);
     }
 
-    parse_wallix_menu(&transcript)
+    parse_wallix_menu(&transcript, &server.wallix_header_columns)
 }
 
 #[cfg(not(unix))]
@@ -735,7 +735,7 @@ fn connect_wallix_via_pty_with_selection(
                     let selection = if let Some(id) = selected_id {
                         Ok(id.to_string())
                     } else {
-                        parse_wallix_menu(&transcript)
+                        parse_wallix_menu(&transcript, &server.wallix_header_columns)
                             .and_then(|entries| select_id_for_server(&entries, server))
                     };
 
@@ -893,6 +893,7 @@ mod tests {
             wallix_selection_timeout_secs: 8,
             wallix_direct: false,
             wallix_authorization: None,
+            wallix_header_columns: vec![],
         }
     }
 

@@ -78,6 +78,7 @@ wallix:
   auto_select: true
   fail_if_menu_match_error: true
   selection_timeout_secs: 8
+  # header_columns: ["ID", "Cible", "Autorisation"]  # override if bastion uses different column labels
 ```
 
 `bastion` is accepted as a backward-compatible alias key.

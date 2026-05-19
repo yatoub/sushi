@@ -57,7 +57,7 @@ jobs:
             binary_name: susshi.exe
             asset_name: susshi-windows-amd64.exe
             build_tool: cargo
-            openssl_mode: vendored
+            openssl_mode: system
 
     steps:
       - name: Checkout repository
@@ -79,6 +79,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y musl-tools pkg-config libssl-dev
+
+      - name: Install OpenSSL for Windows
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          choco install openssl --no-progress -y
+          $opensslDir = "C:\Program Files\OpenSSL-Win64"
+          if (-not (Test-Path $opensslDir)) { $opensslDir = "C:\Program Files\OpenSSL" }
+          echo "OPENSSL_DIR=$opensslDir" >> $env:GITHUB_ENV
+          echo "OPENSSL_NO_VENDOR=1" >> $env:GITHUB_ENV
 
       - name: Setup Zig
         if: matrix.build_tool == 'zigbuild'

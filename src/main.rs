@@ -82,7 +82,7 @@ struct Cli {
     #[arg(long, requires = "import_ssh_config")]
     dry_run: bool,
 
-    /// Exporter la configuration vers un format externe : "ansible", "csv".
+    /// Exporter la configuration vers un format externe : "ansible", "csv", "openssh".
     #[arg(long, value_name = "FORMAT", conflicts_with_all = ["validate", "direct", "jump", "wallix", "import_ssh_config"])]
     export: Option<String>,
 
@@ -251,10 +251,11 @@ fn run_import_ssh_config(cli: &Cli) {
 fn run_export(cli: &Cli, config: &Config) {
     use susshi::export::ansible;
     use susshi::export::csv;
+    use susshi::export::openssh;
 
     let format = cli.export.as_deref().unwrap_or("");
-    if format != "ansible" && format != "csv" {
-        eprintln!("Format d'export inconnu : {format}. Formats supportés : ansible, csv");
+    if !matches!(format, "ansible" | "csv" | "openssh") {
+        eprintln!("Format d'export inconnu : {format}. Formats supportés : ansible, csv, openssh");
         process::exit(1);
     }
 
@@ -274,10 +275,10 @@ fn run_export(cli: &Cli, config: &Config) {
         process::exit(1);
     }
 
-    let output = if format == "csv" {
-        csv::to_csv_string(&filtered)
-    } else {
-        ansible::to_ansible_yaml(&filtered)
+    let output = match format {
+        "csv" => csv::to_csv_string(&filtered),
+        "openssh" => openssh::to_openssh_config(&filtered),
+        _ => ansible::to_ansible_yaml(&filtered),
     };
 
     match &cli.export_output {

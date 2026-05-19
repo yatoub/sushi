@@ -118,7 +118,7 @@ For a complete config example, see [examples/full_config.yaml](examples/full_con
 - SCP transfer form (`s`) with live progress.
 - Wallix authorization auto-resolution with targeted fallback popup.
 - Hooks (`pre_connect_hook`, `post_disconnect_hook`).
-- `~/.ssh/config` import, Ansible inventory export, and CSV export (`--export csv`).
+- `~/.ssh/config` import and export (`--export openssh`), Ansible inventory export, and CSV export (`--export csv`).
 - Variable interpolation with `_vars` and built-in `{{ index }}`.
 - **SSH certificate support** (`ssh_cert`): pass a signed certificate alongside the private key.
 - **SSH agent socket** (`ssh_agent_sock`): route a server's connections through a dedicated agent socket (GPG, per-server isolation); sets `SSH_AUTH_SOCK` and `-o IdentityAgent`.

@@ -68,6 +68,18 @@ susshi --export csv --export-filter "#prod"
 
 Fields containing commas, double-quotes, or newlines are quoted per RFC 4180. Multiple tags are joined with `;`.
 
+## Export OpenSSH Config
+
+Exports all servers as `~/.ssh/config`-compatible `Host` blocks.
+
+```bash
+susshi --export openssh
+susshi --export openssh --export-output ~/.ssh/config.d/susshi
+susshi --export openssh --export-filter "#prod"
+```
+
+Each server produces a `Host` block with `HostName`, `User`, `Port` (if not 22), `IdentityFile`, `ProxyJump` (jump mode), and `IdentityAgent` (if `ssh_agent_sock` is set). Wallix servers are exported as direct blocks — their bastion routing is not representable in standard SSH config.
+
 ## Help
 
 ```bash

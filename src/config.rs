@@ -819,12 +819,11 @@ pub fn undefined_vars(s: &str, vars: &HashMap<String, String>) -> Vec<String> {
 }
 
 fn extend_tags(parent: Option<&Vec<String>>, child: Option<&Vec<String>>) -> Vec<String> {
-    let mut merged: Vec<String> = parent.cloned().unwrap_or_default();
-    if let Some(c) = child {
-        for tag in c {
-            if !merged.contains(tag) {
-                merged.push(tag.clone());
-            }
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut merged: Vec<String> = Vec::new();
+    for tag in parent.into_iter().flatten().chain(child.into_iter().flatten()) {
+        if seen.insert(tag.as_str()) {
+            merged.push(tag.clone());
         }
     }
     merged
@@ -838,20 +837,17 @@ fn extend_filesystems(
     parent: Option<&Vec<String>>,
     child: Option<&Vec<String>>,
 ) -> Option<Vec<String>> {
-    match (parent, child) {
-        (None, None) => None,
-        (Some(p), None) => Some(p.clone()),
-        (None, Some(c)) => Some(c.clone()),
-        (Some(p), Some(c)) => {
-            let mut merged = p.clone();
-            for item in c {
-                if !merged.contains(item) {
-                    merged.push(item.clone());
-                }
-            }
-            Some(merged)
+    if parent.is_none() && child.is_none() {
+        return None;
+    }
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut merged: Vec<String> = Vec::new();
+    for item in parent.into_iter().flatten().chain(child.into_iter().flatten()) {
+        if seen.insert(item.as_str()) {
+            merged.push(item.clone());
         }
     }
+    Some(merged)
 }
 
 /// Fusionne deux `Defaults` : `overrides` prime sur `base` pour chaque champ `Option`.
@@ -885,15 +881,7 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
         tags: match (&base.tags, &overrides.tags) {
             (None, r) => r.clone(),
             (l, None) => l.clone(),
-            (Some(b), Some(o)) => {
-                let mut merged = b.clone();
-                for t in o {
-                    if !merged.contains(t) {
-                        merged.push(t.clone());
-                    }
-                }
-                Some(merged)
-            }
+            (Some(b), Some(o)) => Some(extend_tags(Some(b), Some(o))),
         },
         control_master: overrides.control_master.or(base.control_master),
         agent_forwarding: overrides.agent_forwarding.or(base.agent_forwarding),

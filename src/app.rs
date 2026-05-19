@@ -331,9 +331,6 @@ pub struct OverviewEntry {
 pub struct OverviewState {
     pub group_name: String,
     pub entries: Vec<OverviewEntry>,
-    /// Canal pour recevoir les résultats de probe depuis les threads.
-    /// Stocké ici pour éviter de le perdre entre les frames.
-    #[allow(dead_code)]
     pub scroll: usize,
 }
 

@@ -59,6 +59,8 @@ pub enum AppMode {
     Normal,
     /// Affiche un panneau d'erreur bloquant jusqu'à la confirmation.
     Error(String),
+    /// Affiche la valeur qui aurait dû être copiée quand le clipboard est indisponible.
+    ClipboardFallback(String),
     /// Saisie d'un credential SSH (passphrase de clé ou mot de passe) avant connexion.
     CredentialInput {
         server: Box<ResolvedServer>,

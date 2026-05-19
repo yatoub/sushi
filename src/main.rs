@@ -763,6 +763,11 @@ fn run_app(
                             }
                             _ => {}
                         }
+                    } else if matches!(app.app_mode, AppMode::ClipboardFallback(_)) {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Enter => app.app_mode = AppMode::Normal,
+                            _ => {}
+                        }
                     } else if app.app_mode != AppMode::Normal {
                         // En mode erreur : n'importe quelle touche ferme le panneau
                         match key.code {
@@ -991,16 +996,9 @@ fn run_app(
                                                     "copied",
                                                     cmd = cmd.as_str()
                                                 )),
-                                                Some(Err(e)) => {
-                                                    let err = e.to_string();
-                                                    app.set_status_message(fl!(
-                                                        "clipboard-error",
-                                                        error = err.as_str()
-                                                    ));
+                                                Some(Err(_)) | None => {
+                                                    app.app_mode = AppMode::ClipboardFallback(cmd);
                                                 }
-                                                None => app.set_status_message(fl!(
-                                                    "clipboard-unavailable"
-                                                )),
                                             }
                                         }
                                         Err(e) => {

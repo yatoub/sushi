@@ -15,6 +15,57 @@ use crate::ssh::sftp::ScpDirection;
 use crate::ssh::tunnel::TunnelStatus;
 use crate::ui::theme::Theme;
 
+/// Overlay affiché quand le clipboard est indisponible — montre la valeur à copier manuellement.
+pub(crate) fn draw_clipboard_fallback_overlay(
+    f: &mut Frame,
+    value: &str,
+    area: Rect,
+    theme: &Theme,
+) {
+    let popup_w = (value.len() as u16 + 6).clamp(50, area.width.saturating_sub(4));
+    let popup_area = centered_rect(popup_w, 7, area);
+
+    f.render_widget(Clear, popup_area);
+
+    let block = Block::default()
+        .title(" Presse-papiers indisponible ")
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(theme.yellow))
+        .style(Style::default().bg(theme.bg));
+
+    let inner = block.inner(popup_area);
+    f.render_widget(block, popup_area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    f.render_widget(
+        Paragraph::new("Le presse-papiers est indisponible. Copiez manuellement :")
+            .style(Style::default().fg(theme.subtext0)),
+        chunks[0],
+    );
+    f.render_widget(
+        Paragraph::new(value).style(
+            Style::default()
+                .fg(theme.green)
+                .add_modifier(Modifier::BOLD),
+        ),
+        chunks[2],
+    );
+    f.render_widget(
+        Paragraph::new("Entrée / Esc pour fermer").style(Style::default().fg(theme.subtext0)),
+        chunks[3],
+    );
+}
+
 /// Rectangle centré de taille fixe dans `area`.
 fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
     let x = area.x + area.width.saturating_sub(width) / 2;

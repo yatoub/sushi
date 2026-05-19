@@ -120,6 +120,9 @@ For a complete config example, see [examples/full_config.yaml](examples/full_con
 - Hooks (`pre_connect_hook`, `post_disconnect_hook`).
 - `~/.ssh/config` import and Ansible inventory export.
 - Variable interpolation with `_vars` and built-in `{{ index }}`.
+- **SSH certificate support** (`ssh_cert`): pass a signed certificate alongside the private key.
+- **Server notes** (`notes`): free-form description per server, shown in the detail panel.
+- **Live theme toggle** (`Ctrl+Y`): cycle Catppuccin variants without editing the config file.
 
 ## Installation
 

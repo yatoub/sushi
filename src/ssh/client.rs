@@ -1183,7 +1183,6 @@ mod tests {
     fn accept_new_injected_when_no_strict_host_option() {
         let s = base_server(); // use_system_ssh_config=false, ssh_options=[]
         let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
-        let idx = args.iter().position(|a| a == "-o").unwrap();
         // Cherche accept-new parmi toutes les valeurs -o
         let has_accept_new = args
             .windows(2)
@@ -1191,7 +1190,6 @@ mod tests {
         assert!(has_accept_new, "accept-new doit être injecté: {args:?}");
         // La destination reste dernière malgré l'injection
         assert_eq!(args.last().unwrap(), "admin@198.51.100.1");
-        let _ = idx;
     }
 
     #[test]

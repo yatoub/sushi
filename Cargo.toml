@@ -30,9 +30,10 @@ libc = "0.2"
 ratatui = { version = "0.30.0", default-features = false, features = ["crossterm"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
+
 shellexpand = "3.1.2"
 thiserror = "2.0.18"
+serde_yaml_ng = "0.10.0"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["term", "process"] }
@@ -53,10 +54,8 @@ opt-level = "s"
 strip = true
 # Thin LTO garde une bonne réduction de taille avec un coût de build plus faible que fat LTO.
 lto = "thin"
-# Plus d'unités de codegen accélèrent fortement la compilation release.
-codegen-units = 8
-# Autorise les builds release incrémentaux en local (plus rapide en itérations).
-incremental = true
+codegen-units = 1
+incremental = false
 # Pas d'info debug en release.
 debug = 0
 # Pas de symboles de panic verbeux (remplace "panicked at …" par abort)

@@ -1,5 +1,11 @@
 # 🍣 susshi
 
+[![CI](https://github.com/yatoub/susshi/actions/workflows/ci.yml/badge.svg)](https://github.com/yatoub/susshi/actions/workflows/ci.yml)
+[![Crates.io](https://img.shields.io/crates/v/susshi.svg)](https://crates.io/crates/susshi)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENCE)
+[![Security Audit](https://github.com/yatoub/susshi/actions/workflows/ci.yml/badge.svg?event=push&label=audit)](https://github.com/yatoub/susshi/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/yatoub/susshi/branch/master/graph/badge.svg)](https://codecov.io/gh/yatoub/susshi)
+
 **susshi** is a modern, terminal-based SSH connection manager written in Rust.
 It helps you organize servers, handle complex access flows (jump hosts, Wallix bastions), and connect fast through a clean Catppuccin-powered TUI.
 
@@ -170,6 +176,17 @@ sudo dnf install ./susshi-*.x86_64.rpm
 paru -S susshi-bin  # pre-compiled binary
 paru -S susshi      # build from source
 ```
+
+### Windows
+
+> **Partial support.** The binary compiles and the CI smoke-tests it (`x86_64-pc-windows-msvc`), but several features are Unix-only and return a runtime error on Windows:
+>
+> - **Interactive SSH sessions** — PTY allocation via `forkpty` is not available; `connect()` is a no-op.
+> - **Wallix bastion flow** — depends on PTY; returns an error.
+> - **SSH agent forwarding** (`-A`) — passed to the `ssh` binary; works if you have OpenSSH for Windows installed.
+> - **Clipboard copy** — may require an extra dependency (`arboard` backend).
+>
+> The TUI, config parsing, YAML validation, and tunnel/SCP configuration all work on Windows. If you need full Windows support, contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Build from source
 

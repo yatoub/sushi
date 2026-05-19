@@ -104,6 +104,7 @@ cargo test
 - No `unwrap()` in production code without an explicit comment justifying why it cannot panic.
 - Unix-only APIs (`libc`, `nix`, `std::os::unix::process::CommandExt`) must be gated behind `#[cfg(unix)]`.  
   `nix` is declared under `[target.'cfg(unix)'.dependencies]` in `Cargo.toml` — keep it there.
+- **Windows stubs**: features that cannot run on Windows (PTY, forkpty, Wallix flow) must compile cleanly under `#[cfg(not(unix))]` with a `bail!("… only supported on Unix")` stub rather than missing symbols. The CI smoke-builds `x86_64-pc-windows-msvc` on every PR — it must not fail to compile. See [Windows support](README.md#windows) in the README for the current status.
 - Public items (functions, structs, enums) must have English doc comments (`///`).
 - Internal/private comments may be in French.
 

@@ -31,6 +31,7 @@ fn base_server() -> ResolvedServer {
         tunnels: vec![],
         tags: vec![],
         control_master: false,
+        agent_forwarding: false,
         control_path: String::new(),
         control_persist: "10m".to_string(),
         pre_connect_hook: None,

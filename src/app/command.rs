@@ -4,6 +4,11 @@ impl App {
     /// Lance une commande SSH non-interactive dans un thread dedie.
     /// Stocke le resultat via `cmd_rx`.
     pub fn start_cmd(&mut self, server: &ResolvedServer, cmd: String) {
+        if self.cmd_history.last().map(|s| s.as_str()) != Some(cmd.as_str()) {
+            self.cmd_history.push(cmd.clone());
+        }
+        self.cmd_history_cursor = None;
+
         let host = server.host.clone();
         let user = server.user.clone();
         let port = server.port;
@@ -78,5 +83,6 @@ impl App {
     pub fn reset_cmd(&mut self) {
         self.cmd_state = CmdState::Idle;
         self.cmd_rx = None;
+        self.cmd_history_cursor = None;
     }
 }

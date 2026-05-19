@@ -93,6 +93,10 @@ pub fn build_ssh_args(
         }
     }
 
+    if server.agent_forwarding {
+        args.push("-A".into());
+    }
+
     // ControlMaster SSH multiplexing (non supporté en mode Wallix).
     if server.control_master && mode != ConnectionMode::Wallix && !server.control_path.is_empty() {
         if let Some(parent) = std::path::Path::new(&server.control_path).parent() {
@@ -782,6 +786,7 @@ mod tests {
             tunnels: vec![],
             tags: vec![],
             control_master: false,
+            agent_forwarding: false,
             control_path: String::new(),
             control_persist: "10m".to_string(),
             pre_connect_hook: None,

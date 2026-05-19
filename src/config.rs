@@ -57,7 +57,7 @@ pub enum ConfigError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
     #[error("YAML parse error: {0}")]
-    Yaml(#[from] serde_yaml::Error),
+    Yaml(#[from] serde_yaml_ng::Error),
     #[error("Missing configuration for server '{0}': {1}")]
     MissingField(String, String),
 }
@@ -196,6 +196,8 @@ pub struct Defaults {
     pub tags: Option<Vec<String>>,
     /// Si `true`, active le multiplexage SSH ControlMaster (réutilise la connexion TCP).
     pub control_master: Option<bool>,
+    /// Si `true`, active le forwarding de l'agent SSH (`-A`).
+    pub agent_forwarding: Option<bool>,
     /// Chemin du socket ControlPath (tilde expandé).
     /// Défaut : `"~/.ssh/ctl/%h_%p_%r"`.
     pub control_path: Option<String>,
@@ -346,6 +348,8 @@ pub struct ResolvedServer {
     pub tags: Vec<String>,
     /// Multiplexage SSH ControlMaster actif pour ce serveur.
     pub control_master: bool,
+    /// Forwarding de l'agent SSH actif pour ce serveur.
+    pub agent_forwarding: bool,
     /// Chemin du socket ControlPath (vide si désactivé).
     pub control_path: String,
     /// Valeur de ControlPersist (ex. `"10m"`).
@@ -361,7 +365,7 @@ pub struct ResolvedServer {
 impl Config {
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
         let content = std::fs::read_to_string(path)?;
-        let mut config: Config = serde_yaml::from_str(&content)?;
+        let mut config: Config = serde_yaml_ng::from_str(&content)?;
         config.sort();
         Ok(config)
     }
@@ -473,7 +477,7 @@ impl Config {
 
         // Lecture du contenu pour la validation ET le parsing.
         let content = std::fs::read_to_string(path)?;
-        let mut config: Config = serde_yaml::from_str(&content)?;
+        let mut config: Config = serde_yaml_ng::from_str(&content)?;
         config.sort();
 
         let mut inc_warnings: Vec<IncludeWarning> = Vec::new();
@@ -653,6 +657,7 @@ fn resolve_entries(
                                 namespace,
                                 vars,
                                 d.control_master.unwrap_or(false),
+                                d.agent_forwarding.unwrap_or(false),
                                 d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
                                 d.control_persist.as_deref().unwrap_or("10m"),
                                 d.pre_connect_hook.as_deref(),
@@ -683,6 +688,7 @@ fn resolve_entries(
                             namespace,
                             vars,
                             d.control_master.unwrap_or(false),
+                            d.agent_forwarding.unwrap_or(false),
                             d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
                             d.control_persist.as_deref().unwrap_or("10m"),
                             d.pre_connect_hook.as_deref(),
@@ -712,6 +718,7 @@ fn resolve_entries(
                     namespace,
                     vars,
                     d.control_master.unwrap_or(false),
+                    d.agent_forwarding.unwrap_or(false),
                     d.control_path.as_deref().unwrap_or("~/.ssh/ctl/%h_%p_%r"),
                     d.control_persist.as_deref().unwrap_or("10m"),
                     d.pre_connect_hook.as_deref(),
@@ -878,6 +885,7 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
             }
         },
         control_master: overrides.control_master.or(base.control_master),
+        agent_forwarding: overrides.agent_forwarding.or(base.agent_forwarding),
         control_path: overrides
             .control_path
             .clone()
@@ -903,14 +911,14 @@ fn merge_default_structs(base: &Defaults, overrides: &Defaults) -> Defaults {
 /// Analyse `content` (YAML texte) et retourne les avertissements pour tout champ
 /// dont le nom ne figure pas dans la liste des clés connues du schéma susshi.
 pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
-    let value: serde_yaml::Value = match serde_yaml::from_str(content) {
+    let value: serde_yaml_ng::Value = match serde_yaml_ng::from_str(content) {
         Ok(v) => v,
         Err(_) => return vec![], // l'erreur de parsing est déjà remontée par serde
     };
 
     let mut warnings = Vec::new();
 
-    if let serde_yaml::Value::Mapping(root) = &value {
+    if let serde_yaml_ng::Value::Mapping(root) = &value {
         yaml_check_keys(
             root,
             &["defaults", "groups", "includes", "_vars"],
@@ -919,7 +927,7 @@ pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
             &mut warnings,
         );
 
-        if let Some(serde_yaml::Value::Mapping(m)) = root.get("defaults") {
+        if let Some(serde_yaml_ng::Value::Mapping(m)) = root.get("defaults") {
             yaml_check_keys(
                 m,
                 &[
@@ -950,9 +958,9 @@ pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
             );
         }
 
-        if let Some(serde_yaml::Value::Sequence(incs)) = root.get("includes") {
+        if let Some(serde_yaml_ng::Value::Sequence(incs)) = root.get("includes") {
             for (i, inc) in incs.iter().enumerate() {
-                if let serde_yaml::Value::Mapping(m) = inc {
+                if let serde_yaml_ng::Value::Mapping(m) = inc {
                     yaml_check_keys(
                         m,
                         &["label", "path", "merge_defaults"],
@@ -964,7 +972,7 @@ pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
             }
         }
 
-        if let Some(serde_yaml::Value::Sequence(groups)) = root.get("groups") {
+        if let Some(serde_yaml_ng::Value::Sequence(groups)) = root.get("groups") {
             for (i, g) in groups.iter().enumerate() {
                 yaml_validate_entry(g, file_path, &format!("groups[{i}]"), &mut warnings);
             }
@@ -975,16 +983,16 @@ pub fn validate_yaml(content: &str, file_path: &str) -> Vec<ValidationWarning> {
 }
 
 fn yaml_validate_entry(
-    val: &serde_yaml::Value,
+    val: &serde_yaml_ng::Value,
     file: &str,
     ctx: &str,
     warnings: &mut Vec<ValidationWarning>,
 ) {
-    let serde_yaml::Value::Mapping(m) = val else {
+    let serde_yaml_ng::Value::Mapping(m) = val else {
         return;
     };
-    let has_host = m.contains_key(serde_yaml::Value::String("host".into()));
-    let has_envs = m.contains_key(serde_yaml::Value::String("environments".into()));
+    let has_host = m.contains_key(serde_yaml_ng::Value::String("host".into()));
+    let has_envs = m.contains_key(serde_yaml_ng::Value::String("environments".into()));
 
     if has_host && !has_envs {
         // Serveur
@@ -1034,11 +1042,11 @@ fn yaml_validate_entry(
             warnings,
         );
 
-        if let Some(serde_yaml::Value::Sequence(envs)) =
-            m.get(serde_yaml::Value::String("environments".into()))
+        if let Some(serde_yaml_ng::Value::Sequence(envs)) =
+            m.get(serde_yaml_ng::Value::String("environments".into()))
         {
             for (i, env) in envs.iter().enumerate() {
-                if let serde_yaml::Value::Mapping(em) = env {
+                if let serde_yaml_ng::Value::Mapping(em) = env {
                     yaml_check_keys(
                         em,
                         &[
@@ -1060,8 +1068,8 @@ fn yaml_validate_entry(
                         &format!("{ctx}.environments[{i}]"),
                         warnings,
                     );
-                    if let Some(serde_yaml::Value::Sequence(svs)) =
-                        em.get(serde_yaml::Value::String("servers".into()))
+                    if let Some(serde_yaml_ng::Value::Sequence(svs)) =
+                        em.get(serde_yaml_ng::Value::String("servers".into()))
                     {
                         for (j, s) in svs.iter().enumerate() {
                             yaml_validate_entry(
@@ -1076,8 +1084,8 @@ fn yaml_validate_entry(
             }
         }
 
-        if let Some(serde_yaml::Value::Sequence(svs)) =
-            m.get(serde_yaml::Value::String("servers".into()))
+        if let Some(serde_yaml_ng::Value::Sequence(svs)) =
+            m.get(serde_yaml_ng::Value::String("servers".into()))
         {
             for (j, s) in svs.iter().enumerate() {
                 yaml_validate_entry(s, file, &format!("{ctx}.servers[{j}]"), warnings);
@@ -1087,14 +1095,14 @@ fn yaml_validate_entry(
 }
 
 fn yaml_check_keys(
-    m: &serde_yaml::Mapping,
+    m: &serde_yaml_ng::Mapping,
     known: &[&str],
     file: &str,
     ctx: &str,
     warnings: &mut Vec<ValidationWarning>,
 ) {
     for key in m.keys() {
-        if let serde_yaml::Value::String(k) = key
+        if let serde_yaml_ng::Value::String(k) = key
             && !known.contains(&k.as_str())
         {
             warnings.push(ValidationWarning {
@@ -1137,6 +1145,7 @@ fn resolve_server(
     namespace: &str,
     vars: &HashMap<String, String>,
     def_control_master: bool,
+    def_agent_forwarding: bool,
     def_control_path: &str,
     def_control_persist: &str,
     def_pre_connect_hook: Option<&str>,
@@ -1222,6 +1231,7 @@ fn resolve_server(
         tunnels,
         tags: extend_tags(None, s.tags.as_ref()),
         control_master: def_control_master,
+        agent_forwarding: def_agent_forwarding,
         control_path: if def_control_master {
             shellexpand::tilde(def_control_path).into_owned()
         } else {
@@ -2247,7 +2257,7 @@ groups: []
         let yaml = r#"
 groups: []
 "#;
-        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        let config: Config = serde_yaml_ng::from_str(yaml).unwrap();
         assert!(config.defaults.is_none() || config.defaults.unwrap().keep_open.is_none());
     }
 
@@ -2258,7 +2268,7 @@ defaults:
   keep_open: true
 groups: []
 "#;
-        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        let config: Config = serde_yaml_ng::from_str(yaml).unwrap();
         let keep_open = config
             .defaults
             .as_ref()
@@ -2274,7 +2284,7 @@ defaults:
   keep_open: false
 groups: []
 "#;
-        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        let config: Config = serde_yaml_ng::from_str(yaml).unwrap();
         let keep_open = config
             .defaults
             .as_ref()

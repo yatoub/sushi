@@ -959,3 +959,190 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         chunks[1],
     );
 }
+
+/// Panneau droit du split pane — affiche le serveur épinglé.
+pub(crate) fn draw_pinned_server(f: &mut Frame, app: &App, area: Rect) {
+    let Some(server) = &app.pinned_server else {
+        return;
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .title(format!(" 📌 {} ", server.name))
+        .border_style(Style::default().fg(app.theme.yellow));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let theme = app.theme;
+    let mut lines = vec![
+        Line::from(vec![
+            Span::styled(
+                "Name   ",
+                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+            ),
+            Span::raw(server.name.as_str()),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Host   ",
+                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+            ),
+            Span::raw(server.host.as_str()),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "User   ",
+                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+            ),
+            Span::raw(server.user.as_str()),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Port   ",
+                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+            ),
+            Span::raw(server.port.to_string()),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Group  ",
+                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+            ),
+            Span::raw(format!("{} / {}", server.group_name, server.env_name)),
+        ]),
+        Line::from(vec![
+            Span::styled(
+                "Mode   ",
+                Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+            ),
+            Span::raw(format!("{:?}", server.default_mode)),
+        ]),
+        Line::from(Span::styled(
+            "─────────────────────────",
+            Style::default().fg(theme.border),
+        )),
+    ];
+
+    match &app.pinned_probe_state {
+        ProbeState::Idle => {
+            lines.push(Line::from(vec![Span::styled(
+                fl!("probe-hint"),
+                Style::default().fg(theme.subtext0),
+            )]));
+        }
+        ProbeState::Running => {
+            let ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.subsec_millis())
+                .unwrap_or(0);
+            let frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+            let spinner = frames[(ms / 100) as usize % frames.len()];
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("  {} ", spinner),
+                    Style::default().fg(theme.sapphire),
+                ),
+                Span::styled(fl!("probe-running"), Style::default().fg(theme.subtext0)),
+            ]));
+        }
+        ProbeState::Done(r) => {
+            lines.push(Line::from(vec![Span::styled(
+                fl!("probe-section"),
+                Style::default().fg(theme.border),
+            )]));
+            if r.profile == ProbeProfile::Wallix {
+                for note in &r.notes {
+                    let style = if note.contains("error") || note.contains("<missing>") {
+                        Style::default().fg(theme.red)
+                    } else if note.contains("skipped") {
+                        Style::default().fg(theme.yellow)
+                    } else if note.contains("ok") {
+                        Style::default().fg(theme.green)
+                    } else {
+                        Style::default().fg(theme.fg)
+                    };
+                    lines.push(Line::from(vec![Span::styled(format!("  {}", note), style)]));
+                }
+            } else {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        fl!("probe-kernel"),
+                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                    ),
+                    Span::raw(r.kernel.clone()),
+                ]));
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        fl!("probe-os"),
+                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                    ),
+                    Span::raw(r.os_name.clone()),
+                ]));
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        fl!("probe-cpu"),
+                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                    ),
+                    Span::raw(r.cpu_model.clone()),
+                ]));
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        fl!("probe-cpu-cores"),
+                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                    ),
+                    Span::raw(r.cpu_cores.to_string()),
+                ]));
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        fl!("probe-load"),
+                        Style::default().add_modifier(Modifier::BOLD).fg(theme.fg),
+                    ),
+                    Span::raw(r.load.clone()),
+                ]));
+                lines.push(probe_bar(
+                    &fl!("probe-ram"),
+                    r.ram_pct,
+                    r.ram_total_gb,
+                    theme,
+                ));
+                lines.push(probe_bar(
+                    &fl!("probe-disk"),
+                    r.disk_pct,
+                    r.disk_total_gb,
+                    theme,
+                ));
+                for fs_entry in &r.extra_fs {
+                    match &fs_entry.usage {
+                        Some(usage) => {
+                            let label =
+                                fl!("probe-disk-extra", mount = fs_entry.mountpoint.as_str());
+                            lines.push(probe_bar(&label, usage.pct, usage.total_gb, theme));
+                        }
+                        None => {
+                            lines.push(Line::from(vec![Span::styled(
+                                fl!("probe-fs-absent", mount = fs_entry.mountpoint.as_str()),
+                                Style::default()
+                                    .fg(theme.yellow)
+                                    .add_modifier(Modifier::BOLD),
+                            )]));
+                        }
+                    }
+                }
+            }
+        }
+        ProbeState::Error(msg) => {
+            lines.push(Line::from(vec![Span::styled(
+                fl!("probe-section"),
+                Style::default().fg(theme.border),
+            )]));
+            lines.push(Line::from(vec![
+                Span::styled("\u{2717}  ", Style::default().fg(theme.red)),
+                Span::raw(msg.clone()),
+            ]));
+        }
+    }
+
+    f.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+}

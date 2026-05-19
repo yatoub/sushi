@@ -24,16 +24,31 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     panels::draw_search_bar(f, app, chunks[0]);
     panels::draw_connection_mode_area(f, app, chunks[1]);
 
-    let main_chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(67), // Tree view (2/3)
-            Constraint::Min(0),         // Details (1/3)
-        ])
-        .split(chunks[2]);
+    let main_chunks = if app.pinned_server.is_some() {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(40), // Tree view
+                Constraint::Percentage(30), // Details serveur courant
+                Constraint::Percentage(30), // Details serveur épinglé
+            ])
+            .split(chunks[2])
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(67), // Tree view (2/3)
+                Constraint::Min(0),         // Details (1/3)
+            ])
+            .split(chunks[2])
+    };
 
     panels::draw_tree(f, app, main_chunks[0]);
     panels::draw_details(f, app, main_chunks[1]);
+
+    if app.pinned_server.is_some() {
+        panels::draw_pinned_server(f, app, main_chunks[2]);
+    }
 
     panels::draw_status_bar(f, app, chunks[3]);
 
@@ -55,6 +70,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     // Overlay saisie credential — au-dessus de tout sauf les erreurs
     if matches!(&app.app_mode, AppMode::CredentialInput { .. }) {
         overlays::draw_credential_input_overlay(f, app, f.area());
+    }
+
+    // Overlay dashboard overview
+    if app.overview.is_some() {
+        overlays::draw_overview_overlay(f, app, f.area());
+    }
+
+    // Overlay aide clavier — rendu juste avant les erreurs
+    if app.show_help {
+        overlays::draw_help_overlay(f, f.area(), app.theme);
     }
 
     // Overlay erreur — rendu en dernier pour être au-dessus de tout

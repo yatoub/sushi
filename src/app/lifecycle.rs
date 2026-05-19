@@ -84,6 +84,14 @@ impl App {
             wallix_selection_cache: HashMap::new(),
             wallix_pending_connection: None,
             wallix_pending_auth: None,
+            show_help: false,
+            pinned_server: None,
+            pinned_probe_state: ProbeState::Idle,
+            pinned_probe_rx: None,
+            cmd_history: Vec::new(),
+            cmd_history_cursor: None,
+            overview: None,
+            overview_rx: None,
         };
 
         app.list_state.select(Some(0));

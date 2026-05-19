@@ -49,6 +49,9 @@ mod expansion_state;
 #[path = "app/core_state.rs"]
 mod core_state;
 
+#[path = "app/overview.rs"]
+mod overview;
+
 /// Mode courant de l'application.
 #[derive(Debug, Default)]
 pub enum AppMode {
@@ -303,6 +306,37 @@ pub enum ScpState {
     Error(String),
 }
 
+/// Statut d'un serveur dans le dashboard overview.
+#[derive(Debug, Clone)]
+pub enum OverviewStatus {
+    Pending,
+    Ok {
+        load: String,
+        ram_pct: u8,
+        disk_pct: u8,
+    },
+    Error(String),
+}
+
+/// Entrée du dashboard overview : un serveur et son statut.
+#[derive(Debug, Clone)]
+pub struct OverviewEntry {
+    pub server_name: String,
+    pub host: String,
+    pub status: OverviewStatus,
+}
+
+/// État de l'overlay dashboard overview.
+#[derive(Debug, Clone)]
+pub struct OverviewState {
+    pub group_name: String,
+    pub entries: Vec<OverviewEntry>,
+    /// Canal pour recevoir les résultats de probe depuis les threads.
+    /// Stocké ici pour éviter de le perdre entre les frames.
+    #[allow(dead_code)]
+    pub scroll: usize,
+}
+
 #[derive(Debug, Clone)]
 pub enum ConfigItem {
     /// En-tête de namespace (fichier inclus).
@@ -411,6 +445,27 @@ pub struct App {
     /// Credential SSH temporaire (passphrase ou mot de passe) à utiliser pour la prochaine
     /// connexion Wallix. Effacé après usage dans `take_pending_wallix_connection`.
     pub wallix_pending_auth: Option<String>,
+
+    /// Si `true`, l'overlay d'aide clavier est affiché.
+    pub show_help: bool,
+
+    /// Serveur épinglé dans le split pane droit (None = pas de split).
+    pub pinned_server: Option<Box<ResolvedServer>>,
+
+    /// État du diagnostic SSH pour le serveur épinglé.
+    pub pinned_probe_state: ProbeState,
+    /// Récepteur du thread de diagnostic du serveur épinglé.
+    pub pinned_probe_rx: Option<mpsc::Receiver<Result<ProbeResult, String>>>,
+
+    /// État du dashboard overview (None = fermé).
+    pub overview: Option<OverviewState>,
+    /// Canal pour recevoir les résultats des probes parallèles du dashboard.
+    pub overview_rx: Option<mpsc::Receiver<(usize, Result<crate::probe::ProbeResult, String>)>>,
+
+    /// Historique des commandes ad-hoc saisies (les plus récentes en dernier).
+    pub cmd_history: Vec<String>,
+    /// Position du curseur dans l'historique lors de la navigation (None = pas en navigation).
+    pub cmd_history_cursor: Option<usize>,
 }
 
 type WallixMenuLoadResult = (ResolvedServer, Result<Vec<WallixMenuEntry>, String>);

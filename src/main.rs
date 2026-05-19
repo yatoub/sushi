@@ -370,6 +370,7 @@ fn build_adhoc_server(
         tunnels: vec![],
         tags: vec![],
         control_master: false,
+        agent_forwarding: false,
         control_path: String::new(),
         control_persist: "10m".to_string(),
         pre_connect_hook: d
@@ -684,6 +685,17 @@ fn run_app(
             app.probe_rx = None;
         }
 
+        // Lit le résultat du diagnostic du serveur épinglé
+        if let Some(rx) = &app.pinned_probe_rx
+            && let Ok(result) = rx.try_recv()
+        {
+            app.pinned_probe_state = match result {
+                Ok(probe) => ProbeState::Done(probe),
+                Err(msg) => ProbeState::Error(msg),
+            };
+            app.pinned_probe_rx = None;
+        }
+
         // Lit le résultat de la commande ad-hoc si un thread tourne
         app.poll_cmd();
 
@@ -705,6 +717,9 @@ fn run_app(
 
         // Sonde les évènements du transfert SCP en cours
         app.poll_scp_events();
+
+        // Sonde les résultats des probes parallèles du dashboard overview
+        app.poll_overview();
 
         if event::poll(Duration::from_millis(250))? {
             match event::read()? {
@@ -758,12 +773,36 @@ fn run_app(
                                     }
                                 }
                             }
+                            KeyCode::Up if !app.cmd_history.is_empty() => {
+                                let cursor = match app.cmd_history_cursor {
+                                    None => app.cmd_history.len() - 1,
+                                    Some(c) => c.saturating_sub(1),
+                                };
+                                app.cmd_history_cursor = Some(cursor);
+                                let entry = app.cmd_history[cursor].clone();
+                                app.cmd_state = CmdState::Prompting(entry);
+                            }
+                            KeyCode::Down => {
+                                if let Some(cursor) = app.cmd_history_cursor {
+                                    if cursor + 1 < app.cmd_history.len() {
+                                        let next = cursor + 1;
+                                        app.cmd_history_cursor = Some(next);
+                                        let entry = app.cmd_history[next].clone();
+                                        app.cmd_state = CmdState::Prompting(entry);
+                                    } else {
+                                        app.cmd_history_cursor = None;
+                                        app.cmd_state = CmdState::Prompting(String::new());
+                                    }
+                                }
+                            }
                             KeyCode::Char(c) => {
+                                app.cmd_history_cursor = None;
                                 if let CmdState::Prompting(ref mut buf) = app.cmd_state {
                                     buf.push(c);
                                 }
                             }
                             KeyCode::Backspace => {
+                                app.cmd_history_cursor = None;
                                 if let CmdState::Prompting(ref mut buf) = app.cmd_state {
                                     buf.pop();
                                 }
@@ -893,10 +932,18 @@ fn run_app(
                                 return Ok(AppResult::Exit);
                             }
                             KeyCode::Down | KeyCode::Char('j') => {
-                                app.next();
+                                if app.overview.is_some() {
+                                    app.overview_scroll_down();
+                                } else {
+                                    app.next();
+                                }
                             }
                             KeyCode::Up | KeyCode::Char('k') => {
-                                app.previous();
+                                if app.overview.is_some() {
+                                    app.overview_scroll_up();
+                                } else {
+                                    app.previous();
+                                }
                             }
                             KeyCode::Tab => {
                                 app.connection_mode = app.connection_mode.next();
@@ -955,6 +1002,48 @@ fn run_app(
                             }
                             KeyCode::Char('/') => {
                                 app.is_searching = true;
+                            }
+                            KeyCode::Char('h') => {
+                                app.show_help = !app.show_help;
+                            }
+                            KeyCode::Esc if app.show_help => {
+                                app.show_help = false;
+                            }
+                            KeyCode::Char('o') => {
+                                if app.overview.is_some() {
+                                    app.close_overview();
+                                } else {
+                                    app.open_overview();
+                                }
+                            }
+                            KeyCode::Char('|') => {
+                                let items = app.get_visible_items();
+                                match items.get(app.selected_index) {
+                                    Some(ConfigItem::Server(server)) => {
+                                        if app
+                                            .pinned_server
+                                            .as_deref()
+                                            .map(|s| s.name == server.name)
+                                            .unwrap_or(false)
+                                        {
+                                            app.pinned_server = None;
+                                            app.pinned_probe_state = ProbeState::Idle;
+                                            app.pinned_probe_rx = None;
+                                        } else {
+                                            app.pinned_server = Some(server.clone());
+                                            app.pinned_probe_state = ProbeState::Idle;
+                                            app.pinned_probe_rx = None;
+                                        }
+                                    }
+                                    _ => {
+                                        app.pinned_server = None;
+                                        app.pinned_probe_state = ProbeState::Idle;
+                                        app.pinned_probe_rx = None;
+                                    }
+                                }
+                            }
+                            KeyCode::Esc if app.overview.is_some() => {
+                                app.close_overview();
                             }
                             KeyCode::Char('r') => match app.reload() {
                                 Ok(()) => {}
@@ -1037,6 +1126,18 @@ fn run_app(
                                     let (tx, rx) = std::sync::mpsc::channel();
                                     app.probe_rx = Some(rx);
                                     app.probe_state = ProbeState::Running;
+                                    std::thread::spawn(move || {
+                                        let result = susshi::probe::probe(&server_clone, mode)
+                                            .map_err(|e| e.to_string());
+                                        let _ = tx.send(result);
+                                    });
+                                }
+                                if let Some(pinned) = &app.pinned_server {
+                                    let server_clone = (**pinned).clone();
+                                    let mode = app.connection_mode;
+                                    let (tx, rx) = std::sync::mpsc::channel();
+                                    app.pinned_probe_rx = Some(rx);
+                                    app.pinned_probe_state = ProbeState::Running;
                                     std::thread::spawn(move || {
                                         let result = susshi::probe::probe(&server_clone, mode)
                                             .map_err(|e| e.to_string());

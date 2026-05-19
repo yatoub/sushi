@@ -222,6 +222,7 @@ mod tests {
             tunnels: vec![],
             tags: tags.into_iter().map(|t| t.to_string()).collect(),
             control_master: false,
+            agent_forwarding: false,
             control_path: String::new(),
             control_persist: "10m".to_string(),
             pre_connect_hook: None,

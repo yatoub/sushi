@@ -62,7 +62,7 @@ jobs:
             binary_name: susshi
             asset_name: susshi-macos-amd64
             build_tool: cargo
-            openssl_mode: system
+            openssl_mode: vendored
           - os: macos-14
             target: aarch64-apple-darwin
             binary_name: susshi
@@ -100,7 +100,7 @@ jobs:
 
       - name: Setup Zig
         if: matrix.build_tool == 'zigbuild'
-        uses: goto-bus-stop/setup-zig@v2
+        uses: goto-bus-stop/setup-zig@v3
         with:
           version: 0.14.0
 
@@ -128,19 +128,6 @@ jobs:
           "VCPKGRS_DYNAMIC=0" | Out-File -FilePath $env:GITHUB_ENV -Append
           "VCPKGRS_TRIPLET=x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Install OpenSSL (macOS x86_64)
-        if: matrix.target == 'x86_64-apple-darwin'
-        run: |
-          rustup target add x86_64-apple-darwin
-          # On macos-latest (ARM/M-series), Homebrew lives in /opt/homebrew and only
-          # provides ARM binaries. For x86_64 cross-compilation we need a separate
-          # x86_64 Homebrew in /usr/local (Rosetta path).
-          arch -x86_64 /bin/bash -c \
-            "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
-            < /dev/null
-          arch -x86_64 /usr/local/bin/brew install openssl@3
-          echo "OPENSSL_DIR=/usr/local/opt/openssl@3" >> $GITHUB_ENV
-          echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
 
       - name: Build release (system OpenSSL)
         if: matrix.openssl_mode == 'system'
@@ -173,8 +160,10 @@ jobs:
             | sort -V \
             | tail -1)
           echo "Max GLIBC required: ${max_glibc}"
-          if [ "${max_glibc}" != "GLIBC_2.17" ]; then
-            echo "Unexpected GLIBC requirement for legacy build"
+          if printf '%s\n' "GLIBC_2.17" "${max_glibc}" | sort -VC; then
+            echo "GLIBC requirement is within bounds (<= 2.17)"
+          else
+            echo "ERROR: binary requires ${max_glibc} which exceeds GLIBC_2.17"
             exit 1
           fi
 

@@ -61,7 +61,10 @@ fn open_credential_input_sets_mode_passphrase() {
 
     assert!(matches!(
         &app.app_mode,
-        AppMode::CredentialInput { is_passphrase: true, .. }
+        AppMode::CredentialInput {
+            is_passphrase: true,
+            ..
+        }
     ));
 }
 
@@ -79,7 +82,10 @@ fn open_credential_input_sets_mode_password() {
 
     assert!(matches!(
         &app.app_mode,
-        AppMode::CredentialInput { is_passphrase: false, .. }
+        AppMode::CredentialInput {
+            is_passphrase: false,
+            ..
+        }
     ));
 }
 

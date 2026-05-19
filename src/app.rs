@@ -69,7 +69,10 @@ pub enum AppMode {
 
 impl PartialEq for AppMode {
     fn eq(&self, other: &Self) -> bool {
-        matches!((self, other), (Self::Normal, Self::Normal) | (Self::Error(_), Self::Error(_)))
+        matches!(
+            (self, other),
+            (Self::Normal, Self::Normal) | (Self::Error(_), Self::Error(_))
+        )
     }
 }
 

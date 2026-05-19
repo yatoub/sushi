@@ -88,7 +88,11 @@ pub(crate) fn draw_search_bar(f: &mut Frame, app: &mut App, area: Rect) {
         } else if server_count == total_servers {
             fl!("search-all-match", count = (server_count as i64))
         } else {
-            fl!("search-partial", found = (server_count as i64), total = (total_servers as i64))
+            fl!(
+                "search-partial",
+                found = (server_count as i64),
+                total = (total_servers as i64)
+            )
         };
 
         (text, title_text)
@@ -446,7 +450,11 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                         let (badge_fg, badge_text) = if n_run > 0 {
                             (
                                 app.theme.green,
-                                fl!("tunnel-badge-active", n_run = (n_run as i64), n_cfg = (n_cfg as i64)),
+                                fl!(
+                                    "tunnel-badge-active",
+                                    n_run = (n_run as i64),
+                                    n_cfg = (n_cfg as i64)
+                                ),
                             )
                         } else {
                             (
@@ -543,12 +551,7 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                                 (eta_secs % 3600) / 60
                             )
                         } else if eta_secs >= 60 {
-                            format!(
-                                "{} {}m{:02}s",
-                                eta_label,
-                                eta_secs / 60,
-                                eta_secs % 60
-                            )
+                            format!("{} {}m{:02}s", eta_label, eta_secs / 60, eta_secs % 60)
                         } else {
                             format!("{} {}s", eta_label, eta_secs)
                         }

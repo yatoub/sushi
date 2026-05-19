@@ -88,8 +88,11 @@ pub(crate) fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: R
                 ])
                 .split(inner);
             f.render_widget(
-                Paragraph::new(fl!("wallix-selector-loading", server = server.name.as_str()))
-                    .style(Style::default().fg(app.theme.fg)),
+                Paragraph::new(fl!(
+                    "wallix-selector-loading",
+                    server = server.name.as_str()
+                ))
+                .style(Style::default().fg(app.theme.fg)),
                 chunks[0],
             );
             f.render_widget(
@@ -114,12 +117,11 @@ pub(crate) fn draw_wallix_selector_overlay(f: &mut Frame, app: &mut App, area: R
                 ])
                 .split(inner);
             f.render_widget(
-                Paragraph::new(fl!("wallix-selector-error", server = server.name.as_str()))
-                    .style(
-                        Style::default()
-                            .fg(app.theme.red)
-                            .add_modifier(Modifier::BOLD),
-                    ),
+                Paragraph::new(fl!("wallix-selector-error", server = server.name.as_str())).style(
+                    Style::default()
+                        .fg(app.theme.red)
+                        .add_modifier(Modifier::BOLD),
+                ),
                 chunks[0],
             );
             f.render_widget(
@@ -419,8 +421,7 @@ fn draw_tunnel_form(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     f.render_widget(
-        Paragraph::new(fl!("tunnel-form-hint"))
-            .style(Style::default().fg(app.theme.subtext0)),
+        Paragraph::new(fl!("tunnel-form-hint")).style(Style::default().fg(app.theme.subtext0)),
         chunks[6],
     );
 }
@@ -447,9 +448,15 @@ pub(crate) fn draw_credential_input_overlay(f: &mut Frame, app: &App, area: Rect
     f.render_widget(Clear, popup_area);
 
     let title = if *is_passphrase {
-        fl!("credential-input-title-passphrase", server = server.name.as_str())
+        fl!(
+            "credential-input-title-passphrase",
+            server = server.name.as_str()
+        )
     } else {
-        fl!("credential-input-title-password", server = server.name.as_str())
+        fl!(
+            "credential-input-title-password",
+            server = server.name.as_str()
+        )
     };
 
     let block = Block::default()
@@ -490,8 +497,7 @@ pub(crate) fn draw_credential_input_overlay(f: &mut Frame, app: &App, area: Rect
     f.render_widget(Paragraph::new(line), chunks[1]);
 
     f.render_widget(
-        Paragraph::new(fl!("credential-input-hint"))
-            .style(Style::default().fg(app.theme.subtext0)),
+        Paragraph::new(fl!("credential-input-hint")).style(Style::default().fg(app.theme.subtext0)),
         chunks[3],
     );
 }
@@ -549,10 +555,7 @@ fn draw_scp_direction_select(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("  ↑  ", s_active),
-            Span::styled(
-                format!("{}  ", fl!("scp-direction-upload-label")),
-                s_label,
-            ),
+            Span::styled(format!("{}  ", fl!("scp-direction-upload-label")), s_label),
             Span::styled(fl!("scp-direction-upload"), s_sub),
         ])),
         chunks[0],
@@ -687,8 +690,7 @@ fn draw_scp_form(f: &mut Frame, app: &mut App, area: Rect) {
     }
 
     f.render_widget(
-        Paragraph::new(fl!("scp-form-hint"))
-            .style(Style::default().fg(app.theme.subtext0)),
+        Paragraph::new(fl!("scp-form-hint")).style(Style::default().fg(app.theme.subtext0)),
         chunks[4],
     );
 }
@@ -756,8 +758,7 @@ fn draw_scp_result(f: &mut Frame, app: &mut App, area: Rect) {
         chunks[0],
     );
     f.render_widget(
-        Paragraph::new(fl!("scp-result-hint"))
-            .style(Style::default().fg(app.theme.subtext0)),
+        Paragraph::new(fl!("scp-result-hint")).style(Style::default().fg(app.theme.subtext0)),
         chunks[2],
     );
 }

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.5] — 2026-05-19
+
+### Added
+
+- Inventaire & intégration — exec group, HTTPS includes, list JSON, export Terraform/Nmap
+
+
 ## [0.15.4] — 2026-05-19
 
 ### Added

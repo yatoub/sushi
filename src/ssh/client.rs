@@ -101,6 +101,20 @@ pub fn build_ssh_args(
         }
     }
 
+    // Quand on ignore le ssh_config système (-F /dev/null) et que l'utilisateur
+    // n'a pas explicitement configuré StrictHostKeyChecking, on injecte
+    // accept-new : les nouveaux hôtes sont acceptés silencieusement, mais une
+    // clé modifiée reste bloquante (comportement safe par défaut).
+    if !server.use_system_ssh_config
+        && !server
+            .ssh_options
+            .iter()
+            .any(|o| o.to_ascii_lowercase().contains("stricthostkeychecking"))
+    {
+        args.push("-o".into());
+        args.push("StrictHostKeyChecking=accept-new".into());
+    }
+
     if server.agent_forwarding {
         args.push("-A".into());
     }
@@ -455,6 +469,16 @@ fn build_wallix_bastion_args(server: &ResolvedServer, verbose: bool) -> Result<V
             args.push("-o".into());
             args.push(opt.clone());
         }
+    }
+
+    if !server.use_system_ssh_config
+        && !server
+            .ssh_options
+            .iter()
+            .any(|o| o.to_ascii_lowercase().contains("stricthostkeychecking"))
+    {
+        args.push("-o".into());
+        args.push("StrictHostKeyChecking=accept-new".into());
     }
 
     let bastion_host_str = server.bastion_host.as_deref().unwrap_or("");
@@ -1125,5 +1149,66 @@ mod tests {
         let s3 = base_server();
         let args3 = build_ssh_args(&s3, ConnectionMode::Direct, false).unwrap();
         assert_eq!(args3.last().unwrap(), "admin@198.51.100.1");
+    }
+
+    // ── StrictHostKeyChecking=accept-new ──────────────────────────────────────
+
+    #[test]
+    fn accept_new_injected_when_no_strict_host_option() {
+        let s = base_server(); // use_system_ssh_config=false, ssh_options=[]
+        let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
+        let idx = args.iter().position(|a| a == "-o").unwrap();
+        // Cherche accept-new parmi toutes les valeurs -o
+        let has_accept_new = args
+            .windows(2)
+            .any(|w| w[0] == "-o" && w[1] == "StrictHostKeyChecking=accept-new");
+        assert!(has_accept_new, "accept-new doit être injecté: {args:?}");
+        // La destination reste dernière malgré l'injection
+        assert_eq!(args.last().unwrap(), "admin@198.51.100.1");
+        let _ = idx;
+    }
+
+    #[test]
+    fn accept_new_not_injected_when_user_sets_strict_host_no() {
+        let mut s = base_server();
+        s.ssh_options = vec!["StrictHostKeyChecking=no".into()];
+        let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
+        let count = args
+            .windows(2)
+            .filter(|w| w[0] == "-o" && w[1].to_ascii_lowercase().contains("stricthostkeychecking"))
+            .count();
+        assert_eq!(
+            count, 1,
+            "une seule option StrictHostKeyChecking attendue: {args:?}"
+        );
+    }
+
+    #[test]
+    fn accept_new_not_injected_when_use_system_ssh_config() {
+        let mut s = base_server();
+        s.use_system_ssh_config = true;
+        let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
+        let has_accept_new = args
+            .windows(2)
+            .any(|w| w[0] == "-o" && w[1] == "StrictHostKeyChecking=accept-new");
+        assert!(
+            !has_accept_new,
+            "ne doit pas injecter avec use_system_ssh_config: {args:?}"
+        );
+    }
+
+    #[test]
+    fn accept_new_injected_for_wallix_bastion_args() {
+        let mut s = base_server();
+        s.bastion_host = Some("bastion.example.com".into());
+        s.bastion_user = Some("buser".into());
+        let args = build_wallix_bastion_args(&s, false).unwrap();
+        let has_accept_new = args
+            .windows(2)
+            .any(|w| w[0] == "-o" && w[1] == "StrictHostKeyChecking=accept-new");
+        assert!(
+            has_accept_new,
+            "accept-new doit être injecté pour Wallix: {args:?}"
+        );
     }
 }

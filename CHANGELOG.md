@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.1] — 2026-05-19
+
+### Fixed
+
+- Format sftp.rs to satisfy rustfmt
+
+- Replace manual checked division with checked_div (clippy)
+
+- Apply rustfmt and improve release workflow
+
+
 ## [0.15.0] — 2026-05-19
 
 ### Added

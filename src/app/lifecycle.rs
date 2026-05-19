@@ -57,6 +57,7 @@ impl App {
             verbose_mode: false,
             app_mode: AppMode::Normal,
             theme: get_theme(theme_variant),
+            theme_variant,
             status_message: None,
             cached_items: Vec::new(),
             items_dirty: true,

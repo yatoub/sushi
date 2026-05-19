@@ -366,6 +366,8 @@ pub struct App {
 
     /// Thème Catppuccin actif (résolu à l'initialisation depuis la config).
     pub theme: &'static Theme,
+    /// Variante de thème courante (permet le toggle à la volée).
+    pub theme_variant: ThemeVariant,
 
     /// Message temporaire affiché dans la barre de statut (texte, timestamp)
     pub status_message: Option<(String, Instant)>,

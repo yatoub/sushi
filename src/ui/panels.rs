@@ -953,6 +953,7 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
             kh("H", fl!("hint-recent-sort")),
             kh("C", fl!("hint-collapse")),
             kh("E", fl!("hint-expand-all")),
+            kh("Ctrl+Y", fl!("hint-theme-toggle")),
             kh("v", fl!("hint-verbose")),
         ]
         .into_iter()

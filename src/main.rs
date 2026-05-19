@@ -979,6 +979,17 @@ fn run_app(
                             KeyCode::Char('v') => {
                                 app.verbose_mode = !app.verbose_mode;
                             }
+                            KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                use susshi::config::ThemeVariant;
+                                use susshi::ui::theme::get_theme;
+                                app.theme_variant = match app.theme_variant {
+                                    ThemeVariant::Latte => ThemeVariant::Frappe,
+                                    ThemeVariant::Frappe => ThemeVariant::Macchiato,
+                                    ThemeVariant::Macchiato => ThemeVariant::Mocha,
+                                    ThemeVariant::Mocha => ThemeVariant::Latte,
+                                };
+                                app.theme = get_theme(app.theme_variant);
+                            }
                             KeyCode::Char('y') => {
                                 let items = app.get_visible_items();
                                 if let Some(ConfigItem::Server(server)) =

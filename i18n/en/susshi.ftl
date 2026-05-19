@@ -85,6 +85,7 @@ hint-recent-sort = recent sort
 hint-collapse = collapse
 hint-expand-all = expand all
 hint-verbose = verbose
+hint-theme-toggle = next theme
 
 # ── Wallix selector overlay ───────────────────────────────────────────────────
 wallix-selector-title = Wallix Selection

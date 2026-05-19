@@ -55,6 +55,7 @@ If the clipboard is unavailable (headless session, missing `wl-clipboard`, etc.)
 | `F` | Favorites-only view |
 | `C` | Collapse all groups/environments/namespaces |
 | `E` | Expand all groups/environments/namespaces |
+| `Ctrl+Y` | Cycle Catppuccin theme variant (Latte → Frappe → Macchiato → Mocha → …) |
 | `H` | Toggle recent-sort view |
 | `h` | Toggle keyboard help overlay |
 | `o` | Open group overview dashboard |

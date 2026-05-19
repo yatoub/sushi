@@ -831,6 +831,10 @@ pub(crate) fn draw_help_overlay(f: &mut Frame, area: Rect, theme: &Theme) {
         ("H", "Trier par dernière connexion"),
         ("C", "Réduire tous les groupes"),
         ("E", "Déplier tous les groupes"),
+        (
+            "Ctrl+Y",
+            "Basculer le thème Catppuccin (Latte→Frappe→Macchiato→Mocha)",
+        ),
         ("r", "Recharger la configuration"),
         ("v", "Mode verbeux SSH"),
         ("y", "Copier la commande SSH"),

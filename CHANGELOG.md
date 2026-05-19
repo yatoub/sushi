@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.3] — 2026-05-19
+
+### Fixed
+
+- Overhaul Wallix connection mode — ANSI parsing, direct bypass, authorization pinning
+
+
+## [0.15.2] — 2026-05-19
+
+### Added
+
+- Show probe results in split pane pinned server panel
+
+- Implement TUI features — help overlay, cmd history, overview, split pane
+
+- Add SSH agent forwarding support (agent_forwarding config key)
+
+
+### Fixed
+
+- Collapse nested if into match guard for cmd history Up key
+
+
+### style
+
+- Apply cargo fmt to test files and overlays
+
+
 ## [0.15.1] — 2026-05-19
 
 ### Fixed

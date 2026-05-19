@@ -82,7 +82,7 @@ struct Cli {
     #[arg(long, requires = "import_ssh_config")]
     dry_run: bool,
 
-    /// Exporter la configuration vers un format externe : "ansible".
+    /// Exporter la configuration vers un format externe : "ansible", "csv".
     #[arg(long, value_name = "FORMAT", conflicts_with_all = ["validate", "direct", "jump", "wallix", "import_ssh_config"])]
     export: Option<String>,
 
@@ -248,13 +248,13 @@ fn run_import_ssh_config(cli: &Cli) {
 
 /// Exporte la configuration susshi vers un inventaire au format `format`.
 ///
-/// Actuellement, seul `"ansible"` est supporté.
 fn run_export(cli: &Cli, config: &Config) {
     use susshi::export::ansible;
+    use susshi::export::csv;
 
     let format = cli.export.as_deref().unwrap_or("");
-    if format != "ansible" {
-        eprintln!("Format d'export inconnu : {format}. Formats supportés : ansible");
+    if format != "ansible" && format != "csv" {
+        eprintln!("Format d'export inconnu : {format}. Formats supportés : ansible, csv");
         process::exit(1);
     }
 
@@ -274,18 +274,22 @@ fn run_export(cli: &Cli, config: &Config) {
         process::exit(1);
     }
 
-    let yaml = ansible::to_ansible_yaml(&filtered);
+    let output = if format == "csv" {
+        csv::to_csv_string(&filtered)
+    } else {
+        ansible::to_ansible_yaml(&filtered)
+    };
 
     match &cli.export_output {
         Some(path) => {
-            if let Err(e) = std::fs::write(path, &yaml) {
+            if let Err(e) = std::fs::write(path, &output) {
                 eprintln!("Erreur écriture {path} : {e}");
                 process::exit(1);
             }
             eprintln!("{} serveur(s) exporté(s) → {path}", filtered.len());
         }
         None => {
-            print!("{yaml}");
+            print!("{output}");
             eprintln!("{} serveur(s) exporté(s).", filtered.len());
         }
     }

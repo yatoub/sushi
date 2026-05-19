@@ -56,6 +56,18 @@ susshi --export ansible --export-filter "web"
 
 The same text + tag filter model as TUI search is applied.
 
+## Export CSV
+
+Exports all servers as a CSV file with columns: `name`, `host`, `user`, `port`, `ssh_key`, `group`, `env`, `namespace`, `tags`, `notes`.
+
+```bash
+susshi --export csv
+susshi --export csv --export-output ~/servers.csv
+susshi --export csv --export-filter "#prod"
+```
+
+Fields containing commas, double-quotes, or newlines are quoted per RFC 4180. Multiple tags are joined with `;`.
+
 ## Help
 
 ```bash

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.4] — 2026-05-19
+
+### Added
+
+- Reconnexion automatique avec backoff et affichage ControlMaster
+
+
 ## [0.15.3] — 2026-05-19
 
 ### Fixed

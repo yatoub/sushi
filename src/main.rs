@@ -675,6 +675,11 @@ fn main() -> io::Result<()> {
     let mut app = App::new(config, warnings, config_path.to_path_buf(), val_warnings)
         .map_err(io::Error::other)?;
 
+    // Délai courant de backoff pour la reconnexion automatique (mode keep_open).
+    // Initialisé à 0, puis remis à 0 à chaque nouvelle connexion volontaire.
+    #[allow(unused_assignments)]
+    let mut backoff_secs: u32 = 0;
+
     loop {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
@@ -698,20 +703,19 @@ fn main() -> io::Result<()> {
         match res {
             Ok(AppResult::Exit) => break,
             Ok(AppResult::Connect(server, mode, verbose)) => {
+                backoff_secs = 0;
                 if app.keep_open {
-                    // Connexion bloquante : SSH tourne comme sous-processus,
-                    // la TUI redémarre automatiquement après la déconnexion.
+                    // Connexion bloquante avec reconnexion automatique et backoff.
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
                         &server,
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
                     } else {
-                        if let Err(e) =
-                            susshi::ssh::client::connect_blocking(&server, mode, verbose, None)
-                        {
-                            eprintln!("SSH Connection Error: {}", e);
-                        }
+                        run_blocking_with_backoff(
+                            || susshi::ssh::client::connect_blocking(&server, mode, verbose, None),
+                            &mut backoff_secs,
+                        );
                         let _ = susshi::hooks::run_hook(
                             server.post_disconnect_hook.as_deref().unwrap_or(""),
                             &server,
@@ -735,6 +739,7 @@ fn main() -> io::Result<()> {
                 }
             }
             Ok(AppResult::ConnectWallixSelected(server, verbose, selected_id, auth)) => {
+                backoff_secs = 0;
                 if app.keep_open {
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
@@ -742,14 +747,17 @@ fn main() -> io::Result<()> {
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
                     } else {
-                        if let Err(e) = susshi::ssh::client::connect_blocking_wallix_with_selection(
-                            &server,
-                            verbose,
-                            &selected_id,
-                            auth.as_deref(),
-                        ) {
-                            eprintln!("SSH Connection Error: {}", e);
-                        }
+                        run_blocking_with_backoff(
+                            || {
+                                susshi::ssh::client::connect_blocking_wallix_with_selection(
+                                    &server,
+                                    verbose,
+                                    &selected_id,
+                                    auth.as_deref(),
+                                )
+                            },
+                            &mut backoff_secs,
+                        );
                         let _ = susshi::hooks::run_hook(
                             server.post_disconnect_hook.as_deref().unwrap_or(""),
                             &server,
@@ -773,6 +781,7 @@ fn main() -> io::Result<()> {
                 }
             }
             Ok(AppResult::ConnectWithAuth(server, mode, verbose, cred)) => {
+                backoff_secs = 0;
                 if app.keep_open {
                     if let Err(e) = susshi::hooks::run_hook(
                         server.pre_connect_hook.as_deref().unwrap_or(""),
@@ -780,14 +789,17 @@ fn main() -> io::Result<()> {
                     ) {
                         eprintln!("Hook pre_connect a annulé la connexion : {e}");
                     } else {
-                        if let Err(e) = susshi::ssh::client::connect_blocking(
-                            &server,
-                            mode,
-                            verbose,
-                            Some(cred.as_str()),
-                        ) {
-                            eprintln!("SSH Connection Error: {}", e);
-                        }
+                        run_blocking_with_backoff(
+                            || {
+                                susshi::ssh::client::connect_blocking(
+                                    &server,
+                                    mode,
+                                    verbose,
+                                    Some(cred.as_str()),
+                                )
+                            },
+                            &mut backoff_secs,
+                        );
                         let _ = susshi::hooks::run_hook(
                             server.post_disconnect_hook.as_deref().unwrap_or(""),
                             &server,
@@ -815,6 +827,43 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+// ─── Reconnexion avec backoff ─────────────────────────────────────────────────
+
+/// Exécute `connect_fn`, puis si elle échoue et que `keep_open` est actif,
+/// attend un délai croissant (1 → 2 → 4 → 8 → 16 → 30 s, cap 30 s)
+/// avant de signaler à l'appelant de relancer la TUI.
+///
+/// Si la connexion a duré plus de `SESSION_STABLE_SECS` secondes, le backoff
+/// est remis à zéro (déconnexion réseau normale, pas un échec immédiat).
+fn run_blocking_with_backoff<F>(connect_fn: F, backoff_secs: &mut u32)
+where
+    F: FnOnce() -> anyhow::Result<()>,
+{
+    const SESSION_STABLE_SECS: u64 = 10;
+    const BACKOFF_CAP: u32 = 30;
+
+    let started = std::time::Instant::now();
+    match connect_fn() {
+        Ok(()) => {
+            // Connexion terminée normalement.
+            if started.elapsed().as_secs() >= SESSION_STABLE_SECS {
+                *backoff_secs = 0;
+            }
+        }
+        Err(e) => {
+            eprintln!("SSH Connection Error: {e}");
+            if started.elapsed().as_secs() >= SESSION_STABLE_SECS {
+                *backoff_secs = 0;
+            } else {
+                let delay = (*backoff_secs).max(1);
+                eprintln!("Reconnexion dans {delay}s… (Ctrl-C pour annuler)");
+                std::thread::sleep(std::time::Duration::from_secs(u64::from(delay)));
+                *backoff_secs = (delay * 2).min(BACKOFF_CAP);
+            }
+        }
+    }
 }
 
 // ─── TUI ─────────────────────────────────────────────────────────────────────

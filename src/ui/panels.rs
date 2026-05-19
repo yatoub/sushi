@@ -443,6 +443,21 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     Span::styled(last_seen_str, Style::default().fg(app.theme.subtext0)),
                 ]));
 
+                if !server.notes.is_empty() {
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            "Notes : ",
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .fg(app.theme.fg),
+                        ),
+                        Span::styled(
+                            server.notes.as_str(),
+                            Style::default().fg(app.theme.subtext0),
+                        ),
+                    ]));
+                }
+
                 {
                     let n_cfg = app.effective_tunnels(server).len();
                     let n_run = app.active_tunnel_count(server);

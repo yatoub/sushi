@@ -382,6 +382,7 @@ fn build_adhoc_server(
             .as_deref()
             .map(|h| shellexpand::tilde(h).into_owned()),
         hook_timeout_secs: d.hook_timeout_secs.unwrap_or(5),
+        notes: String::new(),
         wallix_group: None,
         wallix_account: d
             .wallix

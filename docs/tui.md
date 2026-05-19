@@ -62,6 +62,19 @@ If the clipboard is unavailable (headless session, missing `wl-clipboard`, etc.)
 
 State is persisted in `~/.susshi_state.json` (favorites, expanded nodes, sort mode, last seen connection timestamps, tunnel overrides).
 
+## Server Notes
+
+Add a free-form `notes` field to any server in the YAML config:
+
+```yaml
+servers:
+  - name: web-01
+    host: 192.168.1.10
+    notes: "staging — reboot window Thursday nights"
+```
+
+The note is displayed in the detail panel below the last-seen timestamp.
+
 ## Diagnostics and Commands
 
 | Key | Action |

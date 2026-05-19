@@ -310,6 +310,8 @@ pub struct Server {
     pub pre_connect_hook: Option<String>,
     /// Script post-déconnexion spécifique au serveur (surcharge le défaut).
     pub post_disconnect_hook: Option<String>,
+    /// Description libre affichée dans le panneau de détail.
+    pub notes: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -369,6 +371,8 @@ pub struct ResolvedServer {
     pub post_disconnect_hook: Option<String>,
     /// Timeout des hooks en secondes.
     pub hook_timeout_secs: u64,
+    /// Description libre (champ `notes` du YAML).
+    pub notes: String,
 }
 
 impl Config {
@@ -1275,6 +1279,7 @@ fn resolve_server(
             .or(def_post_disconnect_hook)
             .map(|h| shellexpand::tilde(h).into_owned()),
         hook_timeout_secs: def_hook_timeout_secs,
+        notes: s.notes.clone().unwrap_or_default(),
         wallix_group: resolved_wallix_group,
         wallix_account: final_bastion
             .as_ref()
@@ -1480,6 +1485,7 @@ mod tests {
                     tags: None,
                     pre_connect_hook: None,
                     post_disconnect_hook: None,
+                    notes: None,
                 }]),
                 probe_filesystems: None,
                 tunnels: None,

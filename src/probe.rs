@@ -473,6 +473,7 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            notes: String::new(),
         };
 
         let result = probe(&server, ConnectionMode::Wallix).unwrap();

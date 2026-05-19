@@ -689,6 +689,7 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            notes: String::new(),
         };
 
         assert_eq!(
@@ -739,6 +740,7 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            notes: String::new(),
         };
 
         assert_eq!(select_id_for_server(&entries, &server).unwrap(), "0");
@@ -786,6 +788,7 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            notes: String::new(),
         };
 
         // Single entry matching the target → auto-selected even without wallix_group.
@@ -842,6 +845,7 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            notes: String::new(),
         };
 
         // Multiple entries with no group configured → error prompting user to set wallix.group.
@@ -886,6 +890,7 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            notes: String::new(),
         };
 
         let groups = build_expected_groups(&server).unwrap();
@@ -931,6 +936,7 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            notes: String::new(),
         };
 
         let targets = build_expected_targets(&server);
@@ -981,6 +987,7 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            notes: String::new(),
         };
 
         assert_eq!(select_id_for_server(&entries, &server).unwrap(), "1");
@@ -1028,6 +1035,7 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            notes: String::new(),
         };
 
         assert_eq!(select_id_for_server(&entries, &server).unwrap(), "42");
@@ -1075,6 +1083,7 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            notes: String::new(),
         };
 
         assert_eq!(select_id_for_server(&entries, &server).unwrap(), "640");

@@ -82,7 +82,7 @@ jobs:
 
       - name: Setup Zig
         if: matrix.build_tool == 'zigbuild'
-        uses: goto-bus-stop/setup-zig@v3
+        uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.14.0
 

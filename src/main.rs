@@ -359,6 +359,7 @@ fn build_adhoc_server(
         user,
         port,
         ssh_key,
+        ssh_cert: String::new(),
         ssh_options,
         default_mode: mode,
         jump_host,

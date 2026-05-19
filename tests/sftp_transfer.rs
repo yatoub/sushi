@@ -34,6 +34,7 @@ fn test_server() -> ResolvedServer {
         pre_connect_hook: None,
         post_disconnect_hook: None,
         hook_timeout_secs: 5,
+        ssh_cert: String::new(),
         notes: String::new(),
         wallix_group: None,
         wallix_account: "default".to_string(),

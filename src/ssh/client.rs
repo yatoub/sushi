@@ -91,6 +91,11 @@ pub fn build_ssh_args(
         args.push("-i".into());
         args.push(expanded.into_owned());
     }
+    if !server.ssh_cert.is_empty() {
+        let expanded = shellexpand::tilde(&server.ssh_cert);
+        args.push("-i".into());
+        args.push(expanded.into_owned());
+    }
 
     for opt in &server.ssh_options {
         if opt.starts_with('-') {
@@ -866,6 +871,7 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            ssh_cert: String::new(),
             notes: String::new(),
             wallix_group: None,
             wallix_account: "default".to_string(),

@@ -334,18 +334,15 @@ fn ssh_agent_sock_adds_identity_agent_option() {
     s.ssh_agent_sock = "/run/user/1000/gnupg/S.gpg-agent.ssh".into();
     let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
 
-    let o_pos = args
-        .iter()
-        .position(|a| a == "-o")
-        .expect("-o attendu pour IdentityAgent");
+    let identity_agent_arg = args
+        .windows(2)
+        .find(|w| w[0] == "-o" && w[1].starts_with("IdentityAgent="))
+        .expect("-o IdentityAgent=... attendu dans les args SSH");
+
     assert!(
-        args[o_pos + 1].starts_with("IdentityAgent="),
-        "IdentityAgent attendu, obtenu : {}",
-        args[o_pos + 1]
-    );
-    assert!(
-        args[o_pos + 1].contains("/run/user/1000/gnupg/S.gpg-agent.ssh"),
-        "chemin de socket incorrect"
+        identity_agent_arg[1].contains("/run/user/1000/gnupg/S.gpg-agent.ssh"),
+        "chemin de socket incorrect : {}",
+        identity_agent_arg[1]
     );
 }
 

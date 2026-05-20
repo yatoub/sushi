@@ -467,6 +467,10 @@ pub struct App {
     pub cmd_history: Vec<String>,
     /// Position du curseur dans l'historique lors de la navigation (None = pas en navigation).
     pub cmd_history_cursor: Option<usize>,
+
+    /// Si `true`, la capture souris crossterm est active (les clics TUI fonctionnent).
+    /// Si `false`, le terminal reprend la gestion souris standard (sélection texte possible).
+    pub mouse_capture: bool,
 }
 
 type WallixMenuLoadResult = (ResolvedServer, Result<Vec<WallixMenuEntry>, String>);

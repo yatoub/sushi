@@ -1266,6 +1266,14 @@ fn run_app(
                             KeyCode::Char('h') => {
                                 app.show_help = !app.show_help;
                             }
+                            KeyCode::Char('M') => {
+                                app.mouse_capture = !app.mouse_capture;
+                                if app.mouse_capture {
+                                    execute!(terminal.backend_mut(), EnableMouseCapture)?;
+                                } else {
+                                    execute!(terminal.backend_mut(), DisableMouseCapture)?;
+                                }
+                            }
                             KeyCode::Esc if app.show_help => {
                                 app.show_help = false;
                             }

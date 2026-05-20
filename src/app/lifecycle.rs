@@ -93,6 +93,7 @@ impl App {
             cmd_history_cursor: None,
             overview: None,
             overview_rx: None,
+            mouse_capture: true,
         };
 
         app.list_state.select(Some(0));

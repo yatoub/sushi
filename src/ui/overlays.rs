@@ -816,48 +816,46 @@ fn draw_scp_result(f: &mut Frame, app: &mut App, area: Rect) {
 
 /// Overlay d'aide clavier affiché avec `h`.
 pub(crate) fn draw_help_overlay(f: &mut Frame, area: Rect, theme: &Theme) {
-    const ENTRIES: &[(&str, &str)] = &[
-        ("j / ↓", "Descendre"),
-        ("k / ↑", "Monter"),
-        ("Enter", "Connecter"),
-        ("Tab", "Changer de mode (Direct / Jump / Wallix)"),
-        ("1 / 2 / 3", "Sélectionner le mode directement"),
-        ("/", "Rechercher"),
-        ("Esc", "Quitter la recherche / fermer"),
-        ("q", "Quitter susshi"),
-        ("Space", "Développer / réduire un groupe"),
-        ("f", "Ajouter / retirer des favoris"),
-        ("F", "Afficher uniquement les favoris"),
-        ("H", "Trier par dernière connexion"),
-        ("C", "Réduire tous les groupes"),
-        ("E", "Déplier tous les groupes"),
-        (
-            "Ctrl+Y",
-            "Basculer le thème Catppuccin (Latte→Frappe→Macchiato→Mocha)",
-        ),
-        ("r", "Recharger la configuration"),
-        ("v", "Mode verbeux SSH"),
-        ("y", "Copier la commande SSH"),
-        ("p", "Saisir credential (passphrase / mot de passe)"),
-        ("x", "Exécuter une commande ad-hoc (↑/↓ pour l'historique)"),
-        ("T", "Gérer les tunnels SSH"),
-        ("s", "Transfert SCP"),
-        ("d", "Diagnostic SSH (probe)"),
-        ("o", "Dashboard overview du groupe sélectionné"),
-        ("|", "Épingler / dés-épingler le serveur (split pane)"),
-        ("h", "Afficher / masquer cette aide"),
-        ("g / G", "Aller en haut / bas de la liste"),
-        ("PgUp / PgDn", "Page précédente / suivante"),
+    let entries: &[(&str, String)] = &[
+        ("j / ↓", fl!("help-navigate-down")),
+        ("k / ↑", fl!("help-navigate-up")),
+        ("Enter", fl!("help-connect")),
+        ("Tab", fl!("help-change-mode")),
+        ("1 / 2 / 3", fl!("help-select-mode")),
+        ("/", fl!("help-search")),
+        ("Esc", fl!("help-close")),
+        ("q", fl!("help-quit")),
+        ("Space", fl!("help-expand-group")),
+        ("f", fl!("help-favorite")),
+        ("F", fl!("help-favorites-view")),
+        ("H", fl!("help-recent-sort")),
+        ("C", fl!("help-collapse-all")),
+        ("E", fl!("help-expand-all")),
+        ("Ctrl+Y", fl!("help-theme-toggle")),
+        ("M", fl!("help-mouse-toggle")),
+        ("r", fl!("help-reload")),
+        ("v", fl!("help-verbose")),
+        ("y", fl!("help-copy-ssh")),
+        ("p", fl!("help-credential")),
+        ("x", fl!("help-command")),
+        ("T", fl!("help-tunnels")),
+        ("s", fl!("help-scp")),
+        ("d", fl!("help-probe")),
+        ("o", fl!("help-overview")),
+        ("|", fl!("help-pin")),
+        ("h", fl!("help-help")),
+        ("g / G", fl!("help-goto-top-bottom")),
+        ("PgUp / PgDn", fl!("help-page")),
     ];
 
     let col_w: u16 = 70;
-    let col_h: u16 = ENTRIES.len() as u16 + 4;
+    let col_h: u16 = entries.len() as u16 + 4;
     let popup_area = centered_rect(col_w, col_h, area);
 
     f.render_widget(Clear, popup_area);
 
     let block = Block::default()
-        .title(" Aide — raccourcis clavier  (h / Esc pour fermer) ")
+        .title(format!(" {} ", fl!("help-title")))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(theme.sapphire))
@@ -866,7 +864,7 @@ pub(crate) fn draw_help_overlay(f: &mut Frame, area: Rect, theme: &Theme) {
     let inner = block.inner(popup_area);
     f.render_widget(block, popup_area);
 
-    let lines: Vec<Line> = ENTRIES
+    let lines: Vec<Line> = entries
         .iter()
         .map(|(key, desc)| {
             Line::from(vec![
@@ -877,7 +875,7 @@ pub(crate) fn draw_help_overlay(f: &mut Frame, area: Rect, theme: &Theme) {
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled("  ", Style::default()),
-                Span::styled(*desc, Style::default().fg(theme.fg)),
+                Span::styled(desc.clone(), Style::default().fg(theme.fg)),
             ])
         })
         .collect();

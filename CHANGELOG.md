@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.7] — 2026-05-20
+
+### Added
+
+- Recherche floue (fuzzy search) via skim matcher
+
+- Manpage générée + doc dans les paquets DEB/RPM
+
+- Toggle capture souris (M) + i18n overlay aide
+
+- Wallix — header_columns personnalisables pour le parsing menu
+
+- Ajouter export OpenSSH config (--export openssh)
+
+- Ajouter export CSV (--export csv)
+
+- Ajouter ssh_agent_sock par serveur — agent SSH dédié par cible
+
+- Support du champ ssh_cert par serveur
+
+- Toggle thème Catppuccin à la volée (Ctrl+Y)
+
+- Ajouter le champ notes par serveur
+
+- Fallback clipboard — overlay si arboard est indisponible
+
+- Persister l'historique des commandes ad-hoc entre les sessions
+
+- Afficher le raccourci E (expand-all) dans la barre d'aide et la popup h
+
+- Ajouter raccourci E pour déplier tous les groupes
+
+
+### Fixed
+
+- Corriger clippy unnecessary_sort_by + manpage/doc dans PKGBUILD
+
+- Corriger test ssh_agent_sock — chercher IdentityAgent avec windows(2)
+
+
 ## [0.15.6] — 2026-05-19
 
 ### Changed

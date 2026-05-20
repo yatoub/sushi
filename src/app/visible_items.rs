@@ -15,6 +15,11 @@ impl App {
             return self.build_recent_items();
         }
 
+        // Mode recherche active : liste plate triée par score fuzzy décroissant
+        if !self.search_query.is_empty() {
+            return self.build_fuzzy_items();
+        }
+
         let mut items = Vec::new();
         let searching = !self.search_query.is_empty();
 
@@ -111,6 +116,34 @@ impl App {
             ts_b.cmp(&ts_a) // decroissant : le plus recent en premier
         });
         servers
+    }
+
+    /// Liste plate des serveurs matchant la recherche, triée par score fuzzy décroissant.
+    fn build_fuzzy_items(&self) -> Vec<ConfigItem> {
+        let (_, tag_tokens) = search::parse_search_tokens(&self.search_query);
+
+        let mut scored: Vec<(i64, ConfigItem)> = self
+            .resolved_servers
+            .iter()
+            .filter(|rs| {
+                if self.favorites_only && !self.favorites.contains(&Self::server_key(rs)) {
+                    return false;
+                }
+                // Filtre #tag exact (AND)
+                tag_tokens.iter().all(|t| {
+                    rs.tags
+                        .iter()
+                        .any(|tag| tag.to_lowercase() == t.to_lowercase())
+                })
+            })
+            .filter_map(|rs| {
+                search::fuzzy_score(&self.search_query, &rs.name, &rs.host)
+                    .map(|score| (score, ConfigItem::Server(Box::new(rs.clone()))))
+            })
+            .collect();
+
+        scored.sort_by(|a, b| b.0.cmp(&a.0));
+        scored.into_iter().map(|(_, item)| item).collect()
     }
 
     /// Indique si un namespace contient des serveurs favoris visibles.

@@ -26,99 +26,7 @@ use susshi::ui;
 
 // ─── CLI ─────────────────────────────────────────────────────────────────────
 
-/// 🍣 susshi — terminal SSH connection manager
-#[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
-struct Cli {
-    /// Chemin vers le fichier de configuration (défaut : ~/.susshi.yml)
-    #[arg(short, long, value_name = "FILE")]
-    config: Option<String>,
-
-    /// Connexion directe sans TUI : [user@]host[:port]
-    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["jump", "wallix"])]
-    direct: Option<String>,
-
-    /// Connexion via jump host sans TUI : [user@]host[:port]
-    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "wallix"])]
-    jump: Option<String>,
-
-    /// Connexion via wallix sans TUI : [user@]host[:port]
-    #[arg(long, value_name = "[USER@]HOST[:PORT]", conflicts_with_all = ["direct", "jump"])]
-    wallix: Option<String>,
-
-    /// Forcer un utilisateur SSH (remplace la config et le user@host)
-    #[arg(short, long, value_name = "USER")]
-    user: Option<String>,
-
-    /// Forcer un port SSH
-    #[arg(short, long, value_name = "PORT")]
-    port: Option<u16>,
-
-    /// Forcer une clé SSH
-    #[arg(short, long, value_name = "PATH")]
-    key: Option<String>,
-
-    /// Activer le mode verbeux SSH (-v)
-    #[arg(short, long)]
-    verbose: bool,
-
-    /// Valider la configuration et quitter (code 0 = OK, 1 = erreur bloquante).
-    #[arg(long)]
-    validate: bool,
-
-    /// Importer ~/.ssh/config et générer un YAML susshi.
-    #[arg(long, conflicts_with_all = ["validate", "direct", "jump", "wallix"])]
-    import_ssh_config: bool,
-
-    /// Chemin du fichier ssh_config à importer (défaut : ~/.ssh/config).
-    #[arg(long, value_name = "FILE", requires = "import_ssh_config")]
-    ssh_config_path: Option<String>,
-
-    /// Fichier de sortie pour --import-ssh-config (défaut : stdout).
-    #[arg(long, value_name = "FILE", requires = "import_ssh_config")]
-    output: Option<String>,
-
-    /// Afficher le résultat sans écrire de fichier (pour --import-ssh-config).
-    #[arg(long, requires = "import_ssh_config")]
-    dry_run: bool,
-
-    /// Exporter la configuration vers un format externe : "ansible", "terraform", "nmap".
-    #[arg(long, value_name = "FORMAT", conflicts_with_all = ["validate", "direct", "jump", "wallix", "import_ssh_config", "list"])]
-    export: Option<String>,
-
-    /// Fichier de sortie pour --export (défaut : stdout).
-    #[arg(long = "export-output", value_name = "FILE", requires = "export")]
-    export_output: Option<String>,
-
-    /// Filtre pour --export : texte et/ou #tag (même syntaxe que la recherche TUI).
-    #[arg(long = "export-filter", value_name = "QUERY", requires = "export")]
-    export_filter: Option<String>,
-
-    /// Lister tous les serveurs en JSON (compatible jq / fzf).
-    #[arg(long, conflicts_with_all = ["validate", "direct", "jump", "wallix", "import_ssh_config", "export"])]
-    list: bool,
-
-    /// Filtre pour --list : texte et/ou #tag.
-    #[arg(long = "list-filter", value_name = "QUERY", requires = "list")]
-    list_filter: Option<String>,
-
-    /// Exécuter une commande sur tous les serveurs d'un groupe en parallèle.
-    #[arg(long, value_name = "GROUP", conflicts_with_all = ["validate", "direct", "jump", "wallix", "import_ssh_config", "export", "list"])]
-    exec_group: Option<String>,
-
-    /// Commande à exécuter avec --exec-group.
-    #[arg(long = "exec-cmd", value_name = "CMD", requires = "exec_group")]
-    exec_cmd: Option<String>,
-
-    /// Timeout par hôte en secondes pour --exec-group (défaut : 30).
-    #[arg(
-        long = "exec-timeout",
-        value_name = "SECS",
-        requires = "exec_group",
-        default_value = "30"
-    )]
-    exec_timeout: u64,
-}
+use susshi::Cli;
 
 // ─── Config par défaut ───────────────────────────────────────────────────────
 
@@ -273,11 +181,17 @@ fn run_import_ssh_config(cli: &Cli) {
 
 /// Exporte la configuration susshi vers un inventaire au format `format`.
 ///
-/// Formats supportés : `ansible`, `terraform`, `nmap`.
 fn run_export(cli: &Cli, config: &Config) {
-    use susshi::export::{ansible, nmap, terraform};
+    use susshi::export::ansible;
+    use susshi::export::csv;
+    use susshi::export::openssh;
 
     let format = cli.export.as_deref().unwrap_or("");
+    if !matches!(format, "ansible" | "csv" | "openssh") {
+        eprintln!("Format d'export inconnu : {format}. Formats supportés : ansible, csv, openssh");
+        process::exit(1);
+    }
+
     let servers = match config.resolve() {
         Ok(s) => s,
         Err(e) => {
@@ -294,15 +208,9 @@ fn run_export(cli: &Cli, config: &Config) {
     }
 
     let output = match format {
-        "ansible" => ansible::to_ansible_yaml(&filtered),
-        "terraform" => terraform::to_terraform_json(&filtered),
-        "nmap" => nmap::to_nmap_targets(&filtered),
-        _ => {
-            eprintln!(
-                "Format d'export inconnu : {format}. Formats supportés : ansible, terraform, nmap"
-            );
-            process::exit(1);
-        }
+        "csv" => csv::to_csv_string(&filtered),
+        "openssh" => openssh::to_openssh_config(&filtered),
+        _ => ansible::to_ansible_yaml(&filtered),
     };
 
     match &cli.export_output {
@@ -532,6 +440,7 @@ fn build_adhoc_server(
         user,
         port,
         ssh_key,
+        ssh_cert: String::new(),
         ssh_options,
         default_mode: mode,
         jump_host,
@@ -555,6 +464,8 @@ fn build_adhoc_server(
             .as_deref()
             .map(|h| shellexpand::tilde(h).into_owned()),
         hook_timeout_secs: d.hook_timeout_secs.unwrap_or(5),
+        notes: String::new(),
+        ssh_agent_sock: String::new(),
         wallix_group: None,
         wallix_account: d
             .wallix
@@ -583,6 +494,11 @@ fn build_adhoc_server(
             .unwrap_or(8),
         wallix_direct: d.wallix.as_ref().and_then(|b| b.direct).unwrap_or(false),
         wallix_authorization: d.wallix.as_ref().and_then(|b| b.authorization.clone()),
+        wallix_header_columns: d
+            .wallix
+            .as_ref()
+            .and_then(|b| b.header_columns.clone())
+            .unwrap_or_default(),
     }
 }
 
@@ -993,6 +909,11 @@ fn run_app(
                             }
                             _ => {}
                         }
+                    } else if matches!(app.app_mode, AppMode::ClipboardFallback(_)) {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Enter => app.app_mode = AppMode::Normal,
+                            _ => {}
+                        }
                     } else if app.app_mode != AppMode::Normal {
                         // En mode erreur : n'importe quelle touche ferme le panneau
                         match key.code {
@@ -1203,6 +1124,17 @@ fn run_app(
                             KeyCode::Char('v') => {
                                 app.verbose_mode = !app.verbose_mode;
                             }
+                            KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                use susshi::config::ThemeVariant;
+                                use susshi::ui::theme::get_theme;
+                                app.theme_variant = match app.theme_variant {
+                                    ThemeVariant::Latte => ThemeVariant::Frappe,
+                                    ThemeVariant::Frappe => ThemeVariant::Macchiato,
+                                    ThemeVariant::Macchiato => ThemeVariant::Mocha,
+                                    ThemeVariant::Mocha => ThemeVariant::Latte,
+                                };
+                                app.theme = get_theme(app.theme_variant);
+                            }
                             KeyCode::Char('y') => {
                                 let items = app.get_visible_items();
                                 if let Some(ConfigItem::Server(server)) =
@@ -1221,16 +1153,9 @@ fn run_app(
                                                     "copied",
                                                     cmd = cmd.as_str()
                                                 )),
-                                                Some(Err(e)) => {
-                                                    let err = e.to_string();
-                                                    app.set_status_message(fl!(
-                                                        "clipboard-error",
-                                                        error = err.as_str()
-                                                    ));
+                                                Some(Err(_)) | None => {
+                                                    app.app_mode = AppMode::ClipboardFallback(cmd);
                                                 }
-                                                None => app.set_status_message(fl!(
-                                                    "clipboard-unavailable"
-                                                )),
                                             }
                                         }
                                         Err(e) => {
@@ -1248,6 +1173,14 @@ fn run_app(
                             }
                             KeyCode::Char('h') => {
                                 app.show_help = !app.show_help;
+                            }
+                            KeyCode::Char('M') => {
+                                app.mouse_capture = !app.mouse_capture;
+                                if app.mouse_capture {
+                                    execute!(terminal.backend_mut(), EnableMouseCapture)?;
+                                } else {
+                                    execute!(terminal.backend_mut(), DisableMouseCapture)?;
+                                }
                             }
                             KeyCode::Esc if app.show_help => {
                                 app.show_help = false;
@@ -1300,6 +1233,9 @@ fn run_app(
                             }
                             KeyCode::Char('C') => {
                                 app.collapse_all();
+                            }
+                            KeyCode::Char('E') => {
+                                app.expand_all();
                             }
                             KeyCode::Char('H') => {
                                 app.sort_by_recent = !app.sort_by_recent;

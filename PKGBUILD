@@ -33,4 +33,8 @@ package() {
     cd $pkgname-$pkgver
     install -Dm0755 -t "$pkgdir/usr/bin/" "target/release/$pkgname"
     install -Dm0644 LICENCE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm0644 target/man/$pkgname.1 "$pkgdir/usr/share/man/man1/$pkgname.1"
+    install -Dm0644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    find docs/ -type f -exec install -Dm0644 {} "$pkgdir/usr/share/doc/$pkgname/{}" \;
+    find examples/ -type f -exec install -Dm0644 {} "$pkgdir/usr/share/doc/$pkgname/{}" \;
 }

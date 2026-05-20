@@ -28,6 +28,9 @@ fn direct_server() -> ResolvedServer {
         pre_connect_hook: None,
         post_disconnect_hook: None,
         hook_timeout_secs: 5,
+        ssh_cert: String::new(),
+        notes: String::new(),
+        ssh_agent_sock: String::new(),
         wallix_group: None,
         wallix_account: "default".to_string(),
         wallix_protocol: "SSH".to_string(),
@@ -36,6 +39,7 @@ fn direct_server() -> ResolvedServer {
         wallix_selection_timeout_secs: 8,
         wallix_direct: false,
         wallix_authorization: None,
+        wallix_header_columns: vec![],
     }
 }
 

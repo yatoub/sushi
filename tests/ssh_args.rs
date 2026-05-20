@@ -36,6 +36,9 @@ fn base_server() -> ResolvedServer {
         pre_connect_hook: None,
         post_disconnect_hook: None,
         hook_timeout_secs: 5,
+        ssh_cert: String::new(),
+        notes: String::new(),
+        ssh_agent_sock: String::new(),
         wallix_group: None,
         wallix_account: "default".to_string(),
         wallix_protocol: "SSH".to_string(),
@@ -44,6 +47,7 @@ fn base_server() -> ResolvedServer {
         wallix_selection_timeout_secs: 8,
         wallix_direct: false,
         wallix_authorization: None,
+        wallix_header_columns: vec![],
     }
 }
 
@@ -287,5 +291,72 @@ fn no_agent_forwarding_by_default() {
     assert!(
         !args.contains(&"-A".to_string()),
         "-A ne doit pas être présent par défaut"
+    );
+}
+
+/// Un certificat SSH est passé avec un second `-i` après la clé.
+#[test]
+fn ssh_cert_adds_second_identity_flag() {
+    let mut s = base_server();
+    s.ssh_key = "~/.ssh/id_ed25519".into();
+    s.ssh_cert = "~/.ssh/id_ed25519-cert.pub".into();
+    let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
+
+    let i_positions: Vec<usize> = args
+        .iter()
+        .enumerate()
+        .filter(|(_, a)| *a == "-i")
+        .map(|(i, _)| i)
+        .collect();
+
+    assert_eq!(i_positions.len(), 2, "deux `-i` attendus (clé + cert)");
+    assert!(
+        args[i_positions[1] + 1].ends_with("id_ed25519-cert.pub"),
+        "le certificat doit être le second -i"
+    );
+}
+
+/// Sans ssh_cert, un seul `-i` est présent.
+#[test]
+fn no_ssh_cert_single_identity_flag() {
+    let mut s = base_server();
+    s.ssh_key = "~/.ssh/id_ed25519".into();
+    let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
+
+    let count = args.iter().filter(|a| *a == "-i").count();
+    assert_eq!(count, 1, "un seul `-i` attendu sans certificat");
+}
+
+/// Un socket d'agent SSH personnalisé génère `-o IdentityAgent=...`.
+#[test]
+fn ssh_agent_sock_adds_identity_agent_option() {
+    let mut s = base_server();
+    s.ssh_agent_sock = "/run/user/1000/gnupg/S.gpg-agent.ssh".into();
+    let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
+
+    let identity_agent_arg = args
+        .windows(2)
+        .find(|w| w[0] == "-o" && w[1].starts_with("IdentityAgent="))
+        .expect("-o IdentityAgent=... attendu dans les args SSH");
+
+    assert!(
+        identity_agent_arg[1].contains("/run/user/1000/gnupg/S.gpg-agent.ssh"),
+        "chemin de socket incorrect : {}",
+        identity_agent_arg[1]
+    );
+}
+
+/// Sans ssh_agent_sock, aucun `-o IdentityAgent` n'est ajouté.
+#[test]
+fn no_ssh_agent_sock_no_identity_agent_option() {
+    let s = base_server();
+    let args = build_ssh_args(&s, ConnectionMode::Direct, false).unwrap();
+
+    let has_identity_agent = args
+        .windows(2)
+        .any(|w| w[0] == "-o" && w[1].starts_with("IdentityAgent="));
+    assert!(
+        !has_identity_agent,
+        "IdentityAgent inattendu sans ssh_agent_sock"
     );
 }

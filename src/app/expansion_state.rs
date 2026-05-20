@@ -43,4 +43,29 @@ impl App {
         self.selected_index = 0;
         self.items_dirty = true;
     }
+
+    /// Deplie tous les groupes, namespaces et environnements.
+    pub fn expand_all(&mut self) {
+        for server in &self.resolved_servers {
+            let ns = &server.namespace;
+            let grp = &server.group_name;
+            let env = &server.env_name;
+
+            if !ns.is_empty() {
+                self.expanded_items.insert(format!("NS:{}", ns));
+                self.expanded_items
+                    .insert(format!("NS:{}:Group:{}", ns, grp));
+                if !env.is_empty() {
+                    self.expanded_items
+                        .insert(format!("NS:{}:Env:{}:{}", ns, grp, env));
+                }
+            } else {
+                self.expanded_items.insert(format!("Group:{}", grp));
+                if !env.is_empty() {
+                    self.expanded_items.insert(format!("Env:{}:{}", grp, env));
+                }
+            }
+        }
+        self.items_dirty = true;
+    }
 }

@@ -25,6 +25,7 @@ fn wallix_test_server(group: Option<&str>) -> ResolvedServer {
         wallix_selection_timeout_secs: 8,
         wallix_direct: false,
         wallix_authorization: None,
+        wallix_header_columns: vec![],
         use_system_ssh_config: false,
         probe_filesystems: vec![],
         tunnels: vec![],
@@ -36,6 +37,9 @@ fn wallix_test_server(group: Option<&str>) -> ResolvedServer {
         pre_connect_hook: None,
         post_disconnect_hook: None,
         hook_timeout_secs: 5,
+        ssh_cert: String::new(),
+        notes: String::new(),
+        ssh_agent_sock: String::new(),
     }
 }
 

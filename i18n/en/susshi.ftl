@@ -83,7 +83,11 @@ hint-favorites-view = ★ favorites view
 hint-reload = reload
 hint-recent-sort = recent sort
 hint-collapse = collapse
+hint-expand-all = expand all
 hint-verbose = verbose
+hint-theme-toggle = next theme
+hint-mouse-toggle = text selection
+mouse-capture-off = [mouse disabled — text selection active]
 
 # ── Wallix selector overlay ───────────────────────────────────────────────────
 wallix-selector-title = Wallix Selection
@@ -210,3 +214,35 @@ credential-input-hint =   Enter confirm   Esc cancel
 probe-cm-label = ControlMaster  
 probe-cm-active = active
 probe-cm-inactive = inactive
+
+# ── Help keyboard overlay ─────────────────────────────────────────────────────
+help-title = Keyboard shortcuts  (h / Esc to close)
+help-navigate-down = Move down
+help-navigate-up = Move up
+help-connect = Connect
+help-change-mode = Change mode (Direct / Jump / Wallix)
+help-select-mode = Select mode directly
+help-search = Search
+help-close = Exit search / close
+help-quit = Quit susshi
+help-expand-group = Expand / collapse a group
+help-favorite = Add / remove from favorites
+help-favorites-view = Show favorites only
+help-recent-sort = Sort by last connection
+help-collapse-all = Collapse all groups
+help-expand-all = Expand all groups
+help-theme-toggle = Cycle Catppuccin theme (Latte→Frappe→Macchiato→Mocha)
+help-mouse-toggle = Disable mouse capture (native text selection)
+help-reload = Reload configuration
+help-verbose = SSH verbose mode
+help-copy-ssh = Copy SSH command
+help-credential = Enter credential (passphrase / password)
+help-command = Run ad-hoc command (↑/↓ for history)
+help-tunnels = Manage SSH tunnels
+help-scp = SCP transfer
+help-probe = SSH diagnostic (probe)
+help-overview = Overview dashboard for selected group
+help-pin = Pin / unpin server (split pane)
+help-help = Show / hide this help
+help-goto-top-bottom = Go to top / bottom of list
+help-page = Previous / next page

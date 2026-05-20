@@ -16,4 +16,7 @@ b2sums_x86_64=('243d453a9c87817a13acb0ded28c09a4d9d4adaea0e850c4506843a613f335a2
 package() {
     install -Dm0755 "susshi-${pkgver}-linux-amd64" "$pkgdir/usr/bin/susshi"
     install -Dm0644 "susshi-${pkgver}/LICENCE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm0644 "susshi-${pkgver}/README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
+    find "susshi-${pkgver}/docs/" -type f -exec install -Dm0644 {} "$pkgdir/usr/share/doc/$pkgname/docs/{}" \;
+    find "susshi-${pkgver}/examples/" -type f -exec install -Dm0644 {} "$pkgdir/usr/share/doc/$pkgname/examples/{}" \;
 }

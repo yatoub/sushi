@@ -69,12 +69,10 @@ Stack : Rust, Ratatui, YAML, SSH2, Catppuccin
 - **Export `~/.ssh/config`** — Générer des blocs `Host` compatibles OpenSSH depuis l'inventaire susshi.
 - **Import Ansible inventory** — Parser un inventory Ansible YAML existant pour l'importer en config susshi.
 - **Import AWS SSM** — Récupérer la liste des instances SSM Session Manager via AWS CLI / SDK et générer la config susshi correspondante.
-- **Intégration vault (effort élevé)** — Permettre de résoudre les secrets (mots de passe, clés) depuis HashiCorp Vault ou 1Password CLI au moment de la connexion.
 
 ### SCP / transferts
 
 - **SCP multi-fichiers / récursif** — La session SCP actuelle transfère un seul fichier à la fois. Permettre la sélection multiple et le transfert de répertoires.
-- **Limitation de bande passante SCP** — Exposer l'équivalent de `--bandwidth-limit` pour ne pas saturer les liens en production.
 
 
 ### Packaging

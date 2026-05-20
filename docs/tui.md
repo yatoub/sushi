@@ -44,6 +44,8 @@ Search behavior:
 | `v` | Toggle verbose SSH mode |
 | `y` | Copy generated SSH command |
 
+If the clipboard is unavailable (headless session, missing `wl-clipboard`, etc.), an overlay displays the command for manual copy. Dismiss with `Enter` or `Esc`.
+
 ## Productivity Features
 
 | Key | Action |
@@ -52,12 +54,27 @@ Search behavior:
 | `f` | Toggle favorite |
 | `F` | Favorites-only view |
 | `C` | Collapse all groups/environments/namespaces |
+| `E` | Expand all groups/environments/namespaces |
+| `Ctrl+Y` | Cycle Catppuccin theme variant (Latte → Frappe → Macchiato → Mocha → …) |
 | `H` | Toggle recent-sort view |
 | `h` | Toggle keyboard help overlay |
 | `o` | Open group overview dashboard |
 | `\|` | Pin/unpin server in split pane |
 
 State is persisted in `~/.susshi_state.json` (favorites, expanded nodes, sort mode, last seen connection timestamps, tunnel overrides).
+
+## Server Notes
+
+Add a free-form `notes` field to any server in the YAML config:
+
+```yaml
+servers:
+  - name: web-01
+    host: 192.168.1.10
+    notes: "staging — reboot window Thursday nights"
+```
+
+The note is displayed in the detail panel below the last-seen timestamp.
 
 ## Diagnostics and Commands
 
@@ -76,7 +93,7 @@ Ad-hoc command output is displayed in the detail pane (up to 20 lines) with colo
 
 ### Command history
 
-When the ad-hoc command prompt (`x`) is open, use `↑` and `↓` to navigate previously run commands. The history is deduplicated (identical consecutive commands are not duplicated) and persists for the duration of the session.
+When the ad-hoc command prompt (`x`) is open, use `↑` and `↓` to navigate previously run commands. The history is deduplicated (identical consecutive commands are not duplicated) and **persists across sessions** (saved in `~/.susshi_state.json`, capped at 100 entries).
 
 ## Group Overview Dashboard
 

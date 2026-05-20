@@ -86,4 +86,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if let AppMode::Error(msg) = &app.app_mode {
         overlays::draw_error_overlay(f, msg.clone(), f.area(), app.theme);
     }
+
+    if let AppMode::ClipboardFallback(value) = &app.app_mode {
+        overlays::draw_clipboard_fallback_overlay(f, value, f.area(), app.theme);
+    }
 }

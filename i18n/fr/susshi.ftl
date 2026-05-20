@@ -83,7 +83,11 @@ hint-favorites-view = ★ vue favoris
 hint-reload = recharger
 hint-recent-sort = tri récent
 hint-collapse = replier
+hint-expand-all = tout déplier
 hint-verbose = verbose
+hint-theme-toggle = thème suivant
+hint-mouse-toggle = sélection texte
+mouse-capture-off = [souris désactivée — sélection texte active]
 
 # ── Overlay sélecteur Wallix ──────────────────────────────────────────────────
 wallix-selector-title = Sélection Wallix
@@ -210,3 +214,35 @@ credential-input-hint =   Enter confirmer   Esc annuler
 probe-cm-label = ControlMaster  
 probe-cm-active = actif
 probe-cm-inactive = inactif
+
+# ── Overlay aide clavier ──────────────────────────────────────────────────────
+help-title = Aide — raccourcis clavier  (h / Esc pour fermer)
+help-navigate-down = Descendre
+help-navigate-up = Monter
+help-connect = Connecter
+help-change-mode = Changer de mode (Direct / Jump / Wallix)
+help-select-mode = Sélectionner le mode directement
+help-search = Rechercher
+help-close = Quitter la recherche / fermer
+help-quit = Quitter susshi
+help-expand-group = Développer / réduire un groupe
+help-favorite = Ajouter / retirer des favoris
+help-favorites-view = Afficher uniquement les favoris
+help-recent-sort = Trier par dernière connexion
+help-collapse-all = Réduire tous les groupes
+help-expand-all = Déplier tous les groupes
+help-theme-toggle = Basculer le thème Catppuccin (Latte→Frappe→Macchiato→Mocha)
+help-mouse-toggle = Désactiver la capture souris (sélection texte native)
+help-reload = Recharger la configuration
+help-verbose = Mode verbeux SSH
+help-copy-ssh = Copier la commande SSH
+help-credential = Saisir credential (passphrase / mot de passe)
+help-command = Exécuter une commande ad-hoc (↑/↓ pour l'historique)
+help-tunnels = Gérer les tunnels SSH
+help-scp = Transfert SCP
+help-probe = Diagnostic SSH (probe)
+help-overview = Dashboard overview du groupe sélectionné
+help-pin = Épingler / dés-épingler le serveur (split pane)
+help-help = Afficher / masquer cette aide
+help-goto-top-bottom = Aller en haut / bas de la liste
+help-page = Page précédente / suivante

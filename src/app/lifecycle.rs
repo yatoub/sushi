@@ -57,6 +57,7 @@ impl App {
             verbose_mode: false,
             app_mode: AppMode::Normal,
             theme: get_theme(theme_variant),
+            theme_variant,
             status_message: None,
             cached_items: Vec::new(),
             items_dirty: true,
@@ -92,6 +93,7 @@ impl App {
             cmd_history_cursor: None,
             overview: None,
             overview_rx: None,
+            mouse_capture: true,
         };
 
         app.list_state.select(Some(0));
@@ -102,6 +104,7 @@ impl App {
         app.favorites = saved.favorites;
         app.sort_by_recent = saved.sort_by_recent;
         app.tunnel_overrides = saved.tunnel_overrides;
+        app.cmd_history = saved.command_history;
         app.items_dirty = true;
 
         if app.search_query.is_empty() && !default_filter.is_empty() {

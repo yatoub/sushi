@@ -134,7 +134,12 @@ fn test_search_filtering() {
     app.invalidate_cache();
     let items = app.get_visible_items();
 
-    assert!(items.len() >= 3);
+    // En mode recherche, la liste est plate (serveurs uniquement, sans headers)
+    assert!(!items.is_empty());
+    assert!(
+        items.iter().all(|i| matches!(i, ConfigItem::Server(_))),
+        "En mode recherche, seuls des Server doivent apparaître"
+    );
 
     let has_s1 = items.iter().any(|i| match i {
         ConfigItem::Server(s) => s.name == "S1",

@@ -176,11 +176,18 @@ groups:
             user: "service-admin"
             host: "198.51.100.13"
             mode: "direct" # Standard SSH connection
+            # Free-form description shown in the server detail panel (TUI).
+            notes: "Primary Nextcloud instance. Admin panel: https://198.51.100.13/admin"
             # Tags are optional string labels used for filtering in the TUI (/)
             # and in --export-filter. Support text + #tag syntax.
             tags: [prod, eu-west, web]
+            # Use a dedicated SSH agent socket for this server (Unix only).
+            # Overrides the SSH_AUTH_SOCK environment variable and passes
+            # -o IdentityAgent=... to ssh. Useful for GPG-based or per-server agents.
+            # ssh_agent_sock: "/run/user/1000/gnupg/S.gpg-agent.ssh"
           - name: "db-01"
             host: "198.51.100.11"
+            notes: "PostgreSQL primary — replica is db-02 (198.51.100.12)"
             # Appends /pg_data at server level: monitors /var/log, /data, /app_data AND /pg_data.
             probe_filesystems:
               - "/pg_data"

@@ -138,19 +138,28 @@ pub fn build_expected_targets(server: &ResolvedServer) -> Vec<String> {
 ///  5678  │ demo_user@default@APP-ALPHA-BD:SSH    │ APP-ALPHA_dev-admins
 /// ```
 ///
+const DEFAULT_HEADER_COLUMNS: &[&str] = &["ID", "Cible", "Autorisation"];
+
 /// This function extracts the ID, target (Cible), and group (Autorisation) columns.
-pub fn parse_wallix_menu(output: &str) -> Result<Vec<WallixMenuEntry>> {
+///
+/// `header_columns` overrides the default detection tokens used to skip header lines.
+/// Pass an empty slice to use the defaults.
+pub fn parse_wallix_menu(output: &str, header_columns: &[String]) -> Result<Vec<WallixMenuEntry>> {
     let cleaned = strip_ansi(output);
     let mut entries = Vec::new();
+
+    let effective_headers: Vec<&str> = if header_columns.is_empty() {
+        DEFAULT_HEADER_COLUMNS.to_vec()
+    } else {
+        header_columns.iter().map(String::as_str).collect()
+    };
 
     for line in cleaned.lines() {
         let trimmed = line.trim();
 
         // Ignore headers, separators and empty lines.
         if trimmed.is_empty()
-            || trimmed.contains("ID")
-            || trimmed.contains("Cible")
-            || trimmed.contains("Autorisation")
+            || effective_headers.iter().any(|h| trimmed.contains(h))
             || trimmed
                 .chars()
                 .all(|c| matches!(c, '\u{2500}' | '\u{253C}' | '\u{2502}' | '-' | '+'))
@@ -483,7 +492,7 @@ mod tests {
                       |----|--------------------|-----------\n\
                       |  0 | demo@default@HOST:SSH | STI-GROUP_ces3s-admins |\n\
                       \x1b[1m > \x1b[0m";
-        let entries = parse_wallix_menu(output).unwrap();
+        let entries = parse_wallix_menu(output, &[]).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].id, "0");
         assert_eq!(entries[0].group, "STI-GROUP_ces3s-admins");
@@ -521,7 +530,7 @@ mod tests {
  1234  │ demo_user@default@APP-ALPHA-BD:SSH    │ APP-ALPHA_ops-admins
  5678  │ demo_user@default@APP-ALPHA-BD:SSH    │ APP-ALPHA_dev-admins
 "#;
-        let entries = parse_wallix_menu(output).expect("Should parse menu");
+        let entries = parse_wallix_menu(output, &[]).expect("Should parse menu");
         assert_eq!(entries.len(), 2);
 
         assert_eq!(entries[0].id, "1234");
@@ -535,7 +544,7 @@ mod tests {
     #[test]
     fn test_parse_menu_with_varied_whitespace() {
         let output = "  123   │   user@default@host:SSH   │   group-name  ";
-        let entries = parse_wallix_menu(output).expect("Should parse despite whitespace");
+        let entries = parse_wallix_menu(output, &[]).expect("Should parse despite whitespace");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].id, "123");
         assert_eq!(entries[0].target, "user@default@host:SSH");
@@ -545,8 +554,29 @@ mod tests {
     #[test]
     fn test_parse_menu_with_leading_zeros() {
         let output = "0001  │ user@default@host:SSH  │ my-group";
-        let entries = parse_wallix_menu(output).expect("Should preserve leading zeros");
+        let entries = parse_wallix_menu(output, &[]).expect("Should preserve leading zeros");
         assert_eq!(entries[0].id, "0001");
+    }
+
+    #[test]
+    fn test_parse_with_custom_header_columns() {
+        let output = r#"
+   Num │ Target                              │ Authorization
+───────┼─────────────────────────────────────┼──────────────────────
+  1234 │ ops@default@APP-01:SSH              │ OPS-admins
+"#;
+        // Default headers ("ID", "Cible", "Autorisation") don't match → would include header as data.
+        // Custom headers correctly skip the header line.
+        let custom = vec![
+            "Num".to_string(),
+            "Target".to_string(),
+            "Authorization".to_string(),
+        ];
+        let entries =
+            parse_wallix_menu(output, &custom).expect("devrait parser avec headers custom");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "1234");
+        assert_eq!(entries[0].group, "OPS-admins");
     }
 
     #[test]
@@ -555,7 +585,7 @@ mod tests {
    ID │ Cible │ Autorisation
 ───────┼───────┼──────────────
 "#;
-        let result = parse_wallix_menu(output);
+        let result = parse_wallix_menu(output, &[]);
         assert!(result.is_err());
         assert!(
             result
@@ -678,6 +708,7 @@ mod tests {
             wallix_selection_timeout_secs: 8,
             wallix_direct: false,
             wallix_authorization: None,
+            wallix_header_columns: vec![],
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -689,6 +720,9 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            ssh_cert: String::new(),
+            notes: String::new(),
+            ssh_agent_sock: String::new(),
         };
 
         assert_eq!(
@@ -728,6 +762,7 @@ mod tests {
             wallix_selection_timeout_secs: 8,
             wallix_direct: false,
             wallix_authorization: None,
+            wallix_header_columns: vec![],
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -739,6 +774,9 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            ssh_cert: String::new(),
+            notes: String::new(),
+            ssh_agent_sock: String::new(),
         };
 
         assert_eq!(select_id_for_server(&entries, &server).unwrap(), "0");
@@ -775,6 +813,7 @@ mod tests {
             wallix_selection_timeout_secs: 8,
             wallix_direct: false,
             wallix_authorization: None,
+            wallix_header_columns: vec![],
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -786,6 +825,9 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            ssh_cert: String::new(),
+            notes: String::new(),
+            ssh_agent_sock: String::new(),
         };
 
         // Single entry matching the target → auto-selected even without wallix_group.
@@ -831,6 +873,7 @@ mod tests {
             wallix_selection_timeout_secs: 8,
             wallix_direct: false,
             wallix_authorization: None,
+            wallix_header_columns: vec![],
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -842,6 +885,9 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            ssh_cert: String::new(),
+            notes: String::new(),
+            ssh_agent_sock: String::new(),
         };
 
         // Multiple entries with no group configured → error prompting user to set wallix.group.
@@ -875,6 +921,7 @@ mod tests {
             wallix_selection_timeout_secs: 8,
             wallix_direct: false,
             wallix_authorization: None,
+            wallix_header_columns: vec![],
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -886,6 +933,9 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            ssh_cert: String::new(),
+            notes: String::new(),
+            ssh_agent_sock: String::new(),
         };
 
         let groups = build_expected_groups(&server).unwrap();
@@ -920,6 +970,7 @@ mod tests {
             wallix_selection_timeout_secs: 8,
             wallix_direct: false,
             wallix_authorization: None,
+            wallix_header_columns: vec![],
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -931,6 +982,9 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            ssh_cert: String::new(),
+            notes: String::new(),
+            ssh_agent_sock: String::new(),
         };
 
         let targets = build_expected_targets(&server);
@@ -970,6 +1024,7 @@ mod tests {
             wallix_selection_timeout_secs: 8,
             wallix_direct: false,
             wallix_authorization: None,
+            wallix_header_columns: vec![],
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -981,6 +1036,9 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            ssh_cert: String::new(),
+            notes: String::new(),
+            ssh_agent_sock: String::new(),
         };
 
         assert_eq!(select_id_for_server(&entries, &server).unwrap(), "1");
@@ -1017,6 +1075,7 @@ mod tests {
             wallix_selection_timeout_secs: 8,
             wallix_direct: false,
             wallix_authorization: None,
+            wallix_header_columns: vec![],
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -1028,6 +1087,9 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            ssh_cert: String::new(),
+            notes: String::new(),
+            ssh_agent_sock: String::new(),
         };
 
         assert_eq!(select_id_for_server(&entries, &server).unwrap(), "42");
@@ -1064,6 +1126,7 @@ mod tests {
             wallix_selection_timeout_secs: 8,
             wallix_direct: false,
             wallix_authorization: None,
+            wallix_header_columns: vec![],
             use_system_ssh_config: false,
             probe_filesystems: vec![],
             tunnels: vec![],
@@ -1075,6 +1138,9 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            ssh_cert: String::new(),
+            notes: String::new(),
+            ssh_agent_sock: String::new(),
         };
 
         assert_eq!(select_id_for_server(&entries, &server).unwrap(), "640");
@@ -1093,7 +1159,7 @@ mod tests {
  0002  │ demo_user@default@APP-ALPHA-BD:SSH      │ APP-ALPHA_dev-admins
  0003  │ demo_user@default@OTHER-SERVER:SSH    │ APP-ALPHA_ops-admins
 "#;
-        let entries = parse_wallix_menu(output).expect("Should parse realistic output");
+        let entries = parse_wallix_menu(output, &[]).expect("Should parse realistic output");
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].id, "0001");
         assert_eq!(entries[2].group, "APP-ALPHA_ops-admins");

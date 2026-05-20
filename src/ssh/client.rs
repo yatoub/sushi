@@ -91,6 +91,11 @@ pub fn build_ssh_args(
         args.push("-i".into());
         args.push(expanded.into_owned());
     }
+    if !server.ssh_cert.is_empty() {
+        let expanded = shellexpand::tilde(&server.ssh_cert);
+        args.push("-i".into());
+        args.push(expanded.into_owned());
+    }
 
     for opt in &server.ssh_options {
         if opt.starts_with('-') {
@@ -117,6 +122,12 @@ pub fn build_ssh_args(
 
     if server.agent_forwarding {
         args.push("-A".into());
+    }
+
+    if !server.ssh_agent_sock.is_empty() {
+        let expanded = shellexpand::tilde(&server.ssh_agent_sock);
+        args.push("-o".into());
+        args.push(format!("IdentityAgent={}", expanded.into_owned()));
     }
 
     // ControlMaster SSH multiplexing (non supporté en mode Wallix).
@@ -242,6 +253,11 @@ pub fn connect_blocking(
     let args = build_ssh_args(server, mode, verbose)?;
     let mut command = Command::new("ssh");
     command.args(&args);
+
+    #[cfg(unix)]
+    if !server.ssh_agent_sock.is_empty() {
+        command.env("SSH_AUTH_SOCK", &server.ssh_agent_sock);
+    }
 
     #[cfg(unix)]
     let askpass_path = if let Some(cred) = credential {
@@ -385,7 +401,7 @@ pub fn fetch_wallix_menu_entries(
         let _ = std::fs::write("/tmp/susshi-wallix-debug.txt", &transcript);
     }
 
-    parse_wallix_menu(&transcript)
+    parse_wallix_menu(&transcript, &server.wallix_header_columns)
 }
 
 #[cfg(not(unix))]
@@ -769,7 +785,7 @@ fn connect_wallix_via_pty_with_selection(
                     let selection = if let Some(id) = selected_id {
                         Ok(id.to_string())
                     } else {
-                        parse_wallix_menu(&transcript)
+                        parse_wallix_menu(&transcript, &server.wallix_header_columns)
                             .and_then(|entries| select_id_for_server(&entries, server))
                     };
 
@@ -916,6 +932,9 @@ mod tests {
             pre_connect_hook: None,
             post_disconnect_hook: None,
             hook_timeout_secs: 5,
+            ssh_cert: String::new(),
+            notes: String::new(),
+            ssh_agent_sock: String::new(),
             wallix_group: None,
             wallix_account: "default".to_string(),
             wallix_protocol: "SSH".to_string(),
@@ -924,6 +943,7 @@ mod tests {
             wallix_selection_timeout_secs: 8,
             wallix_direct: false,
             wallix_authorization: None,
+            wallix_header_columns: vec![],
         }
     }
 

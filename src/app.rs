@@ -59,6 +59,8 @@ pub enum AppMode {
     Normal,
     /// Affiche un panneau d'erreur bloquant jusqu'à la confirmation.
     Error(String),
+    /// Affiche la valeur qui aurait dû être copiée quand le clipboard est indisponible.
+    ClipboardFallback(String),
     /// Saisie d'un credential SSH (passphrase de clé ou mot de passe) avant connexion.
     CredentialInput {
         server: Box<ResolvedServer>,
@@ -364,6 +366,8 @@ pub struct App {
 
     /// Thème Catppuccin actif (résolu à l'initialisation depuis la config).
     pub theme: &'static Theme,
+    /// Variante de thème courante (permet le toggle à la volée).
+    pub theme_variant: ThemeVariant,
 
     /// Message temporaire affiché dans la barre de statut (texte, timestamp)
     pub status_message: Option<(String, Instant)>,
@@ -463,6 +467,10 @@ pub struct App {
     pub cmd_history: Vec<String>,
     /// Position du curseur dans l'historique lors de la navigation (None = pas en navigation).
     pub cmd_history_cursor: Option<usize>,
+
+    /// Si `true`, la capture souris crossterm est active (les clics TUI fonctionnent).
+    /// Si `false`, le terminal reprend la gestion souris standard (sélection texte possible).
+    pub mouse_capture: bool,
 }
 
 type WallixMenuLoadResult = (ResolvedServer, Result<Vec<WallixMenuEntry>, String>);

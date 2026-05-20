@@ -443,6 +443,21 @@ pub(crate) fn draw_details(f: &mut Frame, app: &mut App, area: Rect) {
                     Span::styled(last_seen_str, Style::default().fg(app.theme.subtext0)),
                 ]));
 
+                if !server.notes.is_empty() {
+                    lines.push(Line::from(vec![
+                        Span::styled(
+                            "Notes : ",
+                            Style::default()
+                                .add_modifier(Modifier::BOLD)
+                                .fg(app.theme.fg),
+                        ),
+                        Span::styled(
+                            server.notes.as_str(),
+                            Style::default().fg(app.theme.subtext0),
+                        ),
+                    ]));
+                }
+
                 {
                     let n_cfg = app.effective_tunnels(server).len();
                     let n_run = app.active_tunnel_count(server);
@@ -873,6 +888,20 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         return;
     }
 
+    if !app.mouse_capture {
+        let indicator = fl!("mouse-capture-off");
+        f.render_widget(
+            Paragraph::new(indicator).style(
+                Style::default()
+                    .bg(app.theme.yellow)
+                    .fg(app.theme.bg)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            area,
+        );
+        return;
+    }
+
     if let Some((msg, _)) = &app.status_message {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -961,6 +990,9 @@ pub(crate) fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
             kh("r", fl!("hint-reload")),
             kh("H", fl!("hint-recent-sort")),
             kh("C", fl!("hint-collapse")),
+            kh("E", fl!("hint-expand-all")),
+            kh("Ctrl+Y", fl!("hint-theme-toggle")),
+            kh("M", fl!("hint-mouse-toggle")),
             kh("v", fl!("hint-verbose")),
         ]
         .into_iter()

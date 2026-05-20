@@ -61,7 +61,7 @@ Behavior (all includes):
 
 Global values applied unless overridden:
 
-- `user`, `ssh_key`, `ssh_port`, `ssh_options`
+- `user`, `ssh_key`, `ssh_cert`, `ssh_agent_sock`, `ssh_port`, `ssh_options`
 - `mode`: `direct`, `jump`, or `wallix`
 - `theme`: `latte`, `frappe`, `macchiato`, `mocha`
 - `use_system_ssh_config`
@@ -96,6 +96,7 @@ wallix:
   auto_select: true
   fail_if_menu_match_error: true
   selection_timeout_secs: 8
+  # header_columns: ["ID", "Cible", "Autorisation"]  # override if bastion uses different column labels
 ```
 
 `bastion` is accepted as a backward-compatible alias key.
@@ -137,6 +138,10 @@ Any level may override defaults.
 - `name`, `host`
 - `mode`
 - `tags`
+- `notes` — free-form description shown in the detail panel
+- `ssh_key` — path to the private key (tilde expanded)
+- `ssh_cert` — path to a signed SSH certificate to pass as a second `-i` alongside `ssh_key`
+- `ssh_agent_sock` — path to a Unix socket for a dedicated SSH agent (sets `SSH_AUTH_SOCK` and `-o IdentityAgent=`); useful for GPG-based agents or per-server agent isolation (Unix only)
 - `tunnels` (optional predefined local forwards)
 - hook overrides (`pre_connect_hook`, `post_disconnect_hook`)
 

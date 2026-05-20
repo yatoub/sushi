@@ -33,10 +33,18 @@ cargo test --frozen
 
 %install
 install -Dm0755 target/release/%{name} %{buildroot}%{_bindir}/%{name}
+install -Dm0644 target/man/%{name}.1 %{buildroot}%{_mandir}/man1/%{name}.1
+install -Dm0644 README.md %{buildroot}%{_docdir}/%{name}/README.md
+cp -r docs/ %{buildroot}%{_docdir}/%{name}/docs/
+cp -r examples/ %{buildroot}%{_docdir}/%{name}/examples/
 
 %files
 %license LICENCE
 %{_bindir}/%{name}
+%{_mandir}/man1/%{name}.1*
+%doc %{_docdir}/%{name}/README.md
+%doc %{_docdir}/%{name}/docs/
+%doc %{_docdir}/%{name}/examples/
 
 %changelog
 * Wed Mar 17 2026 yatoub <yatoub@users.noreply.github.com> - 0.14.0-1

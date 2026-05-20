@@ -6,68 +6,43 @@
 [![Security Audit](https://github.com/yatoub/susshi/actions/workflows/ci.yml/badge.svg?event=push&label=audit)](https://github.com/yatoub/susshi/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/yatoub/susshi/branch/master/graph/badge.svg)](https://codecov.io/gh/yatoub/susshi)
 
-**susshi** is a modern, terminal-based SSH connection manager written in Rust.
-It helps you organize servers, handle complex access flows (jump hosts, Wallix bastions), and connect fast through a clean Catppuccin-powered TUI.
+**susshi** is a terminal-based SSH connection manager written in Rust — hierarchical inventory, Catppuccin-themed TUI, jump hosts, Wallix bastions, tunnels, and SCP in one place.
 
 ![susshi TUI screenshot](docs/susshi.png)
 
-## Table of Contents
-
-- [🍣 susshi](#-susshi)
-  - [Table of Contents](#table-of-contents)
-  - [Quick Start](#quick-start)
-  - [Why susshi](#why-susshi)
-    - [Core Features](#core-features)
-    - [Productivity Features](#productivity-features)
-    - [Advanced Features](#advanced-features)
-  - [Installation](#installation)
-    - [Pre-built binaries](#pre-built-binaries)
-    - [Ubuntu / Debian (x86_64, ARM64)](#ubuntu--debian-x86_64-arm64)
-    - [Fedora / RHEL (x86_64)](#fedora--rhel-x86_64)
-    - [AUR (Arch Linux)](#aur-arch-linux)
-    - [Build from source](#build-from-source)
-  - [Configuration](#configuration)
-    - [Minimal template](#minimal-template)
-    - [Configuration docs](#configuration-docs)
-  - [CLI Usage](#cli-usage)
-  - [TUI Usage](#tui-usage)
-    - [Essential keybindings](#essential-keybindings)
-    - [Advanced keybindings](#advanced-keybindings)
-  - [Advanced Guides](#advanced-guides)
-  - [Contributing](#contributing)
-  - [License](#license)
-
-## Quick Start
-
-Install and connect in less than 2 minutes.
+## Installation
 
 ```bash
 # Linux x86_64
 wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64
-chmod +x susshi-linux-amd64
-sudo mv susshi-linux-amd64 /usr/local/bin/susshi
-```
-
-If you run an older distro with an older glibc (for example Linux Mint 21.x / Ubuntu 22.04), use one of these alternatives:
-
-```bash
-# Linux x86_64 (legacy glibc-compatible)
-wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64-glibc217
-chmod +x susshi-linux-amd64-glibc217
-sudo mv susshi-linux-amd64-glibc217 /usr/local/bin/susshi
+chmod +x susshi-linux-amd64 && sudo mv susshi-linux-amd64 /usr/local/bin/susshi
 
 # Linux x86_64 (musl fallback)
 wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64-musl
-chmod +x susshi-linux-amd64-musl
-sudo mv susshi-linux-amd64-musl /usr/local/bin/susshi
+
+# macOS Apple Silicon
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi-macos-arm64
+
+# macOS Intel
+wget https://github.com/yatoub/susshi/releases/latest/download/susshi-macos-amd64
+
+# Arch Linux
+paru -S susshi-bin
 ```
+
+For DEB/RPM packages and legacy glibc builds see the [releases page](https://github.com/yatoub/susshi/releases/latest).
+
+> **Windows:** partial support — TUI and config parsing work, interactive SSH (PTY) and Wallix are Unix-only.
+
+## Quick Start
 
 Create `~/.susshi.yml`:
 
 ```yaml
 defaults:
   user: "ops-user"
-  theme: mocha
+  ssh_key: "~/.ssh/id_ed25519"
+  theme: mocha  # latte | frappe | macchiato | mocha
 
 groups:
   - name: "Production"
@@ -77,250 +52,44 @@ groups:
         mode: "direct"
 ```
 
-Use either mode:
-
 ```bash
-# Open the TUI
-susshi
-
-# Direct one-shot connection
-susshi --direct ops-user@198.51.100.10
+susshi          # open TUI
+susshi --direct ops-user@198.51.100.10   # one-shot connection
 ```
 
-For a complete config example, see [examples/full_config.yaml](examples/full_config.yaml).
+Full annotated example: [examples/full_config.yaml](examples/full_config.yaml)
 
-## Why susshi
-
-### Core Features
-
-- Hierarchical inventory: groups, environments, servers.
-- Mode inheritance: defaults -> group -> environment -> server.
-- Connection modes: direct, jump (single or multi-hop), wallix.
-- Multi-file config with `includes:` and recursive resolution.
-- Hot reload (`r`) without restarting the app.
-
-### Productivity Features
-
-- Search by name/host with live result counter.
-- Tag filtering with `#tag` tokens (AND semantics).
-- Favorite servers (`f`) and favorites-only mode (`F`).
-- Recent-sort view (`H`) by last used server.
-- Clipboard copy of generated SSH command (`y`).
-
-### Advanced Features
-
-- Quick diagnostics (`d`) with system stats and filesystem checks.
-- Ad-hoc non-interactive SSH command runner (`x`) with **command history** (↑/↓ to navigate).
-- **Group overview dashboard** (`o`): parallel SSH probe of all servers in the selected group — live ✓/✗ status, load average, RAM%, disk%.
-- **Split pane** (`|`): pin a server to a dedicated right panel while browsing the rest of the tree.
-- **Keyboard help overlay** (`h`): full reference of all keybindings, displayed in-app.
-- SSH tunnel manager (`T`) with persistent user overrides.
-- SCP transfer form (`s`) with live progress.
-- Wallix authorization auto-resolution with targeted fallback popup.
-- Hooks (`pre_connect_hook`, `post_disconnect_hook`).
-- `~/.ssh/config` import and inventory export to Ansible, Terraform, and Nmap target lists.
-- `--list --json`: dump all servers as JSON for `jq` / `fzf` pipelines.
-- `--exec-group <group> --exec-cmd <cmd>`: run a non-interactive SSH command on a whole group in parallel.
-- Remote includes over HTTPS: `path: https://…` in the `includes` section.
-- Variable interpolation with `_vars` and built-in `{{ index }}`.
-- **SSH certificate support** (`ssh_cert`): pass a signed certificate alongside the private key.
-- **SSH agent socket** (`ssh_agent_sock`): route a server's connections through a dedicated agent socket (GPG, per-server isolation); sets `SSH_AUTH_SOCK` and `-o IdentityAgent`.
-- **Server notes** (`notes`): free-form description per server, shown in the detail panel.
-- **Live theme toggle** (`Ctrl+Y`): cycle Catppuccin variants without editing the config file.
-
-## Installation
-
-### Pre-built binaries
-
-```bash
-# Linux x86_64
-wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64
-chmod +x susshi-linux-amd64
-sudo mv susshi-linux-amd64 /usr/local/bin/susshi
-
-# Linux x86_64 (legacy glibc-compatible)
-wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64-glibc217
-chmod +x susshi-linux-amd64-glibc217
-sudo mv susshi-linux-amd64-glibc217 /usr/local/bin/susshi
-
-# Linux x86_64 (musl fallback)
-wget https://github.com/yatoub/susshi/releases/latest/download/susshi-linux-amd64-musl
-chmod +x susshi-linux-amd64-musl
-sudo mv susshi-linux-amd64-musl /usr/local/bin/susshi
-
-# macOS Intel
-wget https://github.com/yatoub/susshi/releases/latest/download/susshi-macos-amd64
-
-# macOS Apple Silicon
-wget https://github.com/yatoub/susshi/releases/latest/download/susshi-macos-arm64
-```
-
-### Ubuntu / Debian (x86_64, ARM64)
-
-Install from native DEB packages:
-
-```bash
-# x86_64
-sudo apt-get update && sudo apt-get install -y openssh-client xclip
-wget https://github.com/yatoub/susshi/releases/latest/download/susshi_*_amd64.deb
-sudo dpkg -i susshi_*_amd64.deb
-
-# ARM64
-wget https://github.com/yatoub/susshi/releases/latest/download/susshi_*_arm64.deb
-sudo dpkg -i susshi_*_arm64.deb
-```
-
-### Fedora / RHEL (x86_64)
-
-Install from native RPM packages:
-
-```bash
-sudo dnf install openssh-clients
-wget https://github.com/yatoub/susshi/releases/latest/download/susshi-*.x86_64.rpm
-sudo dnf install ./susshi-*.x86_64.rpm
-```
-
-### AUR (Arch Linux)
-
-```bash
-paru -S susshi-bin  # pre-compiled binary
-paru -S susshi      # build from source
-```
-
-### Windows
-
-> **Partial support.** The binary compiles and the CI smoke-tests it (`x86_64-pc-windows-msvc`), but several features are Unix-only and return a runtime error on Windows:
->
-> - **Interactive SSH sessions** — PTY allocation via `forkpty` is not available; `connect()` is a no-op.
-> - **Wallix bastion flow** — depends on PTY; returns an error.
-> - **SSH agent forwarding** (`-A`) — passed to the `ssh` binary; works if you have OpenSSH for Windows installed.
-> - **Clipboard copy** — may require an extra dependency (`arboard` backend).
->
-> The TUI, config parsing, YAML validation, and tunnel/SCP configuration all work on Windows. If you need full Windows support, contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-### Build from source
-
-Requires [Rust & Cargo](https://rustup.rs/) and a truecolor terminal.
-
-```bash
-git clone https://github.com/yatoub/susshi.git
-cd susshi
-cargo build --release
-sudo cp target/release/susshi /usr/local/bin/
-```
-
-## Configuration
-
-susshi reads `~/.susshi.yml` by default.
-
-### Minimal template
-
-```yaml
-defaults:
-  user: "ops-user"
-  ssh_key: "~/.ssh/id_ed25519"
-  theme: mocha  # latte | frappe | macchiato | mocha
-
-groups:
-  - name: "Infrastructure"
-    servers:
-      - name: "proxmox-host"
-        host: "198.51.100.100"
-        mode: "direct"
-```
-
-### Configuration docs
-
-- Full annotated reference: [examples/full_config.yaml](examples/full_config.yaml)
-- Full configuration guide: [docs/configuration.md](docs/configuration.md)
-- Wallix behavior and auto-selection details: [docs/wallix.md](docs/wallix.md)
-
-### Wallix authorization flow (v0.15)
-
-- susshi builds the Wallix SSH `User` identity from your selected server host.
-- `wallix.group` is inherited from higher levels and can be overridden per server.
-- If authorization cannot be resolved unambiguously, a targeted TUI popup is shown and the chosen ID is cached for the current session.
-- The nominal flow no longer displays the global Wallix pseudo-TTY menu.
-
-Short troubleshooting is available in [docs/wallix.md](docs/wallix.md#troubleshooting).
-
-## CLI Usage
-
-```bash
-# Direct / jump / wallix one-shot connection
-susshi --direct ops-user@app-01.internal.example
-susshi --jump ops-user@198.51.100.50
-susshi --wallix web-01.internal.example
-
-# Override SSH parameters
-susshi --direct app-01.internal.example --user deploy --port 2222 --key ~/.ssh/deploy_rsa
-
-# Alternate config file
-susshi --config ~/work/.susshi.yml
-
-# List all servers as JSON (pipe to jq / fzf)
-susshi --list
-susshi --list --list-filter "#prod" | jq -r '.[].host'
-
-# Run a command on all servers in a group (parallel)
-susshi --exec-group prod --exec-cmd "uptime"
-
-# Export inventory
-susshi --export ansible --export-output ~/inventory.yml
-susshi --export terraform --export-output ~/inventory.json
-susshi --export nmap | nmap -iL - -p 22 -sV
-
-# Show all options
-susshi --help
-```
-
-Detailed CLI examples: [docs/cli.md](docs/cli.md)
-
-## TUI Usage
-
-### Essential keybindings
+## Essential Keybindings
 
 | Key | Action |
 | --- | --- |
-| `j` / `↓` | Move selection down |
-| `k` / `↑` | Move selection up |
-| `Enter` | Connect to server / Toggle group |
-| `Space` | Toggle expand/collapse group |
-| `/` | Enter search mode |
-| `Esc` | Cancel search or close overlays |
-| `v` | Toggle verbose SSH mode |
+| `j` / `k` | Move down / up |
+| `Enter` | Connect or toggle group |
+| `/` | Search |
+| `Tab` | Switch mode (Direct / Jump / Wallix) |
+| `f` / `F` | Favorite toggle / favorites-only view |
+| `T` | Tunnel manager |
+| `h` | Keyboard help overlay |
 | `q` | Quit |
 
-### Advanced keybindings
+## Documentation
 
-| Key | Action |
+| Guide | Description |
 | --- | --- |
-| `Tab`, `1`, `2`, `3` | Switch connection mode |
-| `d` | Quick diagnostics |
-| `x` | Ad-hoc SSH command (↑/↓ = history navigation) |
-| `o` | Group overview dashboard (parallel probe) |
-| `\|` | Pin/unpin server in split pane |
-| `h` | Toggle keyboard help overlay |
-| `T` | Tunnel manager |
-| `s` | SCP transfer form |
-| `f` / `F` | Favorite toggle / favorites-only view |
-| `r` | Hot-reload configuration |
-| `C` | Collapse all |
-| `H` | Toggle recent-sort |
-| `y` | Copy SSH command |
-
-Detailed TUI behavior and visuals: [docs/tui.md](docs/tui.md)
-
-## Advanced Guides
-
-- Configuration model and inheritance: [docs/configuration.md](docs/configuration.md)
-- Wallix matching and fallback flow (inheritance, targeted selection, troubleshooting): [docs/wallix.md](docs/wallix.md)
-- Full CLI cookbook (import/export included): [docs/cli.md](docs/cli.md)
-- TUI interactions, diagnostics, tunnels and SCP: [docs/tui.md](docs/tui.md)
+| [docs/configuration.md](docs/configuration.md) | Full config schema, inheritance model, includes, `_vars` |
+| [docs/tui.md](docs/tui.md) | TUI navigation, search, keybindings, diagnostics |
+| [docs/cli.md](docs/cli.md) | One-shot connection, `--validate`, `--exec-group` |
+| [docs/import-export.md](docs/import-export.md) | Import from `~/.ssh/config`, export to Ansible/Terraform/Nmap/CSV |
+| [docs/wallix.md](docs/wallix.md) | Wallix bastion configuration and troubleshooting |
+| [docs/tunnels.md](docs/tunnels.md) | SSH tunnel configuration and TUI manager |
+| [docs/scp.md](docs/scp.md) | In-TUI SCP file transfers |
+| [docs/hooks.md](docs/hooks.md) | Pre/post-connect shell hooks |
+| [docs/ssh-advanced.md](docs/ssh-advanced.md) | Certificates, agent sockets, ControlMaster, agent forwarding |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Diagnostics, common issues, state file |
 
 ## Contributing
 
-Contributions are welcome. Please open a Pull Request.
+Contributions are welcome. Please open a Pull Request — see [CONTRIBUTING.md](CONTRIBUTING.md) for conventions.
 
 ## License
 

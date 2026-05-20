@@ -67,6 +67,7 @@ Global values applied unless overridden:
 - `use_system_ssh_config`
 - `keep_open`
 - `default_filter`
+- `agent_forwarding` — enable SSH agent forwarding (`-A` flag); default `false`
 - `control_master`, `control_path`, `control_persist`
 - `pre_connect_hook`, `post_disconnect_hook`, `hook_timeout_secs`
 - `probe_filesystems`
@@ -96,10 +97,20 @@ wallix:
   auto_select: true
   fail_if_menu_match_error: true
   selection_timeout_secs: 8
+  # template: "{target_user}@%n:SSH:{bastion_user}"  # custom login-string template (default shown)
+  # direct: false      # set true to skip menu probe for direct-checkout targets
+  # authorization: ""  # force exact Wallix authorization name (skips menu matching)
   # header_columns: ["ID", "Cible", "Autorisation"]  # override if bastion uses different column labels
 ```
 
 `bastion` is accepted as a backward-compatible alias key.
+
+Wallix-specific fields:
+
+- `template` — Go-style template for the Wallix SSH `User` identity string. Default: `{target_user}@%n:SSH:{bastion_user}`. Override when your bastion expects a different format.
+- `direct` — skip the menu probe entirely and attempt a direct checkout connection. Use when the authorization is guaranteed and menu parsing is not needed.
+- `authorization` — force the exact Wallix authorization name. When set, susshi skips the menu matching step and uses this value directly.
+- `header_columns` — list of tokens used to detect the menu header row. Override if your bastion instance uses localized or custom column names.
 
 ## `_vars` and Interpolation
 

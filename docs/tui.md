@@ -82,6 +82,8 @@ The note is displayed in the detail panel below the last-seen timestamp.
 | --- | --- |
 | `d` | Run quick diagnostics on the selected server |
 | `x` | Run ad-hoc SSH command on the selected server |
+| `p` | Prompt for SSH credential (passphrase if a key is configured, password otherwise) |
+| `M` | Toggle mouse capture (disable to allow terminal text selection) |
 
 Diagnostics include:
 
@@ -129,16 +131,7 @@ Press `|` again on the same server (or on any non-server item) to unpin and retu
 | `T` | Open SSH tunnel manager |
 | `s` | Open SCP transfer form |
 
-Tunnels:
-
-- Start, stop, add, edit, and delete local forwards.
-- Can come from config (`tunnels`) or user overrides.
-- Active tunnels show live status badges in the UI.
-
-SCP:
-
-- Upload/download from an in-TUI form.
-- Live transfer progress through PTY-backed OpenSSH output.
+See [tunnels.md](tunnels.md) and [scp.md](scp.md) for full details.
 
 ## Keyboard Help Overlay
 
